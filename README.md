@@ -68,27 +68,3 @@ token and 1 otherwise, which can be useful in shell pipelines.
 ```
 oauth2l validate ya29.zyxwvutsrqpnmolkjihgfedcba
 ```
-
-### email
-
-Print the email address associated with the oauth token (if the scopes allow).
-
-```
-oauth2l email ya29.zyxwvutsrqpnmolkjihgfedcba
-```
-
-### userinfo
-
-Print userinfo associated with the oauth token.
-
-```
-oauth2l tokeninfo ya29.zyxwvutsrqpnmolkjihgfedcba
-```
-
-### scopes
-
-Print the list of scopes associated with an oauth token.
-
-```
-oauth2l scopes ya29.abcdefghijklmnopqrstuvwxyz123yessirree
-```
