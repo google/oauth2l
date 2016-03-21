@@ -60,11 +60,11 @@ the following command uses the BigQuery API to list all projects.
 $ curl -H "$(oauth2l header bigquery)" 'https://www.googleapis.com/bigquery/v2/projects'
 ```
 
-### validate
+### test
 
 Validate a token. In particular, this sets an exit code of 0 for a valid
 token and 1 otherwise, which can be useful in shell pipelines.
 
 ```
-oauth2l validate ya29.zyxwvutsrqpnmolkjihgfedcba
+oauth2l test ya29.zyxwvutsrqpnmolkjihgfedcba
 ```
