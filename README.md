@@ -41,6 +41,7 @@ the following command prints access token for the following oauth scopes:
 
 ```
 $ oauth2l fetch userinfo.email cloud-platform
+ya29.zyxwvutsrqpnmolkjihgfedcba
 ```
 
 ### header
@@ -62,7 +63,7 @@ $ curl -H "$(oauth2l header bigquery)" 'https://www.googleapis.com/bigquery/v2/p
 
 ### test
 
-Validate a token. In particular, this sets an exit code of 0 for a valid
+Test a token. In particular, this sets an exit code of 0 for a valid
 token and 1 otherwise, which can be useful in shell pipelines.
 
 ```
