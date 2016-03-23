@@ -54,13 +54,11 @@ from __future__ import print_function
 
 import argparse
 import json
-import logging
 import os
 import pkgutil
 import sys
 import textwrap
 
-import oauth2client.client
 from six.moves import http_client
 
 import apitools.base.py as apitools_base
@@ -174,15 +172,10 @@ def _FetchCredentials(args, client_info=None, credentials_filename=None):
     if not scopes:
         raise ValueError('No scopes provided')
     credentials_filename = credentials_filename or args.credentials_filename
-    # TODO(craigcitro): Remove this logging nonsense once we quiet the
-    # spurious logging in oauth2client.
-    old_level = logging.getLogger().level
-    logging.getLogger().setLevel(logging.ERROR)
     credentials = apitools_base.GetCredentials(
         'oauth2l', scopes, credentials_filename=credentials_filename,
         service_account_json_keyfile=args.service_account_json_keyfile,
         oauth2client_args='', **client_info)
-    logging.getLogger().setLevel(old_level)
     if not _TestToken(credentials.access_token):
         credentials.refresh(apitools_base.GetHttp())
     return credentials
