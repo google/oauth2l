@@ -199,7 +199,7 @@ def _FetchCredentials(args, client_info=None, credentials_filename=None):
     credentials = apitools_base.GetCredentials(
         'oauth2l', scopes, credentials_filename=credentials_filename,
         service_account_json_keyfile=service_account_json_keyfile,
-        oauth2client_args='', **client_info)
+        oauth2client_args=['--noauth_local_webserver'], **client_info)
     if not _TestToken(credentials.access_token):
         credentials.refresh(apitools_base.GetHttp())
     return credentials
