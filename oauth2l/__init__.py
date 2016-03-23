@@ -29,10 +29,13 @@ some sample use:
     $ oauth2l test thisisnotatoken
     <exit status: 1>
     $ oauth2l test ya29.zyxwvutsrqpnmolkjihgfedcba
-    $ oauth2l scopes ya29.abcdefghijklmnopqrstuvwxyz123yessirree
-    https://www.googleapis.com/auth/bigquery
-    https://www.googleapis.com/auth/compute
-    https://www.googleapis.com/auth/userinfo.email
+    $ oauth2l info ya29.abcdefghijklmnopqrstuvwxyz123yessirree
+    Scopes:
+    * https://www.googleapis.com/auth/bigquery
+    * https://www.googleapis.com/auth/compute
+    * https://www.googleapis.com/auth/userinfo.email
+    Expires in: 3520 seconds
+    Email address: user@gmail.com
 
 The `header` command is designed to be easy to use with `curl`:
 

@@ -9,7 +9,7 @@ command-line tools and shell scripts.
 ## Overview
 
 `oauth2l` supports multiple OAuth 2.0 authentication flows for both user
-accounts and service accounts, see below:
+accounts and service accounts:
 
 * When running inside Google Compute Engine (GCE), it uses the credentials of
 the current GCE service account (if it exists).
@@ -33,8 +33,8 @@ session.
 
 ### fetch
 
-Print the access token for the specified oauth scopes. For example,
-the following command prints access token for the following oauth scopes:
+Fetch and print an access token for the specified oauth scopes. For example,
+the following command prints access token for the following OAuth2 scopes:
 
 * https://www.googleapis.com/auth/userinfo.email
 * https://www.googleapis.com/auth/cloud-platform
@@ -46,8 +46,7 @@ ya29.zyxwvutsrqpnmolkjihgfedcba
 
 ### header
 
-Print the access token (see above) in HTTP header format, for
-example:
+Same as `fetch`, except that we print the token in HTTP header format:
 
 ```
 $ oauth2l header userinfo.email
@@ -61,11 +60,37 @@ the following command uses the BigQuery API to list all projects.
 $ curl -H "$(oauth2l header bigquery)" 'https://www.googleapis.com/bigquery/v2/projects'
 ```
 
-### test
+### info
 
-Test a token. In particular, this sets an exit code of 0 for a valid
-token and 1 otherwise, which can be useful in shell pipelines.
+Print information about a valid token. This always includes the list of scopes
+and expiration time. If the token has either the
+`https://www.googleapis.com/auth/userinfo.email` or
+`https://www.googleapis.com/auth/plus.me` scope, this also includes the email
+address of the user for whom this token was created.
 
 ```
-oauth2l test ya29.zyxwvutsrqpnmolkjihgfedcba
+$ oauth2l info $(oauth2l fetch bigquery)
+Scopes:
+* https://www.googleapis.com/auth/bigquery
+Expires in: 3599 seconds
+$ oauth2l info $(oauth2l fetch cloud.platform userinfo.email)
+Scopes:
+* https://www.googleapis.com/auth/cloud.platform
+* https://www.googleapis.com/auth/userinfo.email
+Expires in: 3599 seconds
+Email address: user@gmail.com
+```
+
+### test
+
+Test a token. This sets an exit code of 0 for a valid token and 1 otherwise,
+which can be useful in shell pipelines.
+
+```
+$ oauth2l test ya29.zyxwvutsrqpnmolkjihgfedcba
+$ echo $?
+0
+$ oauth2l test ya29.justkiddingmadethisoneup
+$ echo $?
+1
 ```
