@@ -188,25 +188,25 @@ class TestFetch(unittest.TestCase):
         with mock.patch.object(apitools_base, 'GetCredentials',
                                return_value=self.credentials,
                                autospec=True) as mock_fetch:
-            with mock.patch.object(oauth2l, '_ValidateToken',
+            with mock.patch.object(oauth2l, '_TestToken',
                                    return_value=False,
-                                   autospec=True) as mock_validate:
+                                   autospec=True) as mock_test:
                 with mock.patch.object(self.credentials, 'refresh',
                                        return_value=None,
                                        autospec=True) as mock_refresh:
                     output = _GetCommandOutput('fetch', ['userinfo.email'])
                     self.assertIn(self.access_token, output)
                     self.assertEqual(1, mock_fetch.call_count)
-                    self.assertEqual(1, mock_validate.call_count)
+                    self.assertEqual(1, mock_test.call_count)
                     self.assertEqual(1, mock_refresh.call_count)
 
     def testDefaultClientInfo(self):
         with mock.patch.object(apitools_base, 'GetCredentials',
                                return_value=self.credentials,
                                autospec=True) as mock_fetch:
-            with mock.patch.object(oauth2l, '_ValidateToken',
+            with mock.patch.object(oauth2l, '_TestToken',
                                    return_value=True,
-                                   autospec=True) as mock_validate:
+                                   autospec=True) as mock_test:
                 output = _GetCommandOutput('fetch', ['userinfo.email'])
                 self.assertIn(self.access_token, output)
                 self.assertEqual(1, mock_fetch.call_count)
@@ -214,7 +214,7 @@ class TestFetch(unittest.TestCase):
                 self.assertEqual(
                     '1042881264118.apps.googleusercontent.com',
                     kwargs['client_id'])
-                self.assertEqual(1, mock_validate.call_count)
+                self.assertEqual(1, mock_test.call_count)
 
     def testMissingClientSecrets(self):
         self.assertRaises(
@@ -235,9 +235,9 @@ class TestFetch(unittest.TestCase):
         with mock.patch.object(apitools_base, 'GetCredentials',
                                return_value=self.credentials,
                                autospec=True) as mock_fetch:
-            with mock.patch.object(oauth2l, '_ValidateToken',
+            with mock.patch.object(oauth2l, '_TestToken',
                                    return_value=True,
-                                   autospec=True) as mock_validate:
+                                   autospec=True) as mock_test:
                 fetch_args = [
                     '--client_secrets=' + client_secrets_path,
                     'userinfo.email']
@@ -249,7 +249,7 @@ class TestFetch(unittest.TestCase):
                                  kwargs['client_id'])
                 self.assertEqual('awesomesecret',
                                  kwargs['client_secret'])
-                self.assertEqual(1, mock_validate.call_count)
+                self.assertEqual(1, mock_test.call_count)
 
 
 class TestOtherCommands(unittest.TestCase):
@@ -315,14 +315,14 @@ class TestOtherCommands(unittest.TestCase):
             self.assertEqual(sorted(scopes), output.splitlines())
             self.assertEqual(1, mock_make_request.call_count)
 
-    def testValidate(self):
+    def testTest(self):
         scopes = [u'https://www.googleapis.com/auth/userinfo.email',
                   u'https://www.googleapis.com/auth/cloud-platform']
         response = _FakeResponse(http_client.OK, scopes=scopes)
         with mock.patch.object(apitools_base, 'MakeRequest',
                                return_value=response,
                                autospec=True) as mock_make_request:
-            output = _GetCommandOutput('validate', [self.access_token])
+            output = _GetCommandOutput('test', [self.access_token])
             self.assertEqual('', output)
             self.assertEqual(1, mock_make_request.call_count)
 

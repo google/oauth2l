@@ -26,9 +26,9 @@ some sample use:
       ya29.abcdefghijklmnopqrstuvwxyz123yessirree
     $ oauth2l header userinfo.email
     Authorization: Bearer ya29.zyxwvutsrqpnmolkjihgfedcba
-    $ oauth2l validate thisisnotatoken
+    $ oauth2l test thisisnotatoken
     <exit status: 1>
-    $ oauth2l validate ya29.zyxwvutsrqpnmolkjihgfedcba
+    $ oauth2l test ya29.zyxwvutsrqpnmolkjihgfedcba
     $ oauth2l scopes ya29.abcdefghijklmnopqrstuvwxyz123yessirree
     https://www.googleapis.com/auth/bigquery
     https://www.googleapis.com/auth/compute
@@ -162,7 +162,7 @@ def _GetTokenScopes(access_token):
     return json.loads(_AsText(response.content))['scope'].split(' ')
 
 
-def _ValidateToken(access_token):
+def _TestToken(access_token):
     """Return True iff the provided access token is valid."""
     return bool(_GetTokenScopes(access_token))
 
@@ -183,7 +183,7 @@ def _FetchCredentials(args, client_info=None, credentials_filename=None):
         service_account_json_keyfile=args.service_account_json_keyfile,
         oauth2client_args='', **client_info)
     logging.getLogger().setLevel(old_level)
-    if not _ValidateToken(credentials.access_token):
+    if not _TestToken(credentials.access_token):
         credentials.refresh(apitools_base.GetHttp())
     return credentials
 
@@ -229,9 +229,9 @@ def _Userinfo(args):
         print(_CompactJson(userinfo))
 
 
-def _Validate(args):
-    """Validate an access token. Exits with 0 if valid, 1 otherwise."""
-    return 1 - (_ValidateToken(args.access_token))
+def _Test(args):
+    """Test an access token. Exits with 0 if valid, 1 otherwise."""
+    return 1 - (_TestToken(args.access_token))
 
 
 def _GetParser():
@@ -311,13 +311,13 @@ def _GetParser():
         help=('Access token to print associated email address for. Must have '
               'the userinfo.email scope.'))
 
-    # validate
-    validate = subparsers.add_parser('validate', help=_Validate.__doc__,
+    # test
+    test = subparsers.add_parser('test', help=_Test.__doc__,
                                      parents=[shared_flags])
-    validate.set_defaults(func=_Validate)
-    validate.add_argument(
+    test.set_defaults(func=_Test)
+    test.add_argument(
         'access_token',
-        help='Access token to validate.')
+        help='Access token to test.')
 
     return parser
 
