@@ -223,19 +223,8 @@ def _Info(args):
         return 1
     if args.format == 'json':
         print(_PrettyJson(tokeninfo))
-    elif args.format == 'json_compact':
-        print(_CompactJson(tokeninfo))
     else:
-        scopes = sorted(tokeninfo['scope'].split(' '))
-        email = tokeninfo.get('email')
-        output_lines = []
-        output_lines.append('Scopes:')
-        output_lines.extend('* {}'.format(s) for s in scopes)
-        output_lines.append(
-            'Expires in: {} seconds'.format(tokeninfo['expires_in']))
-        if email:
-            output_lines.append('Email address: {}'.format(email))
-        print('\n'.join(output_lines))
+        print(_CompactJson(tokeninfo))
 
 
 def _Test(args):
@@ -290,7 +279,7 @@ def _GetParser():
     info.set_defaults(func=_Info)
     info.add_argument(
         '-f', '--format',
-        default='pretty', choices=('pretty', 'json', 'json_compact'),
+        default='json', choices=('json', 'json_compact'),
         help='Output format for info.')
     info.add_argument(
         'access_token',

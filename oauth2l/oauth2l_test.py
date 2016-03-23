@@ -271,11 +271,14 @@ class TestOtherCommands(unittest.TestCase):
         self.assertIn('Invalid JSON file', output)
 
     def testInfo(self):
-        info = {
-            'email': 'foo@example.com',
-            'expires_in': 456,
-            'scope': 'scope2 scope1',
-        }
+        info_json = '\n'.join((
+            '{',
+            '    "email": "foo@example.com",',
+            '    "expires_in": 456,',
+            '    "scope": "scope2 scope1"',
+            '}',
+        ))
+        info = json.loads(info_json)
         with mock.patch.object(oauth2l, '_GetTokenInfo',
                                return_value=info,
                                autospec=True) as mock_get_tokeninfo:
@@ -283,9 +286,7 @@ class TestOtherCommands(unittest.TestCase):
             self.assertEqual(1, mock_get_tokeninfo.call_count)
             self.assertEqual(self.access_token,
                              mock_get_tokeninfo.call_args[0][0])
-            self.assertIn('* scope1\n* scope2', output)
-            self.assertIn('Email address: foo@example.com', output)
-            self.assertIn('Expires in: 456 seconds', output)
+            self.assertEqual(info_json, output)
 
     def testInfoNoEmail(self):
         info = {
@@ -299,27 +300,8 @@ class TestOtherCommands(unittest.TestCase):
             self.assertEqual(1, mock_get_tokeninfo.call_count)
             self.assertEqual(self.access_token,
                              mock_get_tokeninfo.call_args[0][0])
-            self.assertIn('* scope1\n* scope2', output)
-            self.assertNotIn('Email', output)
-
-    def testInfoJson(self):
-        info_json = '\n'.join((
-            '{',
-            '    "email": "foo@example.com",',
-            '    "expires_in": 456,',
-            '    "scope": "scope2 scope1"',
-            '}',
-        ))
-        info = json.loads(info_json)
-        with mock.patch.object(oauth2l, '_GetTokenInfo',
-                               return_value=info,
-                               autospec=True) as mock_get_tokeninfo:
-            output = _GetCommandOutput(
-                'info', ['-f', 'json', self.access_token])
-            self.assertEqual(1, mock_get_tokeninfo.call_count)
-            self.assertEqual(self.access_token,
-                             mock_get_tokeninfo.call_args[0][0])
-            self.assertEqual(info_json, output)
+            self.assertIn('scope2 scope1', output)
+            self.assertNotIn('email', output)
 
     def testInfoJsonCompact(self):
         info_json = ('{"email":"foo@example.com","expires_in":456,'
