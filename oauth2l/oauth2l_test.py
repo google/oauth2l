@@ -244,7 +244,7 @@ class TestFetch(unittest.TestCase):
                                    return_value=True,
                                    autospec=True) as mock_test:
                 fetch_args = [
-                    '--client_secrets=' + client_secrets_path,
+                    '--json=' + client_secrets_path,
                     'userinfo.email']
                 output = _GetCommandOutput('fetch', fetch_args)
                 self.assertIn(self.access_token, output)
@@ -265,6 +265,10 @@ class TestOtherCommands(unittest.TestCase):
         self.user_agent = 'oauth2l/1.0'
         self.credentials = oauth2client.client.AccessTokenCredentials(
             self.access_token, self.user_agent)
+
+    def testInvalidJsonFile(self):
+        output = _GetCommandOutput('fetch', ['--json', __file__])
+        self.assertIn('Invalid JSON file', output)
 
     def testInfo(self):
         info = {

@@ -165,16 +165,37 @@ def _TestToken(access_token):
     return bool(_GetTokenInfo(access_token))
 
 
+def _ProcessJsonArgs(args):
+    """Get client_info and service_account_json_keyfile from args.
+
+    This just reads args.json, and decides (based on contents) whether
+    it's a client_secrets or a service_account key, and returns as
+    appropriate.
+    """
+    if not args.json:
+        return '', ''
+    with open(args.json, 'rU') as f:
+        try:
+            contents = json.load(f)
+        except ValueError:
+            raise ValueError('Invalid JSON file: {}'.format(args.json))
+    if contents.get('type', '') == 'service_account':
+        return '', args.json
+    else:
+        return args.json, ''
+
+
 def _FetchCredentials(args, client_info=None, credentials_filename=None):
     """Fetch a credential for the given client_info and scopes."""
-    client_info = client_info or GetClientInfoFromFlags(args.client_secrets)
+    client_secrets, service_account_json_keyfile = _ProcessJsonArgs(args)
+    client_info = client_info or GetClientInfoFromFlags(client_secrets)
     scopes = _ExpandScopes(args.scope)
     if not scopes:
         raise ValueError('No scopes provided')
     credentials_filename = credentials_filename or args.credentials_filename
     credentials = apitools_base.GetCredentials(
         'oauth2l', scopes, credentials_filename=credentials_filename,
-        service_account_json_keyfile=args.service_account_json_keyfile,
+        service_account_json_keyfile=service_account_json_keyfile,
         oauth2client_args='', **client_info)
     if not _TestToken(credentials.access_token):
         credentials.refresh(apitools_base.GetHttp())
@@ -223,20 +244,14 @@ def _GetParser():
 
     shared_flags = argparse.ArgumentParser(add_help=False)
     shared_flags.add_argument(
-        '--client_secrets',
-        default='',
-        help=('If specified, use the client ID/secret from the named '
-              'file, which should be a client_secrets.json file '
-              'downloaded from the Developer Console.'))
-    shared_flags.add_argument(
         '--credentials_filename',
         default='',
         help='(optional) Filename for fetching/storing credentials.')
     shared_flags.add_argument(
-        '--service_account_json_keyfile',
+        '--json',
         default='',
-        help=('Filename for a JSON service account key downloaded from '
-              'the Google Developer Console.'))
+        help=('JSON file downloaded from Google Developer Console. '
+              'Can be either client ID/secret or a JSON service account key.'))
 
     parser = argparse.ArgumentParser(
         description=__doc__,
