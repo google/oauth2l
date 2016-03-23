@@ -70,16 +70,14 @@ address of the user for whom this token was created.
 
 ```
 $ oauth2l info $(oauth2l fetch bigquery)
-Scopes:
-* https://www.googleapis.com/auth/bigquery
-Expires in: 3599 seconds
-$ oauth2l info $(oauth2l fetch cloud.platform userinfo.email)
-Scopes:
-* https://www.googleapis.com/auth/cloud.platform
-* https://www.googleapis.com/auth/userinfo.email
-Expires in: 3599 seconds
-Email address: user@gmail.com
+{
+    "expires_in": 3599,
+    "scope": "https://www.googleapis.com/auth/bigquery",
+    "email": "user@gmail.com"
+}
 ```
+
+(The actual output will likely have a few more fields.)
 
 ### test
 
