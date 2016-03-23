@@ -150,7 +150,7 @@ def _Format(fmt, credentials):
 _FORMATS = set(('bare', 'header', 'json', 'json_compact', 'pretty'))
 
 
-def _GetTokenScopes(access_token):
+def _GetTokenInfo(access_token):
     """Return the list of valid scopes for the given token as a list."""
     url = _OAUTH2_TOKENINFO_TEMPLATE.format(access_token=access_token)
     response = apitools_base.MakeRequest(
@@ -158,13 +158,13 @@ def _GetTokenScopes(access_token):
     if response.status_code not in [http_client.OK, http_client.BAD_REQUEST]:
         raise apitools_base.HttpError.FromResponse(response)
     if response.status_code == http_client.BAD_REQUEST:
-        return []
-    return json.loads(_AsText(response.content))['scope'].split(' ')
+        return {}
+    return json.loads(_AsText(response.content))
 
 
 def _TestToken(access_token):
     """Return True iff the provided access token is valid."""
-    return bool(_GetTokenScopes(access_token))
+    return bool(_GetTokenInfo(access_token))
 
 
 def _FetchCredentials(args, client_info=None, credentials_filename=None):
@@ -188,16 +188,6 @@ def _FetchCredentials(args, client_info=None, credentials_filename=None):
     return credentials
 
 
-def _Email(args):
-    """Print the email address for this token, if possible."""
-    userinfo = apitools_base.GetUserinfo(
-        oauth2client.client.AccessTokenCredentials(args.access_token,
-                                                   'oauth2l/1.0'))
-    user_email = userinfo.get('email')
-    if user_email:
-        print(user_email)
-
-
 def _Fetch(args):
     """Fetch a valid access token and display it."""
     credentials = _FetchCredentials(args)
@@ -209,24 +199,26 @@ def _Header(args):
     print(_Format('header', _FetchCredentials(args)))
 
 
-def _Scopes(args):
-    """Print the list of scopes for a valid token."""
-    scopes = _GetTokenScopes(args.access_token)
-    if not scopes:
+def _Info(args):
+    """Print scope, expiration, and user info for this token."""
+    tokeninfo = _GetTokenInfo(args.access_token)
+    if not tokeninfo:
         return 1
-    for scope in sorted(scopes):
-        print(scope)
-
-
-def _Userinfo(args):
-    """Print the userinfo for this token, if possible."""
-    userinfo = apitools_base.GetUserinfo(
-        oauth2client.client.AccessTokenCredentials(args.access_token,
-                                                   'oauth2l/1.0'))
     if args.format == 'json':
-        print(_PrettyJson(userinfo))
+        print(_PrettyJson(tokeninfo))
+    elif args.format == 'json_compact':
+        print(_CompactJson(tokeninfo))
     else:
-        print(_CompactJson(userinfo))
+        scopes = sorted(tokeninfo['scope'].split(' '))
+        email = tokeninfo.get('email')
+        output_lines = []
+        output_lines.append('Scopes:')
+        output_lines.extend('* {}'.format(s) for s in scopes)
+        output_lines.append(
+            'Expires in: {} seconds'.format(tokeninfo['expires_in']))
+        if email:
+            output_lines.append('Email address: {}'.format(email))
+        print('\n'.join(output_lines))
 
 
 def _Test(args):
@@ -259,15 +251,6 @@ def _GetParser():
     )
     subparsers = parser.add_subparsers(dest='command')
 
-    # email
-    email = subparsers.add_parser('email', help=_Email.__doc__,
-                                  parents=[shared_flags])
-    email.set_defaults(func=_Email)
-    email.add_argument(
-        'access_token',
-        help=('Access token to print associated email address for. Must have '
-              'the userinfo.email scope.'))
-
     # fetch
     fetch = subparsers.add_parser('fetch', help=_Fetch.__doc__,
                                   parents=[shared_flags])
@@ -290,30 +273,21 @@ def _GetParser():
         nargs='*',
         help='Scope to header. May be provided multiple times.')
 
-    # scopes
-    scopes = subparsers.add_parser('scopes', help=_Scopes.__doc__,
-                                   parents=[shared_flags])
-    scopes.set_defaults(func=_Scopes)
-    scopes.add_argument(
-        'access_token',
-        help=('Scopes associated with this token will be printed.'))
-
-    # userinfo
-    userinfo = subparsers.add_parser('userinfo', help=_Userinfo.__doc__,
-                                     parents=[shared_flags])
-    userinfo.set_defaults(func=_Userinfo)
-    userinfo.add_argument(
+    # info
+    info = subparsers.add_parser('info', help=_Info.__doc__,
+                                 parents=[shared_flags])
+    info.set_defaults(func=_Info)
+    info.add_argument(
         '-f', '--format',
-        default='json', choices=('json', 'json_compact'),
-        help='Output format for userinfo.')
-    userinfo.add_argument(
+        default='pretty', choices=('pretty', 'json', 'json_compact'),
+        help='Output format for info.')
+    info.add_argument(
         'access_token',
-        help=('Access token to print associated email address for. Must have '
-              'the userinfo.email scope.'))
+        help=('Info for this token will be printed.'))
 
     # test
     test = subparsers.add_parser('test', help=_Test.__doc__,
-                                     parents=[shared_flags])
+                                 parents=[shared_flags])
     test.set_defaults(func=_Test)
     test.add_argument(
         'access_token',

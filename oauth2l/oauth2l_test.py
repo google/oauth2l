@@ -168,11 +168,16 @@ class TestFetch(unittest.TestCase):
             'https://www.googleapis.com/auth/userinfo.email',
             'https://www.googleapis.com/auth/cloud-platform',
         ]
+        token_info = {
+            'email': 'user@gmail.com',
+            'expires_in': 123,
+            'scope': ' '.join(expected_scopes),
+        }
         with mock.patch.object(apitools_base, 'GetCredentials',
                                return_value=self.credentials,
                                autospec=True) as mock_fetch:
-            with mock.patch.object(oauth2l, '_GetTokenScopes',
-                                   return_value=expected_scopes,
+            with mock.patch.object(oauth2l, '_GetTokenInfo',
+                                   return_value=token_info,
                                    autospec=True) as mock_get_scopes:
                 output = _GetCommandOutput(
                     'fetch', ['userinfo.email', 'cloud-platform'])
@@ -261,59 +266,70 @@ class TestOtherCommands(unittest.TestCase):
         self.credentials = oauth2client.client.AccessTokenCredentials(
             self.access_token, self.user_agent)
 
-    def testEmail(self):
-        user_info = {'email': 'foo@example.com'}
-        with mock.patch.object(apitools_base, 'GetUserinfo',
-                               return_value=user_info,
-                               autospec=True) as mock_get_userinfo:
-            output = _GetCommandOutput('email', [self.access_token])
-            self.assertEqual(user_info['email'], output)
-            self.assertEqual(1, mock_get_userinfo.call_count)
+    def testInfo(self):
+        info = {
+            'email': 'foo@example.com',
+            'expires_in': 456,
+            'scope': 'scope2 scope1',
+        }
+        with mock.patch.object(oauth2l, '_GetTokenInfo',
+                               return_value=info,
+                               autospec=True) as mock_get_tokeninfo:
+            output = _GetCommandOutput('info', [self.access_token])
+            self.assertEqual(1, mock_get_tokeninfo.call_count)
             self.assertEqual(self.access_token,
-                             mock_get_userinfo.call_args[0][0].access_token)
+                             mock_get_tokeninfo.call_args[0][0])
+            self.assertIn('* scope1\n* scope2', output)
+            self.assertIn('Email address: foo@example.com', output)
+            self.assertIn('Expires in: 456 seconds', output)
 
-    def testNoEmail(self):
-        with mock.patch.object(apitools_base, 'GetUserinfo',
-                               return_value={},
-                               autospec=True) as mock_get_userinfo:
-            output = _GetCommandOutput('email', [self.access_token])
-            self.assertEqual('', output)
-            self.assertEqual(1, mock_get_userinfo.call_count)
-
-    def testUserinfo(self):
-        user_info = {'email': 'foo@example.com'}
-        with mock.patch.object(apitools_base, 'GetUserinfo',
-                               return_value=user_info,
-                               autospec=True) as mock_get_userinfo:
-            output = _GetCommandOutput('userinfo', [self.access_token])
-            self.assertEqual(json.dumps(user_info, indent=4), output)
-            self.assertEqual(1, mock_get_userinfo.call_count)
+    def testInfoNoEmail(self):
+        info = {
+            'expires_in': 456,
+            'scope': 'scope2 scope1',
+        }
+        with mock.patch.object(oauth2l, '_GetTokenInfo',
+                               return_value=info,
+                               autospec=True) as mock_get_tokeninfo:
+            output = _GetCommandOutput('info', [self.access_token])
+            self.assertEqual(1, mock_get_tokeninfo.call_count)
             self.assertEqual(self.access_token,
-                             mock_get_userinfo.call_args[0][0].access_token)
+                             mock_get_tokeninfo.call_args[0][0])
+            self.assertIn('* scope1\n* scope2', output)
+            self.assertNotIn('Email', output)
 
-    def testUserinfoCompact(self):
-        user_info = {'email': 'foo@example.com'}
-        with mock.patch.object(apitools_base, 'GetUserinfo',
-                               return_value=user_info,
-                               autospec=True) as mock_get_userinfo:
+    def testInfoJson(self):
+        info_json = '\n'.join((
+            '{',
+            '    "email": "foo@example.com",',
+            '    "expires_in": 456,',
+            '    "scope": "scope2 scope1"',
+            '}',
+        ))
+        info = json.loads(info_json)
+        with mock.patch.object(oauth2l, '_GetTokenInfo',
+                               return_value=info,
+                               autospec=True) as mock_get_tokeninfo:
             output = _GetCommandOutput(
-                'userinfo', ['--format=json_compact', self.access_token])
-            self.assertEqual(json.dumps(user_info, separators=(',', ':')),
-                             output)
-            self.assertEqual(1, mock_get_userinfo.call_count)
+                'info', ['-f', 'json', self.access_token])
+            self.assertEqual(1, mock_get_tokeninfo.call_count)
             self.assertEqual(self.access_token,
-                             mock_get_userinfo.call_args[0][0].access_token)
+                             mock_get_tokeninfo.call_args[0][0])
+            self.assertEqual(info_json, output)
 
-    def testScopes(self):
-        scopes = [u'https://www.googleapis.com/auth/userinfo.email',
-                  u'https://www.googleapis.com/auth/cloud-platform']
-        response = _FakeResponse(http_client.OK, scopes=scopes)
-        with mock.patch.object(apitools_base, 'MakeRequest',
-                               return_value=response,
-                               autospec=True) as mock_make_request:
-            output = _GetCommandOutput('scopes', [self.access_token])
-            self.assertEqual(sorted(scopes), output.splitlines())
-            self.assertEqual(1, mock_make_request.call_count)
+    def testInfoJsonCompact(self):
+        info_json = ('{"email":"foo@example.com","expires_in":456,'
+                     '"scope":"scope2 scope1"}')
+        info = json.loads(info_json)
+        with mock.patch.object(oauth2l, '_GetTokenInfo',
+                               return_value=info,
+                               autospec=True) as mock_get_tokeninfo:
+            output = _GetCommandOutput(
+                'info', ['-f', 'json_compact', self.access_token])
+            self.assertEqual(1, mock_get_tokeninfo.call_count)
+            self.assertEqual(self.access_token,
+                             mock_get_tokeninfo.call_args[0][0])
+            self.assertEqual(info_json, output)
 
     def testTest(self):
         scopes = [u'https://www.googleapis.com/auth/userinfo.email',
@@ -331,7 +347,7 @@ class TestOtherCommands(unittest.TestCase):
         with mock.patch.object(apitools_base, 'MakeRequest',
                                return_value=response,
                                autospec=True) as mock_make_request:
-            output = _GetCommandOutput('scopes', [self.access_token])
+            output = _GetCommandOutput('info', [self.access_token])
             self.assertEqual('', output)
             self.assertEqual(1, mock_make_request.call_count)
 
@@ -340,9 +356,9 @@ class TestOtherCommands(unittest.TestCase):
         with mock.patch.object(apitools_base, 'MakeRequest',
                                return_value=response,
                                autospec=True) as mock_make_request:
-            output = _GetCommandOutput('scopes', [self.access_token])
+            output = _GetCommandOutput('info', [self.access_token])
             self.assertIn(str(http_client.responses[response.status_code]),
                           output)
-            self.assertIn('Error encountered in scopes operation: HttpError',
+            self.assertIn('Error encountered in info operation: HttpError',
                           output)
             self.assertEqual(1, mock_make_request.call_count)
