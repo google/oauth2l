@@ -168,7 +168,7 @@ def _TestToken(access_token):
     return bool(_GetTokenInfo(access_token))
 
 
-def _ProcessJsonArgs(args):
+def _ProcessJsonArg(args):
     """Get client_info and service_account_json_keyfile from args.
 
     This just reads args.json, and decides (based on contents) whether
@@ -190,7 +190,7 @@ def _ProcessJsonArgs(args):
 
 def _FetchCredentials(args, client_info=None, credentials_filename=None):
     """Fetch a credential for the given client_info and scopes."""
-    client_secrets, service_account_json_keyfile = _ProcessJsonArgs(args)
+    client_secrets, service_account_json_keyfile = _ProcessJsonArg(args)
     client_info = client_info or GetClientInfoFromFlags(client_secrets)
     scopes = _ExpandScopes(args.scope)
     if not scopes:
