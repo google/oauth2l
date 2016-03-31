@@ -2,6 +2,9 @@ oauth2l
 -------
 
 [![Build Status](https://travis-ci.org/google/oauth2l.svg?branch=master)](https://travis-ci.org/google/oauth2l)
+[![Coverage](https://coveralls.io/repos/google/oauth2l/badge.png?branch=master)](https://coveralls.io/r/google/oauth2l?branch=master)
+[![PyPI](https://img.shields.io/pypi/v/google-oauth2l.svg)](https://pypi.python.org/pypi/google-oauth2l)
+[![Versions](https://img.shields.io/pypi/pyversions/google-oauth2l.svg)](https://pypi.python.org/pypi/google-oauth2l)
 
 `oauth2l` (pronounced "oauth tool") is a simple command-line tool that can be
 used to interact with Google OAuth authentication system. Its primary use is
