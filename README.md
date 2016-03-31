@@ -2,7 +2,7 @@ oauth2l
 -------
 
 [![Build Status](https://travis-ci.org/google/oauth2l.svg?branch=master)](https://travis-ci.org/google/oauth2l)
-[![Coverage](https://coveralls.io/repos/google/oauth2l/badge.png?branch=master)](https://coveralls.io/r/google/oauth2l?branch=master)
+[![Coverage](https://coveralls.io/repos/google/oauth2l/badge.svg?branch=master)](https://coveralls.io/r/google/oauth2l?branch=master)
 [![PyPI](https://img.shields.io/pypi/v/google-oauth2l.svg)](https://pypi.python.org/pypi/google-oauth2l)
 [![Versions](https://img.shields.io/pypi/pyversions/google-oauth2l.svg)](https://pypi.python.org/pypi/google-oauth2l)
 
