@@ -1,6 +1,8 @@
 oauth2l
 -------
 
+[![Build Status](https://travis-ci.org/google/oauth2l.svg?branch=master)](https://travis-ci.org/google/oauth2l)
+
 `oauth2l` (pronounced "oauth tool") is a simple command-line tool that can be
 used to interact with Google OAuth authentication system. Its primary use is
 to fetch and print OAuth 2.0 access tokens, which can be used with other
