@@ -217,7 +217,8 @@ class TestFetch(unittest.TestCase):
                 self.assertEqual(1, mock_fetch.call_count)
                 _, kwargs = mock_fetch.call_args
                 self.assertEqual(
-                    '1042881264118.apps.googleusercontent.com',
+                    ('1055925038659-sb6bdak55edef9a0joshf24g7i2kiatf'
+                     '.apps.googleusercontent.com'),
                     kwargs['client_id'])
                 self.assertEqual(1, mock_test.call_count)
 

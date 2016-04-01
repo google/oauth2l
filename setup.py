@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Setup configuration."""
+"""oauth2l configuration."""
 
 import platform
 
@@ -32,7 +32,7 @@ REQUIRED_PACKAGES = [
     'oauth2client>=1.5.2',
     'setuptools>=18.5',
     'six>=1.9.0',
-    ]
+]
 
 TESTING_PACKAGES = [
     'mock>=1.0.1',
@@ -44,9 +44,10 @@ CONSOLE_SCRIPTS = [
 
 py_version = platform.python_version()
 
-if py_version < '2.7':
+if py_version < '2.7' or ('3' < py_version < '3.4'):
     raise ValueError('oauth2l requires Python 2.7 or 3.4+')
 
+# Keep in sync with oauth2l/__init__.py.
 _OAUTH2L_VERSION = '0.8.0'
 
 with open('README.md') as fileobj:
@@ -67,7 +68,7 @@ setuptools.setup(
     tests_require=REQUIRED_PACKAGES + TESTING_PACKAGES,
     extras_require={
         'testing': TESTING_PACKAGES,
-        },
+    },
     # PyPI package information.
     classifiers=[
         'License :: OSI Approved :: Apache Software License',
