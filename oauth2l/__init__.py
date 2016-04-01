@@ -58,7 +58,6 @@ from __future__ import print_function
 import argparse
 import json
 import os
-import pkgutil
 import sys
 import textwrap
 
@@ -73,16 +72,18 @@ _OAUTH2_TOKENINFO_TEMPLATE = (
     'https://www.googleapis.com/oauth2/v2/tokeninfo'
     '?access_token={access_token}'
 )
+# Keep in sync with setup.py. (Currently just used for UserAgent
+# tagging, so not critical.)
+_OAUTH2L_VERSION = '0.8.0'
+_DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
 
 
 def GetDefaultClientInfo():
-    client_secrets_json = pkgutil.get_data(
-        'apitools.data', 'apitools_client_secrets.json').decode('utf8')
-    client_secrets = json.loads(client_secrets_json)['installed']
     return {
-        'client_id': client_secrets['client_id'],
-        'client_secret': client_secrets['client_secret'],
-        'user_agent': 'apitools/0.2 oauth2l/0.1',
+        'client_id': ('1055925038659-sb6bdak55edef9a0joshf24g7i2kiatf'
+                      '.apps.googleusercontent.com'),
+        'client_secret': 'zAgJhwKYFR9gMBEHzeyZJU_j',
+        'user_agent': _DEFAULT_USER_AGENT,
     }
 
 
@@ -101,7 +102,7 @@ def GetClientInfoFromFlags(client_secrets):
         return {
             'client_id': client_secrets['client_id'],
             'client_secret': client_secrets['client_secret'],
-            'user_agent': 'apitools/0.2 oauth2l/0.1',
+            'user_agent': _DEFAULT_USER_AGENT,
         }
     else:
         return GetDefaultClientInfo()
