@@ -74,7 +74,7 @@ and expiration time. If the token has either the
 address of the user for whom this token was created.
 
 ```
-$ oauth2l info $(oauth2l fetch bigquery)
+$ oauth2l info $(oauth2l fetch -f bare bigquery)
 {
     "expires_in": 3599,
     "scope": "https://www.googleapis.com/auth/bigquery",
