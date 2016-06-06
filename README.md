@@ -73,7 +73,7 @@ If you need to call Google APIs frequently using the `header` command, you
 might define a shell alias for it, for example:
 
 ```
-$ alias gcurl='curl -H "$(oauth2l header cloud-platform) -H "Content-Type: application/json" '
+$ alias gcurl='curl -H "$(oauth2l header cloud-platform)" -H "Content-Type: application/json" '
 $ gcurl 'https://www.googleapis.com/bigquery/v2/projects'
 ```
 
