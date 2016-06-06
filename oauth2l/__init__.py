@@ -63,7 +63,11 @@ import textwrap
 
 from six.moves import http_client
 
-import apitools.base.py as apitools_base
+import httplib2
+from oauth2client import client
+from oauth2client import service_account
+from oauth2client import tools
+from oauth2client.contrib import multistore_file
 
 # We could use a generated client here, but it's used for precisely
 # one URL, with one parameter and no worries about URL encoding. Let's
@@ -72,6 +76,12 @@ _OAUTH2_TOKENINFO_TEMPLATE = (
     'https://www.googleapis.com/oauth2/v2/tokeninfo'
     '?access_token={access_token}'
 )
+# We need to know the gcloud scopes in order to decide when to use the
+# Application Default Credentials.
+_GCLOUD_SCOPES = {
+    'https://www.googleapis.com/auth/cloud-platform',
+    'https://www.googleapis.com/auth/userinfo.email',
+}
 # Keep in sync with setup.py. (Currently just used for UserAgent
 # tagging, so not critical.)
 _OAUTH2L_VERSION = '0.8.0'
@@ -87,25 +97,22 @@ def GetDefaultClientInfo():
     }
 
 
-def GetClientInfoFromFlags(client_secrets):
+def GetClientInfoFromFile(client_secrets):
     """Fetch client info from args."""
-    if client_secrets:
-        client_secrets_path = os.path.expanduser(client_secrets)
-        if not os.path.exists(client_secrets_path):
-            raise ValueError(
-                'Cannot find file: {0}'.format(client_secrets))
-        with open(client_secrets_path) as client_secrets_file:
-            client_secrets = json.load(client_secrets_file)
-        if 'installed' not in client_secrets:
-            raise ValueError('Provided client ID must be for an installed app')
-        client_secrets = client_secrets['installed']
-        return {
-            'client_id': client_secrets['client_id'],
-            'client_secret': client_secrets['client_secret'],
-            'user_agent': _DEFAULT_USER_AGENT,
-        }
-    else:
-        return GetDefaultClientInfo()
+    client_secrets_path = os.path.expanduser(client_secrets)
+    if not os.path.exists(client_secrets_path):
+        raise ValueError(
+            'Cannot find file: {0}'.format(client_secrets))
+    with open(client_secrets_path) as client_secrets_file:
+        client_secrets = json.load(client_secrets_file)
+    if 'installed' not in client_secrets:
+        raise ValueError('Provided client ID must be for an installed app')
+    client_secrets = client_secrets['installed']
+    return {
+        'client_id': client_secrets['client_id'],
+        'client_secret': client_secrets['client_secret'],
+        'user_agent': _DEFAULT_USER_AGENT,
+    }
 
 
 def _ExpandScopes(scopes):
@@ -133,7 +140,7 @@ def _Format(fmt, credentials):
     if fmt == 'bare':
         return credentials.access_token
     elif fmt == 'header':
-        return 'Authorization: Bearer %s' % credentials.access_token
+        return 'Authorization: Bearer {}'.format(credentials.access_token)
     elif fmt == 'json':
         return _PrettyJson(json.loads(_AsText(credentials.to_json())))
     elif fmt == 'json_compact':
@@ -155,13 +162,19 @@ _FORMATS = set(('bare', 'header', 'json', 'json_compact', 'pretty'))
 def _GetTokenInfo(access_token):
     """Return the list of valid scopes for the given token as a list."""
     url = _OAUTH2_TOKENINFO_TEMPLATE.format(access_token=access_token)
-    response = apitools_base.MakeRequest(
-        apitools_base.GetHttp(), apitools_base.Request(url))
-    if response.status_code not in [http_client.OK, http_client.BAD_REQUEST]:
-        raise apitools_base.HttpError.FromResponse(response)
-    if response.status_code == http_client.BAD_REQUEST:
+    h = httplib2.Http()
+    response, content = h.request(url)
+    if 'status' not in response:
+        raise ValueError('No status in HTTP response')
+    status_code = int(response['status'])
+    if status_code not in [http_client.OK, http_client.BAD_REQUEST]:
+        msg = (
+            'Error making HTTP request to <{}>: status <{}>, '
+            'content <{}>'.format(url, response['status'], content))
+        raise ValueError(msg)
+    if status_code == http_client.BAD_REQUEST:
         return {}
-    return json.loads(_AsText(response.content))
+    return json.loads(_AsText(content))
 
 
 def _TestToken(access_token):
@@ -176,33 +189,109 @@ def _ProcessJsonArg(args):
     it's a client_secrets or a service_account key, and returns as
     appropriate.
     """
-    if not args.json:
+    filename = os.path.expanduser(args.json)
+    if not filename:
         return '', ''
-    with open(args.json, 'rU') as f:
+    with open(filename, 'rU') as f:
         try:
             contents = json.load(f)
         except ValueError:
             raise ValueError('Invalid JSON file: {}'.format(args.json))
     if contents.get('type', '') == 'service_account':
-        return '', args.json
+        return '', filename
     else:
-        return args.json, ''
+        return filename, ''
+
+
+def _GetApplicationDefaultCredentials(scopes):
+    # There's a complication here: if the application default
+    # credential returned to us is the token from the cloud SDK,
+    # we need to ensure that our scopes are a subset of those
+    # requested. In principle, we're a bit too strict here: eg if
+    # a user requests just "bigquery", then the cloud-platform
+    # scope suffices, but there's no programmatic way to check
+    # this -- so we instead send them through 3LO.
+    try:
+        credentials = client.GoogleCredentials.get_application_default()
+    except client.ApplicationDefaultCredentialsError:
+        return None
+    if credentials is not None:
+        if not credentials.create_scoped_required():
+            return credentials
+        if set(scopes) <= _GCLOUD_SCOPES:
+            return credentials.create_scoped(scopes)
+
+
+def _GetCredentialsVia3LO(client_info, credentials_filename=None):
+    credentials_filename = os.path.expanduser(
+        credentials_filename or '~/.oauth2l.token')
+    credential_store = multistore_file.get_credential_storage(
+        credentials_filename,
+        client_info['client_id'],
+        client_info['user_agent'],
+        client_info['scope'])
+    credentials = credential_store.get()
+    if credentials is None or credentials.invalid:
+        for _ in range(10):
+            # If authorization fails, we want to retry, rather
+            # than let this cascade up and get caught elsewhere.
+            # If users want out of the retry loop, they can ^C.
+            try:
+                flow = client.OAuth2WebServerFlow(**client_info)
+                flags, _ = tools.argparser.parse_known_args(
+                    ['--noauth_local_webserver'])
+                credentials = tools.run_flow(
+                    flow, credential_store, flags)
+                break
+            except (SystemExit, client.FlowExchangeError) as e:
+                # Here SystemExit is "no credential at all", and the
+                # FlowExchangeError is "invalid" -- usually because
+                # you reused a token.
+                pass
+            except httplib2.HttpLib2Error as e:
+                raise ValueError(
+                    'Communication error creating credentials:'
+                    '{}'.format(e))
+        else:
+            credentials = None
+    return credentials
 
 
 def _FetchCredentials(args, client_info=None, credentials_filename=None):
     """Fetch a credential for the given client_info and scopes."""
     client_secrets, service_account_json_keyfile = _ProcessJsonArg(args)
-    client_info = client_info or GetClientInfoFromFlags(client_secrets)
     scopes = _ExpandScopes(args.scope)
     if not scopes:
         raise ValueError('No scopes provided')
-    credentials_filename = credentials_filename or args.credentials_filename
-    credentials = apitools_base.GetCredentials(
-        'oauth2l', scopes, credentials_filename=credentials_filename,
-        service_account_json_keyfile=service_account_json_keyfile,
-        oauth2client_args=['--noauth_local_webserver'], **client_info)
+    credentials = None
+    # If a service account or client secret file was provided, that
+    # takes precedence.
+    if service_account_json_keyfile:
+        credentials = (
+            service_account.ServiceAccountCredentials.from_json_keyfile_name(
+                service_account_json_keyfile, scopes=scopes))
+    elif client_secrets:
+        client_info = GetClientInfoFromFile(client_secrets)
+        client_info['scope'] = ' '.join(sorted(scopes))
+        client_info['user_agent'] = _DEFAULT_USER_AGENT
+        credentials = _GetCredentialsVia3LO(
+            client_info, credentials_filename or args.credentials_filename)
+    else:
+        client_info = client_info or GetDefaultClientInfo()
+        client_info['scope'] = ' '.join(sorted(scopes))
+        client_info['user_agent'] = _DEFAULT_USER_AGENT
+        credentials_filename = (
+            credentials_filename or args.credentials_filename)
+        # Try ADC, then fall back to 3LO.
+        credentials = (
+            _GetApplicationDefaultCredentials(scopes) or
+            _GetCredentialsVia3LO(client_info, credentials_filename))
+
+    if credentials is None:
+        raise ValueError('Failed to fetch credentials')
+    credentials.user_agent = _DEFAULT_USER_AGENT
     if not _TestToken(credentials.access_token):
-        credentials.refresh(apitools_base.GetHttp())
+        credentials.refresh(httplib2.Http())
     return credentials
 
 

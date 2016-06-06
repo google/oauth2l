@@ -28,8 +28,8 @@ except ImportError:
 # Configure the required packages and scripts to install, depending on
 # Python version and OS.
 REQUIRED_PACKAGES = [
-    'google-apitools>=0.5.0',
-    'oauth2client>=1.5.2',
+    'httplib2>=0.9.1',
+    'oauth2client>=2.1.0',
     'setuptools>=18.5',
     'six>=1.9.0',
 ]
