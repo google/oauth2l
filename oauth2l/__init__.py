@@ -84,7 +84,7 @@ _GCLOUD_SCOPES = {
 }
 # Keep in sync with setup.py. (Currently just used for UserAgent
 # tagging, so not critical.)
-_OAUTH2L_VERSION = '0.8.0'
+_OAUTH2L_VERSION = '0.9.0'
 _DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
 
 
