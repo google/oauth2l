@@ -84,7 +84,7 @@ _GCLOUD_SCOPES = {
 }
 # Keep in sync with setup.py. (Currently just used for UserAgent
 # tagging, so not critical.)
-_OAUTH2L_VERSION = '0.9.0'
+_OAUTH2L_VERSION = '0.9.1'
 _DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
 
 
@@ -322,6 +322,14 @@ def _Test(args):
     return 1 - (_TestToken(args.access_token))
 
 
+def _Reset(args):
+    """Reset the oauth2l credential cache."""
+    try:
+        os.remove('~/.oauth2l.token')
+    except:
+        # Ignore any error.
+
+
 def _GetParser():
 
     shared_flags = argparse.ArgumentParser(add_help=False)
@@ -382,6 +390,10 @@ def _GetParser():
     test.add_argument(
         'access_token',
         help='Access token to test.')
+
+    # reset
+    reset = subparsers.add_parser('reset', help=_Reset.__doc__),
+    reset.set_defaults(func=_Reset)
 
     return parser
 
