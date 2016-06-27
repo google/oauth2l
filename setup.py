@@ -28,8 +28,8 @@ except ImportError:
 # Configure the required packages and scripts to install, depending on
 # Python version and OS.
 REQUIRED_PACKAGES = [
-    'google-apitools>=0.5.0',
-    'oauth2client>=1.5.2',
+    'httplib2>=0.9.1',
+    'oauth2client>=2.1.0',
     'setuptools>=18.5',
     'six>=1.9.0',
 ]
@@ -48,7 +48,7 @@ if py_version < '2.7' or ('3' < py_version < '3.4'):
     raise ValueError('oauth2l requires Python 2.7 or 3.4+')
 
 # Keep in sync with oauth2l/__init__.py.
-_OAUTH2L_VERSION = '0.8.0'
+_OAUTH2L_VERSION = '0.9.0'
 
 with open('README.md') as fileobj:
     README = fileobj.read()
