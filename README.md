@@ -109,3 +109,7 @@ $ oauth2l test ya29.justkiddingmadethisoneup
 $ echo $?
 1
 ```
+
+### reset
+
+Reset the internal OAuth credential cache.
