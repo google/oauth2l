@@ -86,7 +86,7 @@ _GCLOUD_SCOPES = {
 # tagging, so not critical.)
 _OAUTH2L_VERSION = '0.9.1'
 _DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
-
+_OAUTH2L_CREDENTIALS_PATH = '~/.oauth2l.token'
 
 def GetDefaultClientInfo():
     return {
@@ -224,7 +224,7 @@ def _GetApplicationDefaultCredentials(scopes):
 
 def _GetCredentialsVia3LO(client_info, credentials_filename=None):
     credentials_filename = os.path.expanduser(
-        credentials_filename or '~/.oauth2l.token')
+        credentials_filename or _OAUTH2L_CREDENTIALS_PATH)
     credential_store = multistore_file.get_credential_storage(
         credentials_filename,
         client_info['client_id'],
@@ -324,10 +324,8 @@ def _Test(args):
 
 def _Reset(args):
     """Reset the oauth2l credential cache."""
-    try:
-        os.remove('~/.oauth2l.token')
-    except:
-        # Ignore any error.
+    if os.path.exists(_OAUTH2L_CREDENTIALS_PATH):
+        os.remove(_OAUTH2L_CREDENTIALS_PATH)
 
 
 def _GetParser():
