@@ -15,7 +15,7 @@
 
 """Command-line utility for fetching/inspecting credentials.
 
-oauth2l (pronounced "oauthtool") is a small utility for fetching
+The oauth2l (pronounced "oauthtool") is a small utility for fetching
 credentials, or inspecting existing credentials. Here we demonstrate
 some sample use:
 
@@ -84,7 +84,7 @@ _GCLOUD_SCOPES = {
 }
 # Keep in sync with setup.py. (Currently just used for UserAgent
 # tagging, so not critical.)
-_OAUTH2L_VERSION = '0.9.1'
+_OAUTH2L_VERSION = '0.9.2'
 _DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
 _OAUTH2L_CREDENTIALS_PATH = '~/.oauth2l.token'
 
@@ -324,12 +324,12 @@ def _Test(args):
 
 def _Reset(args):
     """Reset the oauth2l credential cache."""
-    if os.path.exists(_OAUTH2L_CREDENTIALS_PATH):
-        os.remove(_OAUTH2L_CREDENTIALS_PATH)
+    credentials_filename = os.path.expanduser(_OAUTH2L_CREDENTIALS_PATH)
+    if os.path.exists(credentials_filename):
+        os.remove(credentials_filename)
 
 
 def _GetParser():
-
     shared_flags = argparse.ArgumentParser(add_help=False)
     shared_flags.add_argument(
         '--credentials_filename',
@@ -390,7 +390,8 @@ def _GetParser():
         help='Access token to test.')
 
     # reset
-    reset = subparsers.add_parser('reset', help=_Reset.__doc__),
+    reset = subparsers.add_parser('reset', help=_Reset.__doc__,
+                                  parents=[shared_flags])
     reset.set_defaults(func=_Reset)
 
     return parser
