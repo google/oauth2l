@@ -36,11 +36,13 @@ prompting user repeatedly.
 
 ## Install
 
-    # Mac only. Install pip.
-    sudo easy_install pip
+```
+# Mac only. Install pip.
+$ sudo easy_install pip
 
-    # Install oauth2l.
-    pip install google-oauth2l
+# Install oauth2l.
+$ pip install google-oauth2l
+```
 
 ## Commands
 
