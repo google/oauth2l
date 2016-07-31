@@ -40,8 +40,11 @@ prompting user repeatedly.
 # Mac only. Install pip.
 $ sudo easy_install pip
 
-# Install oauth2l.
+# Install oauth2l under OS, typically "/usr/local/bin".
 $ pip install google-oauth2l
+
+# Install oauth2l under current user, typically "~/.local/bin" (on Linux) and "~/Library/Python/2.7/bin" (on Mac).
+$ pip install --user google-oauth2l
 ```
 
 ## Commands
