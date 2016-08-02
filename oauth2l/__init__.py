@@ -15,7 +15,7 @@
 
 """Command-line utility for fetching/inspecting credentials.
 
-oauth2l (pronounced "oauthtool") is a small utility for fetching
+The oauth2l (pronounced "oauthtool") is a small utility for fetching
 credentials, or inspecting existing credentials. Here we demonstrate
 some sample use:
 
@@ -84,9 +84,9 @@ _GCLOUD_SCOPES = {
 }
 # Keep in sync with setup.py. (Currently just used for UserAgent
 # tagging, so not critical.)
-_OAUTH2L_VERSION = '0.9.0'
+_OAUTH2L_VERSION = '0.9.2'
 _DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
-
+_OAUTH2L_CREDENTIALS_PATH = '~/.oauth2l.token'
 
 def GetDefaultClientInfo():
     return {
@@ -224,7 +224,7 @@ def _GetApplicationDefaultCredentials(scopes):
 
 def _GetCredentialsVia3LO(client_info, credentials_filename=None):
     credentials_filename = os.path.expanduser(
-        credentials_filename or '~/.oauth2l.token')
+        credentials_filename or _OAUTH2L_CREDENTIALS_PATH)
     credential_store = multistore_file.get_credential_storage(
         credentials_filename,
         client_info['client_id'],
@@ -322,8 +322,14 @@ def _Test(args):
     return 1 - (_TestToken(args.access_token))
 
 
-def _GetParser():
+def _Reset(args):
+    """Reset the oauth2l credential cache."""
+    credentials_filename = os.path.expanduser(_OAUTH2L_CREDENTIALS_PATH)
+    if os.path.exists(credentials_filename):
+        os.remove(credentials_filename)
 
+
+def _GetParser():
     shared_flags = argparse.ArgumentParser(add_help=False)
     shared_flags.add_argument(
         '--credentials_filename',
@@ -382,6 +388,11 @@ def _GetParser():
     test.add_argument(
         'access_token',
         help='Access token to test.')
+
+    # reset
+    reset = subparsers.add_parser('reset', help=_Reset.__doc__,
+                                  parents=[shared_flags])
+    reset.set_defaults(func=_Reset)
 
     return parser
 
