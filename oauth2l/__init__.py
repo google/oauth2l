@@ -56,6 +56,7 @@ into other programs:
 from __future__ import print_function
 
 import argparse
+import httplib2
 import json
 import os
 import sys
@@ -66,7 +67,6 @@ if sys.version_info[0] == 2:
 else:
   import http.client as http_client  # pragma: NO COVER
 
-import httplib2
 from oauth2client import client
 from oauth2client import service_account
 from oauth2client import tools
@@ -343,6 +343,40 @@ def _Info(args):
         print(_CompactJson(tokeninfo))
 
 
+def _Revoke(args, client_info=None, credentials_filename=None):
+    """Revokes the access token created from the json secret."""
+    client_secrets, service_account_json_keyfile = _ProcessJsonArg(args)
+    scopes = _ExpandScopes(args.scope)
+    if not scopes:
+        raise ValueError('No scopes provided')
+    joined_scopes = ' '.join(sorted(scopes))
+    credential_store = None
+
+    if service_account_json_keyfile:
+        with open(service_account_json_keyfile, 'r') as json_keyfile_obj:
+            client_credentials = json.load(json_keyfile_obj)
+        credential_store = _GetCredentialStore(credentials_filename,
+            client_credentials['private_key_id'], joined_scopes)
+        
+    elif client_secrets: 
+        client_info = GetClientInfoFromFile(client_secrets)
+        credential_store = _GetCredentialStore(credentials_filename,
+            client_info['client_id'], joined_scopes)
+    else:
+        client_info = client_info or GetDefaultClientInfo()
+        credential_store = _GetCredentialStore(credentials_filename,
+            client_info['client_id'], joined_scopes)
+
+    credentials = credential_store.get()
+    if credentials:
+        credentials.revoke(httplib2.Http())
+        credential_store.delete()
+        print('Successfully revoked token.')
+
+    return 0
+
+
+
 def _Test(args):
     """Test an access token. Exits with 0 if valid, 1 otherwise."""
     return 1 - (_TestToken(args.access_token))
@@ -400,6 +434,15 @@ def _GetParser():
     info.add_argument(
         'access_token',
         help=('Info for this token will be printed.'))
+
+    # revoke
+    revoke = subparsers.add_parser('revoke', help=_Revoke.__doc__,
+                                   parents=[shared_flags])
+    revoke.set_defaults(func=_Revoke)
+    revoke.add_argument(
+        'scope',
+        nargs='*',
+        help='Scope of the token. May be provided multiple times.')
 
     # test
     test = subparsers.add_parser('test', help=_Test.__doc__,
