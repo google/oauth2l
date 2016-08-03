@@ -32,6 +32,7 @@ REQUIRED_PACKAGES = [
     'oauth2client>=2.1.0',
     'setuptools>=18.5',
     'six>=1.9.0',
+    'fasteners>=0.14.1'
 ]
 
 TESTING_PACKAGES = [

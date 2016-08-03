@@ -23,7 +23,7 @@ import unittest
 import httplib2
 import mock
 import oauth2client.client
-import oauth2client.contrib.multistore_file
+import oauth2client.contrib.multiprocess_file_storage
 import oauth2client.service_account
 import oauth2client.tools
 import six
@@ -348,21 +348,72 @@ class TestServiceAccounts(unittest.TestCase):
             'oauth2client.service_account.ServiceAccountCredentials',
             autospec=True)
         self.mock_sa = patcher_service_account.start()
-        self.mock_sa.from_json_keyfile_name = self.from_keyfile = (
+        self.mock_sa.from_json_keyfile_dict = self.from_keyfile = (
             mock.MagicMock())
         self.from_keyfile.return_value = self.credentials
         self.addCleanup(patcher_service_account.stop)
 
+    @mock.patch.object(oauth2l, '_GetCredentialForServiceAccount', 
+                       autospec=True)
     @mock.patch.object(oauth2l, '_TestToken', return_value=True,
                        autospec=True)
-    def testServiceAccounts(self, mock_test):
+    def testServiceAccounts(self, mock_test_token, mock_get):
+        mock_get.return_value = self.credentials
         service_account_path = os.path.join(
             os.path.dirname(__file__), 'testdata/fake_service_account.json')
         fetch_args = ['--json=' + service_account_path, 'userinfo.email']
         output = _GetCommandOutput('fetch', fetch_args)
         self.assertIn(self.access_token, output)
+        self.assertEqual(1, mock_test_token.call_count)
+        self.assertEqual(1, mock_get.call_count)
+
+    @mock.patch('oauth2client.contrib.multiprocess_file_storage.'
+                'MultiprocessFileStorage', autospec=True)
+    @mock.patch.object(oauth2l, '_TestToken', return_value=True,
+                       autospec=True)
+    def testCacheMiss(self, mock_test_token, mock_storage):
+        mock_storage.return_value = mock_store = mock.MagicMock()
+        mock_store.get.return_value = None
+        service_account_path = os.path.join(
+            os.path.dirname(__file__), 'testdata/fake_service_account.json')
+        fetch_args = ['--json=' + service_account_path, 'userinfo.email']
+        output = _GetCommandOutput('fetch', fetch_args)
+        self.assertIn(self.access_token, output)
+        self.assertEqual(1, mock_test_token.call_count)
         self.assertEqual(1, self.from_keyfile.call_count)
-        self.assertEqual(1, mock_test.call_count)
+
+    @mock.patch('oauth2client.contrib.multiprocess_file_storage.'
+                'MultiprocessFileStorage', autospec=True)
+    @mock.patch.object(oauth2l, '_TestToken', return_value=True,
+                       autospec=True)
+    def testCacheHit(self, mock_test_token, mock_storage):
+        mock_storage.return_value = mock_store = mock.MagicMock()
+        mock_store.get.return_value = self.credentials
+        service_account_path = os.path.join(
+            os.path.dirname(__file__), 'testdata/fake_service_account.json')
+        fetch_args = ['--json=' + service_account_path, 'userinfo.email']
+        output = _GetCommandOutput('fetch', fetch_args)
+        self.assertIn(self.access_token, output)
+        self.assertEqual(1, mock_test_token.call_count)
+        self.assertEqual(0, self.from_keyfile.call_count)
+
+    @mock.patch('oauth2client.contrib.multiprocess_file_storage.'
+                'MultiprocessFileStorage', autospec=True)
+    @mock.patch.object(oauth2l, '_TestToken', return_value=True,
+                       autospec=True)
+    def testCachedInvalid(self, mock_test_token, mock_storage):
+        invalid_credentials = oauth2client.client.AccessTokenCredentials(
+            self.access_token, self.user_agent)
+        invalid_credentials.invalid = True
+        mock_storage.return_value = mock_store = mock.MagicMock()
+        mock_store.get.return_value = invalid_credentials
+        service_account_path = os.path.join(
+            os.path.dirname(__file__), 'testdata/fake_service_account.json')
+        fetch_args = ['--json=' + service_account_path, 'userinfo.email']
+        output = _GetCommandOutput('fetch', fetch_args)
+        self.assertIn(self.access_token, output)
+        self.assertEqual(1, mock_test_token.call_count)
+        self.assertEqual(1, self.from_keyfile.call_count)
 
 
 class TestADC(unittest.TestCase):
@@ -408,7 +459,6 @@ class TestADC(unittest.TestCase):
 
 
 class Test3LO(unittest.TestCase):
-
     def setUp(self):
         # Set up an access token to use
         self.access_token = 'ya29.abdefghijklmnopqrstuvwxyz'
@@ -427,11 +477,11 @@ class Test3LO(unittest.TestCase):
         self.mock_test = patcher_test.start()
         self.addCleanup(patcher_test.stop)
 
-    @mock.patch('oauth2client.contrib.multistore_file.get_credential_storage',
-                autospec=True)
+    @mock.patch('oauth2client.contrib.multiprocess_file_storage.'
+                'MultiprocessFileStorage', autospec=True)
     @mock.patch('oauth2client.tools.run_flow', autospec=True)
-    def test3LO(self, mock_run_flow, mock_get_storage):
-        mock_get_storage.return_value = mock_store = mock.MagicMock()
+    def test3LO(self, mock_run_flow, mock_storage):
+        mock_storage.return_value = mock_store = mock.MagicMock()
         mock_store.get.return_value = None
         mock_run_flow.return_value = self.credentials
         output = _GetCommandOutput('fetch', ['userinfo.email'])
@@ -439,11 +489,11 @@ class Test3LO(unittest.TestCase):
         self.assertEqual(1, mock_store.get.call_count)
         self.assertEqual(1, self.mock_test.call_count)
 
-    @mock.patch('oauth2client.contrib.multistore_file.get_credential_storage',
-                autospec=True)
+    @mock.patch('oauth2client.contrib.multiprocess_file_storage.'
+                'MultiprocessFileStorage', autospec=True)
     @mock.patch('oauth2client.tools.run_flow', autospec=True)
-    def testHttpFailure(self, mock_run_flow, mock_get_storage):
-        mock_get_storage.return_value = mock_store = mock.MagicMock()
+    def testHttpFailure(self, mock_run_flow, mock_storage):
+        mock_storage.return_value = mock_store = mock.MagicMock()
         mock_store.get.return_value = None
         mock_run_flow.side_effect = httplib2.HttpLib2Error
         output = _GetCommandOutput('fetch', ['userinfo.email'])
@@ -451,10 +501,10 @@ class Test3LO(unittest.TestCase):
         self.assertEqual(1, mock_store.get.call_count)
         self.assertEqual(0, self.mock_test.call_count)
 
-    @mock.patch('oauth2client.contrib.multistore_file.get_credential_storage',
-                autospec=True)
-    def testCached(self, mock_get_storage):
-        mock_get_storage.return_value = mock_store = mock.MagicMock()
+    @mock.patch('oauth2client.contrib.multiprocess_file_storage.'
+                'MultiprocessFileStorage', autospec=True)
+    def testCached(self, mock_storage):
+        mock_storage.return_value = mock_store = mock.MagicMock()
         mock_store.get.return_value = self.credentials
         output = _GetCommandOutput('fetch', ['userinfo.email'])
         self.assertIn(self.access_token, output)
@@ -463,10 +513,10 @@ class Test3LO(unittest.TestCase):
 
     @mock.patch('oauth2client.client.OAuth2WebServerFlow',
                 side_effect=SystemExit(), autospec=True)
-    @mock.patch('oauth2client.contrib.multistore_file.get_credential_storage',
-                autospec=True)
-    def testCachedInvalid(self, mock_get_storage, mock_flow):
-        mock_get_storage.return_value = mock_store = mock.MagicMock()
+    @mock.patch('oauth2client.contrib.multiprocess_file_storage.'
+                'MultiprocessFileStorage', autospec=True)
+    def testCachedInvalid(self, mock_storage, mock_flow):
+        mock_storage.return_value = mock_store = mock.MagicMock()
         mock_store.get.return_value = self.credentials
         credentials = oauth2client.client.AccessTokenCredentials(
             self.access_token, self.user_agent)
