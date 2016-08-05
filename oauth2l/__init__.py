@@ -61,13 +61,16 @@ import os
 import sys
 import textwrap
 
-from six.moves import http_client
+if sys.version_info[0] == 2:
+  import httplib as http_client
+else:
+  import http.client as http_client  # pragma: NO COVER
 
 import httplib2
 from oauth2client import client
 from oauth2client import service_account
 from oauth2client import tools
-from oauth2client.contrib import multistore_file
+from oauth2client.contrib import multiprocess_file_storage
 
 # We could use a generated client here, but it's used for precisely
 # one URL, with one parameter and no worries about URL encoding. Let's
@@ -222,14 +225,21 @@ def _GetApplicationDefaultCredentials(scopes):
             return credentials.create_scoped(scopes)
 
 
+def _GetCredentialsFilename(credentials_filename):
+    return os.path.expanduser(credentials_filename or '~/.oauth2l.token')
+
+
+def _GetCredentialStore(credentials_filename, key_id, scopes):
+    credentials_filename = _GetCredentialsFilename(credentials_filename)
+    storage_key = '{}#{}'.format(key_id, scopes)
+    return multiprocess_file_storage.MultiprocessFileStorage(
+        credentials_filename, storage_key)
+
+
 def _GetCredentialsVia3LO(client_info, credentials_filename=None):
-    credentials_filename = os.path.expanduser(
-        credentials_filename or '~/.oauth2l.token')
-    credential_store = multistore_file.get_credential_storage(
-        credentials_filename,
-        client_info['client_id'],
-        client_info['user_agent'],
-        client_info['scope'])
+    credential_store = _GetCredentialStore(credentials_filename,
+                                           client_info['client_id'],
+                                           client_info['scope'])
     credentials = credential_store.get()
     if credentials is None or credentials.invalid:
         for _ in range(10):
@@ -257,6 +267,22 @@ def _GetCredentialsVia3LO(client_info, credentials_filename=None):
     return credentials
 
 
+def _GetCredentialForServiceAccount(json_keyfile, scopes, 
+                                    credentials_filename=None):
+    with open(json_keyfile, 'r') as json_keyfile_obj:
+        client_credentials = json.load(json_keyfile_obj)
+    credential_store = _GetCredentialStore(credentials_filename,
+                                           client_credentials['private_key_id'],
+                                           ' '.join(sorted(scopes)))
+    credentials = credential_store.get()
+    if credentials is None or credentials.invalid:
+        credentials = (
+            service_account.ServiceAccountCredentials.from_json_keyfile_dict(
+                client_credentials, scopes=scopes))
+        credential_store.put(credentials)
+        credentials.set_store(credential_store)
+    return credentials
+
 def _FetchCredentials(args, client_info=None, credentials_filename=None):
     """Fetch a credential for the given client_info and scopes."""
     client_secrets, service_account_json_keyfile = _ProcessJsonArg(args)
@@ -267,9 +293,9 @@ def _FetchCredentials(args, client_info=None, credentials_filename=None):
     # If a service account or client secret file was provided, that
     # takes precedence.
     if service_account_json_keyfile:
-        credentials = (
-            service_account.ServiceAccountCredentials.from_json_keyfile_name(
-                service_account_json_keyfile, scopes=scopes))
+        credentials = _GetCredentialForServiceAccount(
+            service_account_json_keyfile, scopes, 
+            credentials_filename or args.credentials_filename)
     elif client_secrets:
         client_info = GetClientInfoFromFile(client_secrets)
         client_info['scope'] = ' '.join(sorted(scopes))
