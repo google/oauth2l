@@ -342,6 +342,10 @@ def _Info(args):
     else:
         print(_CompactJson(tokeninfo))
 
+def _Reset(args):
+    credentials_filename = _GetCredentialsFilename(args.credentials_filename)
+    if os.path.exists(credentials_filename):
+      os.remove(credentials_filename)
 
 def _Test(args):
     """Test an access token. Exits with 0 if valid, 1 otherwise."""
@@ -388,6 +392,11 @@ def _GetParser():
         'scope',
         nargs='*',
         help='Scope to header. May be provided multiple times.')
+
+    # reset
+    reset = subparsers.add_parser('reset', help=_Reset.__doc__,
+                                   parents=[shared_flags])
+    reset.set_defaults(func=_Reset)
 
     # info
     info = subparsers.add_parser('info', help=_Info.__doc__,
