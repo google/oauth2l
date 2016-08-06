@@ -49,7 +49,7 @@ if py_version < '2.7' or ('3' < py_version < '3.4'):
     raise ValueError('oauth2l requires Python 2.7 or 3.4+')
 
 # Keep in sync with oauth2l/__init__.py.
-_OAUTH2L_VERSION = '0.9.0'
+_OAUTH2L_VERSION = '0.9.1'
 
 with open('README.md') as fileobj:
     README = fileobj.read()
