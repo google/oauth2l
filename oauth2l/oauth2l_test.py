@@ -335,6 +335,39 @@ class TestOtherCommands(unittest.TestCase):
             self.assertEqual(1, mock_http.call_count)
             self.assertEqual(1, mock_h.request.call_count)
 
+    def testReset(self):
+        orig_os_remove = os.remove
+        orig_os_path_exist = os.path.exists
+        os.remove = mock_remove = mock.MagicMock()
+        os.path.exists = mock_exists = mock.MagicMock()
+        mock_exists.return_value = True
+        output = _GetCommandOutput('reset', [])
+        mock_remove.assert_called_once_with(os.path.expanduser('~/.oauth2l.token'))
+        os.remove = orig_os_remove
+        os.path.exists = orig_os_path_exist
+
+    def testResetFileNotExist(self):
+        orig_os_remove = os.remove
+        orig_os_path_exist = os.path.exists
+        os.remove = mock_remove = mock.MagicMock()
+        os.path.exists = mock_exists = mock.MagicMock()
+        mock_exists.return_value = False
+        output = _GetCommandOutput('reset', []) 
+        mock_remove.assert_not_called()
+        os.remove = orig_os_remove
+        os.path.exists = orig_os_path_exist
+
+    def testResetWithFilename(self):
+        orig_os_remove = os.remove
+        orig_os_path_exist = os.path.exists
+        os.remove = mock_remove = mock.MagicMock()
+        os.path.exists = mock_exists = mock.MagicMock()
+        mock_exists.return_value = True
+        output = _GetCommandOutput('reset', ['--credentials_filename', '~/my_oauth_token'])
+        mock_remove.assert_called_once_with(os.path.expanduser('~/my_oauth_token'))
+        os.remove = orig_os_remove
+        os.path.exists = orig_os_path_exist
+
 
 class TestServiceAccounts(unittest.TestCase):
     def setUp(self):
