@@ -145,6 +145,10 @@ class TestFetch(unittest.TestCase):
         self.mock_adc = patcher_adc.start()
         self.addCleanup(patcher_adc.stop)
 
+        client_secrets_path = os.path.join(
+            os.path.dirname(__file__), 'testdata/fake_client_secrets.json')
+        self.json_args = ['--json=' + client_secrets_path]
+
     def testNoScopes(self):
         output = _GetCommandOutput('fetch', [])
         self.assertEqual(
@@ -163,9 +167,8 @@ class TestFetch(unittest.TestCase):
             'scope': ' '.join(expected_scopes),
         }
         output = _GetCommandOutput(
-            'fetch', ['userinfo.email', 'cloud-platform'])
+            'fetch', self.json_args + ['userinfo.email', 'cloud-platform'])
         self.assertIn(self.access_token, output)
-        self.assertEqual(1, self.mock_adc.call_count)
         self.assertEqual(1, self.mock_3lo.call_count)
         self.assertEqual(1, mock_get_info.call_count)
         self.assertEqual((self.access_token,), mock_get_info.call_args[0])
@@ -175,7 +178,7 @@ class TestFetch(unittest.TestCase):
         output = _GetCommandOutput('fetch', ['userinfo.email'])
         self.assertIn('Failed to fetch credentials', output)
         self.assertEqual(1, self.mock_adc.call_count)
-        self.assertEqual(1, self.mock_3lo.call_count)
+        self.assertEqual(0, self.mock_3lo.call_count)
 
     @mock.patch.object(oauth2l, '_TestToken', return_value=False,
                        autospec=True)
@@ -183,28 +186,12 @@ class TestFetch(unittest.TestCase):
         with mock.patch.object(self.credentials, 'refresh',
                                return_value=None,
                                autospec=True) as mock_refresh:
-            output = _GetCommandOutput('fetch', ['userinfo.email'])
+            output = _GetCommandOutput('fetch',
+                                       self.json_args + ['userinfo.email'])
             self.assertIn(self.access_token, output)
-            self.assertEqual(1, self.mock_adc.call_count)
             self.assertEqual(1, self.mock_3lo.call_count)
             self.assertEqual(1, mock_test.call_count)
             self.assertEqual(1, mock_refresh.call_count)
-
-    @mock.patch.object(oauth2l, '_TestToken', return_value=True,
-                       autospec=True)
-    def testDefaultClientInfo(self, mock_test):
-        output = _GetCommandOutput('fetch', ['userinfo.email'])
-        self.assertIn(self.access_token, output)
-        self.assertEqual(1, self.mock_adc.call_count)
-        self.assertEqual(1, self.mock_3lo.call_count)
-        self.assertEqual(1, mock_test.call_count)
-        args, _ = self.mock_3lo.call_args
-        client_info = args[0]
-        self.assertEqual(
-            ('1055925038659-sb6bdak55edef9a0joshf24g7i2kiatf'
-             '.apps.googleusercontent.com'),
-            client_info['client_id'])
-        self.assertEqual(1, mock_test.call_count)
 
     def testMissingClientSecrets(self):
         with self.assertRaises(ValueError):
@@ -510,6 +497,10 @@ class Test3LO(unittest.TestCase):
         self.mock_test = patcher_test.start()
         self.addCleanup(patcher_test.stop)
 
+        client_secrets_path = os.path.join(
+            os.path.dirname(__file__), 'testdata/fake_client_secrets.json')
+        self.json_args = ['--json=' + client_secrets_path]
+
     @mock.patch('oauth2client.contrib.multiprocess_file_storage.'
                 'MultiprocessFileStorage', autospec=True)
     @mock.patch('oauth2client.tools.run_flow', autospec=True)
@@ -517,7 +508,7 @@ class Test3LO(unittest.TestCase):
         mock_storage.return_value = mock_store = mock.MagicMock()
         mock_store.get.return_value = None
         mock_run_flow.return_value = self.credentials
-        output = _GetCommandOutput('fetch', ['userinfo.email'])
+        output = _GetCommandOutput('fetch', self.json_args + ['userinfo.email'])
         self.assertIn(self.access_token, output)
         self.assertEqual(1, mock_store.get.call_count)
         self.assertEqual(1, self.mock_test.call_count)
@@ -529,7 +520,7 @@ class Test3LO(unittest.TestCase):
         mock_storage.return_value = mock_store = mock.MagicMock()
         mock_store.get.return_value = None
         mock_run_flow.side_effect = httplib2.HttpLib2Error
-        output = _GetCommandOutput('fetch', ['userinfo.email'])
+        output = _GetCommandOutput('fetch', self.json_args + ['userinfo.email'])
         self.assertIn('Communication error creating credentials', output)
         self.assertEqual(1, mock_store.get.call_count)
         self.assertEqual(0, self.mock_test.call_count)
@@ -539,7 +530,7 @@ class Test3LO(unittest.TestCase):
     def testCached(self, mock_storage):
         mock_storage.return_value = mock_store = mock.MagicMock()
         mock_store.get.return_value = self.credentials
-        output = _GetCommandOutput('fetch', ['userinfo.email'])
+        output = _GetCommandOutput('fetch', self.json_args + ['userinfo.email'])
         self.assertIn(self.access_token, output)
         self.assertEqual(1, mock_store.get.call_count)
         self.assertEqual(1, self.mock_test.call_count)
@@ -555,5 +546,5 @@ class Test3LO(unittest.TestCase):
             self.access_token, self.user_agent)
         mock_store.get.return_value = credentials
         credentials.invalid = True
-        output = _GetCommandOutput('fetch', ['fake.scope'])
+        output = _GetCommandOutput('fetch', self.json_args + ['fake.scope'])
         self.assertIn('Failed to fetch credentials', output)

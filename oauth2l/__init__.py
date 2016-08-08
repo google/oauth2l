@@ -91,15 +91,6 @@ _OAUTH2L_VERSION = '0.9.1'
 _DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
 
 
-def GetDefaultClientInfo():
-    return {
-        'client_id': ('1055925038659-sb6bdak55edef9a0joshf24g7i2kiatf'
-                      '.apps.googleusercontent.com'),
-        'client_secret': 'zAgJhwKYFR9gMBEHzeyZJU_j',
-        'user_agent': _DEFAULT_USER_AGENT,
-    }
-
-
 def GetClientInfoFromFile(client_secrets):
     """Fetch client info from args."""
     client_secrets_path = os.path.expanduser(client_secrets)
@@ -213,7 +204,7 @@ def _GetApplicationDefaultCredentials(scopes):
     # requested. In principle, we're a bit too strict here: eg if
     # a user requests just "bigquery", then the cloud-platform
     # scope suffices, but there's no programmatic way to check
-    # this -- so we instead send them through 3LO.
+    # this -- so we instead fail here.
     try:
         credentials = client.GoogleCredentials.get_application_default()
     except client.ApplicationDefaultCredentialsError:
@@ -303,15 +294,8 @@ def _FetchCredentials(args, client_info=None, credentials_filename=None):
         credentials = _GetCredentialsVia3LO(
             client_info, credentials_filename or args.credentials_filename)
     else:
-        client_info = client_info or GetDefaultClientInfo()
-        client_info['scope'] = ' '.join(sorted(scopes))
-        client_info['user_agent'] = _DEFAULT_USER_AGENT
-        credentials_filename = (
-            credentials_filename or args.credentials_filename)
-        # Try ADC, then fall back to 3LO.
-        credentials = (
-            _GetApplicationDefaultCredentials(scopes) or
-            _GetCredentialsVia3LO(client_info, credentials_filename))
+        # Try ADC
+        credentials = _GetApplicationDefaultCredentials(scopes)
 
     if credentials is None:
         raise ValueError('Failed to fetch credentials')
