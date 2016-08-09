@@ -557,3 +557,107 @@ class Test3LO(unittest.TestCase):
         credentials.invalid = True
         output = _GetCommandOutput('fetch', ['fake.scope'])
         self.assertIn('Failed to fetch credentials', output)
+
+
+class TestRevoke(unittest.TestCase):
+    def setUp(self):
+        # Set up an access token to use
+        self.access_token = 'ya29.abdefghijklmnopqrstuvwxyz'
+        self.user_agent = 'oauth2l/1.0'
+
+        credentials = mock.MagicMock()
+        self.mock_credentials = credentials.start()
+        self.addCleanup(credentials.stop)
+        self.mock_credentials.revoke = self.mock_revoke = mock.MagicMock()
+
+        mock_get_store = mock.patch.object(oauth2l, '_GetCredentialStore',
+                                                autospec=True)
+        self.mock_get_store = mock_get_store.start()
+        self.addCleanup(mock_get_store.stop)
+
+        mock_store = mock.patch('oauth2client.contrib.multiprocess_file_storage'
+            '.MultiprocessFileStorage', autospec=True)
+        self.mock_store = mock_store.start()
+        self.addCleanup(mock_store.stop)
+
+        self.mock_get_store.return_value = self.mock_store
+
+    def testServiceAccountCacheHit(self):
+        self.mock_store.get.return_value = self.mock_credentials
+
+        service_account_path = os.path.join(
+            os.path.dirname(__file__), 'testdata/fake_service_account.json')
+        revoke_args = ['--json=' + service_account_path, 'userinfo.email']
+        output = _GetCommandOutput('revoke', revoke_args)
+        self.assertIn('Successfully revoked token.', output)
+        self.assertEqual(1, self.mock_revoke.call_count)
+        self.mock_get_store.assert_called_once_with(None, 'abc',
+            'https://www.googleapis.com/auth/userinfo.email')
+
+    def testServiceAccountCacheMiss(self):
+        self.mock_store.get.return_value = None
+        
+        service_account_path = os.path.join(
+            os.path.dirname(__file__), 'testdata/fake_service_account.json')
+        revoke_args = ['--json=' + service_account_path, 'userinfo.email']
+        output = _GetCommandOutput('revoke', revoke_args)
+        self.assertNotIn('Successfully revoked token.', output)
+        self.assertEqual(0, self.mock_revoke.call_count)
+        self.mock_get_store.assert_called_once_with(None, 'abc',
+            'https://www.googleapis.com/auth/userinfo.email')
+
+    def testClientSecretsCacheHit(self):
+        self.mock_store.get.return_value = self.mock_credentials
+
+        service_account_path = os.path.join(
+            os.path.dirname(__file__), 'testdata/fake_client_secrets.json')
+        revoke_args = ['--json=' + service_account_path, 'userinfo.email']
+        output = _GetCommandOutput('revoke', revoke_args)
+        self.assertIn('Successfully revoked token.', output)
+        self.assertEqual(1, self.mock_revoke.call_count)
+        self.mock_get_store.assert_called_once_with(None,
+            '144169.apps.googleusercontent.com',
+            'https://www.googleapis.com/auth/userinfo.email')
+
+    def testClientSecretsCacheMiss(self):
+        self.mock_store.get.return_value = None
+
+        service_account_path = os.path.join(
+            os.path.dirname(__file__), 'testdata/fake_client_secrets.json')
+        revoke_args = ['--json=' + service_account_path, 'userinfo.email']
+        output = _GetCommandOutput('revoke', revoke_args)
+        self.assertNotIn('Successfully revoked token.', output)
+        self.assertEqual(0, self.mock_revoke.call_count)
+        self.mock_get_store.assert_called_once_with(None,
+            '144169.apps.googleusercontent.com',
+            'https://www.googleapis.com/auth/userinfo.email')
+
+    def testDefaultClientInfoCacheHit(self):
+        self.mock_store.get.return_value = self.mock_credentials
+
+        revoke_args = ['userinfo.email']
+        output = _GetCommandOutput('revoke', revoke_args)
+        self.assertIn('Successfully revoked token.', output)
+        self.assertEqual(1, self.mock_revoke.call_count)
+        self.mock_get_store.assert_called_once_with(None,
+            '1055925038659-sb6bdak55edef9a0joshf24g7i2kiatf.apps.'
+            'googleusercontent.com',
+            'https://www.googleapis.com/auth/userinfo.email')
+
+    def testDefaultClientInfoCacheMiss(self):
+        self.mock_store.get.return_value = None
+
+        revoke_args = ['userinfo.email']
+        output = _GetCommandOutput('revoke', revoke_args)
+        self.assertNotIn('Successfully revoked token.', output)
+        self.assertEqual(0, self.mock_revoke.call_count)
+        self.mock_get_store.assert_called_once_with(None,
+            '1055925038659-sb6bdak55edef9a0joshf24g7i2kiatf.apps.'
+            'googleusercontent.com',
+            'https://www.googleapis.com/auth/userinfo.email')
+
+    def testNoScopeProvided(self):
+        output = _GetCommandOutput('revoke', [])
+        self.assertIn('No scopes provided', output)
+        self.assertEqual(0, self.mock_revoke.call_count)
+        self.assertEqual(0, self.mock_get_store.call_count)
