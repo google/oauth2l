@@ -61,6 +61,8 @@ the following command prints access token for the following OAuth2 scopes:
 $ oauth2l fetch -f bare userinfo.email cloud-platform
 ya29.zyxwvutsrqpnmolkjihgfedcba
 ```
+Note the `-f` flag specifies output format. Supported formats are: 
+bare, header, json, json_compact, pretty(default).
 
 ### header
 
@@ -117,4 +119,13 @@ $ echo $?
 $ oauth2l test ya29.justkiddingmadethisoneup
 $ echo $?
 1
+```
+
+### reset
+
+Reset all tokens cached locally. We cache tokens previously retrieved tokens in the file
+`~/.oauth2l.token`.
+
+```
+$ oauth2l reset
 ```
