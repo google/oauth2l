@@ -6,8 +6,8 @@ oauth2l
 [![PyPI](https://img.shields.io/pypi/v/google-oauth2l.svg)](https://pypi.python.org/pypi/google-oauth2l)
 [![Versions](https://img.shields.io/pypi/pyversions/google-oauth2l.svg)](https://pypi.python.org/pypi/google-oauth2l)
 
-`oauth2l` (pronounced "oauth tool") is a simple command-line tool that can be
-used to interact with Google OAuth system. Its primary use is to fetch and
+`oauth2l` (pronounced "oauth tool") is a simple command-line tool for
+interacting with Google OAuth system. Its primary use is to fetch and
 print OAuth 2.0 access tokens, which can be used with other command-line
 tools and shell scripts.
 
@@ -24,12 +24,9 @@ Engine (GKE), it uses the credentials of the current GCE service account
 (gcloud) session, it uses the gcloud credential.
 
 * When running with command line flag `--json xxx`, where `xxx` points to a
-JSON credential file -- either a service account or an OAuth client id --
+JSON credential file -- either a service account or an OAuth client ID --
 downloaded from Google API Console, `oauth2l` will use the JSON file to start
 the OAuth session.
-
-* Otherwise, `oauth2l` will use its own OAuth client id to start the OAuth
-session.
 
 NOTE: `oauth2l` will cache the OAuth credential until its expiration to avoid
 prompting user repeatedly.
@@ -43,7 +40,8 @@ $ sudo easy_install pip
 # Install oauth2l under OS, typically "/usr/local/bin".
 $ pip install google-oauth2l
 
-# Install oauth2l under current user, typically "~/.local/bin" (on Linux) and "~/Library/Python/2.7/bin" (on Mac).
+# Install oauth2l under current user, typically "~/.local/bin" (on Linux)
+# and "~/Library/Python/2.7/bin" (on Mac).
 $ pip install --user google-oauth2l
 ```
 
@@ -81,7 +79,7 @@ $ curl -H "$(oauth2l header bigquery)" 'https://www.googleapis.com/bigquery/v2/p
 ```
 
 If you need to call Google APIs frequently using the `header` command, you
-might define a shell alias for it, for example:
+can define a shell alias for it, for example:
 
 ```
 $ alias gcurl='curl -H "$(oauth2l header cloud-platform)" -H "Content-Type: application/json" '
@@ -123,8 +121,8 @@ $ echo $?
 
 ### reset
 
-Reset all tokens cached locally. We cache tokens previously retrieved tokens in the file
-`~/.oauth2l.token`.
+Reset all tokens cached locally. We cache tokens previously retrieved
+tokens in the file `~/.oauth2l.token`.
 
 ```
 $ oauth2l reset
