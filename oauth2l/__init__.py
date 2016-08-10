@@ -101,12 +101,7 @@ def GetClientInfoFromFile(client_secrets):
         client_secrets = json.load(client_secrets_file)
     if 'installed' not in client_secrets:
         raise ValueError('Provided client ID must be for an installed app')
-    client_secrets = client_secrets['installed']
-    return {
-        'client_id': client_secrets['client_id'],
-        'client_secret': client_secrets['client_secret'],
-        'user_agent': _DEFAULT_USER_AGENT,
-    }
+    return client_secrets['installed']
 
 
 def _ExpandScopes(scopes):
