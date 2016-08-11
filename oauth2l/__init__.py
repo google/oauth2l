@@ -87,7 +87,7 @@ _GCLOUD_SCOPES = {
 }
 # Keep in sync with setup.py. (Currently just used for UserAgent
 # tagging, so not critical.)
-_OAUTH2L_VERSION = '0.9.1'
+_OAUTH2L_VERSION = '0.9.2'
 _DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
 # Prefix of Google OAuth scopes
 _SCOPE_PREFIX = 'https://www.googleapis.com/auth/'
