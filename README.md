@@ -62,6 +62,14 @@ ya29.zyxwvutsrqpnmolkjihgfedcba
 Note the `-f` flag specifies output format. Supported formats are: 
 bare, header, json, json_compact, pretty(default).
 
+You can also fetch an OAuth token by using the secret json file downloaded from
+[Google Cloud Console](https://console.cloud.google.com/).
+```
+$ oauth2l fetch -f bare --json service_account.json cloud-platform
+ya29.zyxwvutsrqpnmolkjihgfedcba
+
+```
+
 ### header
 
 Same as `fetch`, except that we print the token in HTTP header format:
@@ -121,8 +129,8 @@ $ echo $?
 
 ### reset
 
-Reset all tokens cached locally. We cache tokens previously retrieved
-tokens in the file `~/.oauth2l.token`.
+Reset all tokens cached locally. We cache previously retrieved tokens in the
+file `~/.oauth2l.token`.
 
 ```
 $ oauth2l reset

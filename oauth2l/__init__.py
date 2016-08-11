@@ -56,19 +56,19 @@ into other programs:
 from __future__ import print_function
 
 import argparse
+import httplib2
 import json
 import logging
 import os
 import sys
 import textwrap
-
 if sys.version_info[0] == 2:
   import httplib as http_client
 else:
   import http.client as http_client  # pragma: NO COVER
 
-import httplib2
 from oauth2client import client
+from oauth2client import GOOGLE_TOKEN_INFO_URI
 from oauth2client import service_account
 from oauth2client import tools
 from oauth2client.contrib import multiprocess_file_storage
@@ -77,8 +77,7 @@ from oauth2client.contrib import multiprocess_file_storage
 # one URL, with one parameter and no worries about URL encoding. Let's
 # go with simple.
 _OAUTH2_TOKENINFO_TEMPLATE = (
-    'https://www.googleapis.com/oauth2/v2/tokeninfo'
-    '?access_token={access_token}'
+    GOOGLE_TOKEN_INFO_URI + '?access_token={access_token}'
 )
 # We need to know the gcloud scopes in order to decide when to use the
 # Application Default Credentials.
@@ -90,6 +89,8 @@ _GCLOUD_SCOPES = {
 # tagging, so not critical.)
 _OAUTH2L_VERSION = '0.9.1'
 _DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
+# Prefix of Google OAuth scopes
+_SCOPE_PREFIX = 'https://www.googleapis.com/auth/'
 
 
 class EmptyLoggingHandler(logging.Handler):
@@ -114,8 +115,7 @@ def GetClientInfoFromFile(client_secrets):
 
 
 def _ExpandScopes(scopes):
-    scope_prefix = 'https://www.googleapis.com/auth/'
-    return [s if s.startswith('https://') else scope_prefix + s
+    return [s if s.startswith('https://') else _SCOPE_PREFIX + s
             for s in scopes]
 
 
@@ -278,6 +278,7 @@ def _GetCredentialForServiceAccount(json_keyfile, scopes,
         credentials.set_store(credential_store)
     return credentials
 
+
 def _FetchCredentials(args, client_info=None, credentials_filename=None):
     """Fetch a credential for the given client_info and scopes."""
     client_secrets, service_account_json_keyfile = _ProcessJsonArg(args)
@@ -330,10 +331,12 @@ def _Info(args):
     else:
         print(_CompactJson(tokeninfo))
 
+
 def _Reset(args):
     credentials_filename = _GetCredentialsFilename(args.credentials_filename)
     if os.path.exists(credentials_filename):
       os.remove(credentials_filename)
+
 
 def _Test(args):
     """Test an access token. Exits with 0 if valid, 1 otherwise."""
