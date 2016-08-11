@@ -57,6 +57,7 @@ from __future__ import print_function
 
 import argparse
 import json
+import logging
 import os
 import sys
 import textwrap
@@ -89,6 +90,14 @@ _GCLOUD_SCOPES = {
 # tagging, so not critical.)
 _OAUTH2L_VERSION = '0.9.1'
 _DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
+
+
+class EmptyLoggingHandler(logging.Handler):
+    def emit(self, record):
+        pass  # pragma: NO COVER
+
+
+logging.getLogger("oauth2client").addHandler(EmptyLoggingHandler())
 
 
 def GetClientInfoFromFile(client_secrets):
@@ -414,4 +423,4 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv))
+    sys.exit(main(sys.argv))  # pragma: NO COVER
