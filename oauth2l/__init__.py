@@ -79,12 +79,7 @@ from oauth2client.contrib import multiprocess_file_storage
 _OAUTH2_TOKENINFO_TEMPLATE = (
     GOOGLE_TOKEN_INFO_URI + '?access_token={access_token}'
 )
-# We need to know the gcloud scopes in order to decide when to use the
-# Application Default Credentials.
-_GCLOUD_SCOPES = {
-    'https://www.googleapis.com/auth/cloud-platform',
-    'https://www.googleapis.com/auth/userinfo.email',
-}
+
 # Keep in sync with setup.py. (Currently just used for UserAgent
 # tagging, so not critical.)
 _OAUTH2L_VERSION = '0.9.2'
@@ -92,6 +87,12 @@ _DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
 # Prefix of Google OAuth scopes
 _SCOPE_PREFIX = 'https://www.googleapis.com/auth/'
 
+# We need to know the gcloud scopes in order to decide when to use the
+# Application Default Credentials.
+_GCLOUD_SCOPES = {
+    _SCOPE_PREFIX + 'cloud-platform',
+    _SCOPE_PREFIX + 'userinfo.email',
+}
 
 class EmptyLoggingHandler(logging.Handler):
     def emit(self, record):
