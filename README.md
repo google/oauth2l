@@ -38,7 +38,10 @@ prompting user repeatedly.
 $ sudo easy_install pip
 
 # Install oauth2l under OS, typically "/usr/local/bin".
-$ pip install google-oauth2l
+$ pip install google-oauth2l --upgrade
+
+# If you see an error on OS X El Capitan or up, please try
+$ pip install google-oauth2l --upgrade --ignore-installed
 
 # Install oauth2l under current user, typically "~/.local/bin" (on Linux)
 # and "~/Library/Python/2.7/bin" (on Mac).
