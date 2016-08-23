@@ -306,7 +306,7 @@ def _FetchCredentials(args, client_info=None, credentials_filename=None):
     if credentials is None:
         raise ValueError('Failed to fetch credentials')
     credentials.user_agent = _DEFAULT_USER_AGENT
-    if not _TestToken(credentials.access_token):
+    if credentials.access_token_expired or credentials.access_token is None:
         credentials.refresh(httplib2.Http())
     return credentials
 
