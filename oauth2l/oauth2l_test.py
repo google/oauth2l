@@ -155,23 +155,17 @@ class TestFetch(unittest.TestCase):
             'Error encountered in fetch operation: No scopes provided',
             output)
 
-    @mock.patch.object(oauth2l, '_GetTokenInfo', autospec=True)
-    def testScopes(self, mock_get_info):
+    def testScopes(self):
         expected_scopes = [
             'https://www.googleapis.com/auth/userinfo.email',
             'https://www.googleapis.com/auth/cloud-platform',
         ]
-        mock_get_info.return_value = {
-            'email': 'user@gmail.com',
-            'expires_in': 123,
-            'scope': ' '.join(expected_scopes),
-        }
         output = _GetCommandOutput(
             'fetch', self.json_args + ['userinfo.email', 'cloud-platform'])
         self.assertIn(self.access_token, output)
         self.assertEqual(1, self.mock_3lo.call_count)
-        self.assertEqual(1, mock_get_info.call_count)
-        self.assertEqual((self.access_token,), mock_get_info.call_args[0])
+        for scope in expected_scopes:
+            self.assertIn(scope, json.dumps(self.mock_3lo.call_args[0]))
 
     def testNoCredentials(self):
         self.mock_3lo.return_value = None
@@ -180,18 +174,37 @@ class TestFetch(unittest.TestCase):
         self.assertEqual(1, self.mock_adc.call_count)
         self.assertEqual(0, self.mock_3lo.call_count)
 
-    @mock.patch.object(oauth2l, '_TestToken', return_value=False,
-                       autospec=True)
-    def testCredentialsRefreshed(self, mock_test):
-        with mock.patch.object(self.credentials, 'refresh',
-                               return_value=None,
-                               autospec=True) as mock_refresh:
-            output = _GetCommandOutput('fetch',
-                                       self.json_args + ['userinfo.email'])
-            self.assertIn(self.access_token, output)
-            self.assertEqual(1, self.mock_3lo.call_count)
-            self.assertEqual(1, mock_test.call_count)
-            self.assertEqual(1, mock_refresh.call_count)
+    def testCredentialsRefreshed(self):
+        self.credentials.refresh = mock_refresh = mock.MagicMock()
+        mock_refresh.return_value = None
+        def refreshCredentials(_):
+            self.credentials.access_token = "refreshed_credentials"
+        mock_refresh.side_effect = refreshCredentials
+        self.credentials.access_token = None
+        self.credentials.access_token_expired = False
+        output = _GetCommandOutput('fetch',
+                                   self.json_args + ['userinfo.email'])
+
+        self.assertIn("refreshed_credentials", output)
+        self.assertEqual(1, self.mock_3lo.call_count)
+        self.assertEqual(1, mock_refresh.call_count)
+
+    def testCredentialsRefreshedWhenExpired(self):
+        self.credentials = mock_credentials = mock.MagicMock()
+        self.mock_3lo.return_value = mock_credentials
+        self.credentials.refresh = mock_refresh = mock.MagicMock()
+        mock_refresh.return_value = None
+        def refreshCredentials(_):
+            self.credentials.access_token = "refreshed_credentials"
+        mock_refresh.side_effect = refreshCredentials
+        self.credentials.access_token = "some_token"
+        self.credentials.access_token_expired = True
+        output = _GetCommandOutput('fetch',
+                                   self.json_args + ['userinfo.email'])
+
+        self.assertIn("refreshed_credentials", output)
+        self.assertEqual(1, self.mock_3lo.call_count)
+        self.assertEqual(1, mock_refresh.call_count)
 
     def testMissingClientSecrets(self):
         with self.assertRaises(ValueError):
@@ -204,8 +217,7 @@ class TestFetch(unittest.TestCase):
         with self.assertRaises(ValueError):
             oauth2l.GetClientInfoFromFile(client_secrets)
 
-    @mock.patch.object(oauth2l, '_TestToken', return_value=True, autospec=True)
-    def testCustomClientInfo(self, mock_test):
+    def testCustomClientInfo(self):
         client_secrets_path = os.path.join(
             os.path.dirname(__file__), 'testdata/fake_client_secrets.json')
         fetch_args = ['--json=' + client_secrets_path, 'userinfo.email']
@@ -217,7 +229,6 @@ class TestFetch(unittest.TestCase):
         self.assertEqual('144169.apps.googleusercontent.com',
                          client_info['client_id'])
         self.assertEqual('awesomesecret', client_info['client_secret'])
-        self.assertEqual(1, mock_test.call_count)
 
 
 class TestOtherCommands(unittest.TestCase):
@@ -375,23 +386,18 @@ class TestServiceAccounts(unittest.TestCase):
 
     @mock.patch.object(oauth2l, '_GetCredentialForServiceAccount', 
                        autospec=True)
-    @mock.patch.object(oauth2l, '_TestToken', return_value=True,
-                       autospec=True)
-    def testServiceAccounts(self, mock_test_token, mock_get):
+    def testServiceAccounts(self, mock_get):
         mock_get.return_value = self.credentials
         service_account_path = os.path.join(
             os.path.dirname(__file__), 'testdata/fake_service_account.json')
         fetch_args = ['--json=' + service_account_path, 'userinfo.email']
         output = _GetCommandOutput('fetch', fetch_args)
         self.assertIn(self.access_token, output)
-        self.assertEqual(1, mock_test_token.call_count)
         self.assertEqual(1, mock_get.call_count)
 
     @mock.patch('oauth2client.contrib.multiprocess_file_storage.'
                 'MultiprocessFileStorage', autospec=True)
-    @mock.patch.object(oauth2l, '_TestToken', return_value=True,
-                       autospec=True)
-    def testCacheMiss(self, mock_test_token, mock_storage):
+    def testCacheMiss(self, mock_storage):
         mock_storage.return_value = mock_store = mock.MagicMock()
         mock_store.get.return_value = None
         service_account_path = os.path.join(
@@ -399,14 +405,11 @@ class TestServiceAccounts(unittest.TestCase):
         fetch_args = ['--json=' + service_account_path, 'userinfo.email']
         output = _GetCommandOutput('fetch', fetch_args)
         self.assertIn(self.access_token, output)
-        self.assertEqual(1, mock_test_token.call_count)
         self.assertEqual(1, self.from_keyfile.call_count)
 
     @mock.patch('oauth2client.contrib.multiprocess_file_storage.'
                 'MultiprocessFileStorage', autospec=True)
-    @mock.patch.object(oauth2l, '_TestToken', return_value=True,
-                       autospec=True)
-    def testCacheHit(self, mock_test_token, mock_storage):
+    def testCacheHit(self, mock_storage):
         mock_storage.return_value = mock_store = mock.MagicMock()
         mock_store.get.return_value = self.credentials
         service_account_path = os.path.join(
@@ -414,14 +417,11 @@ class TestServiceAccounts(unittest.TestCase):
         fetch_args = ['--json=' + service_account_path, 'userinfo.email']
         output = _GetCommandOutput('fetch', fetch_args)
         self.assertIn(self.access_token, output)
-        self.assertEqual(1, mock_test_token.call_count)
         self.assertEqual(0, self.from_keyfile.call_count)
 
     @mock.patch('oauth2client.contrib.multiprocess_file_storage.'
                 'MultiprocessFileStorage', autospec=True)
-    @mock.patch.object(oauth2l, '_TestToken', return_value=True,
-                       autospec=True)
-    def testCachedInvalid(self, mock_test_token, mock_storage):
+    def testCachedInvalid(self, mock_storage):
         invalid_credentials = oauth2client.client.AccessTokenCredentials(
             self.access_token, self.user_agent)
         invalid_credentials.invalid = True
@@ -432,7 +432,6 @@ class TestServiceAccounts(unittest.TestCase):
         fetch_args = ['--json=' + service_account_path, 'userinfo.email']
         output = _GetCommandOutput('fetch', fetch_args)
         self.assertIn(self.access_token, output)
-        self.assertEqual(1, mock_test_token.call_count)
         self.assertEqual(1, self.from_keyfile.call_count)
 
 
@@ -485,6 +484,8 @@ class Test3LO(unittest.TestCase):
         self.user_agent = 'oauth2l/1.0'
         self.credentials = oauth2client.client.AccessTokenCredentials(
             self.access_token, self.user_agent)
+        type(self.credentials).access_token_expired = mock.PropertyMock(
+            return_value=False)
 
         patcher_adc = mock.patch(
             'oauth2l._GetApplicationDefaultCredentials', return_value=None,
@@ -511,7 +512,7 @@ class Test3LO(unittest.TestCase):
         output = _GetCommandOutput('fetch', self.json_args + ['userinfo.email'])
         self.assertIn(self.access_token, output)
         self.assertEqual(1, mock_store.get.call_count)
-        self.assertEqual(1, self.mock_test.call_count)
+        self.assertEqual(0, self.mock_test.call_count)
 
     @mock.patch('oauth2client.contrib.multiprocess_file_storage.'
                 'MultiprocessFileStorage', autospec=True)
@@ -533,7 +534,7 @@ class Test3LO(unittest.TestCase):
         output = _GetCommandOutput('fetch', self.json_args + ['userinfo.email'])
         self.assertIn(self.access_token, output)
         self.assertEqual(1, mock_store.get.call_count)
-        self.assertEqual(1, self.mock_test.call_count)
+        self.assertEqual(0, self.mock_test.call_count)
 
     @mock.patch('oauth2client.client.OAuth2WebServerFlow',
                 side_effect=SystemExit(), autospec=True)
@@ -541,10 +542,6 @@ class Test3LO(unittest.TestCase):
                 'MultiprocessFileStorage', autospec=True)
     def testCachedInvalid(self, mock_storage, mock_flow):
         mock_storage.return_value = mock_store = mock.MagicMock()
-        mock_store.get.return_value = self.credentials
-        credentials = oauth2client.client.AccessTokenCredentials(
-            self.access_token, self.user_agent)
-        mock_store.get.return_value = credentials
-        credentials.invalid = True
+        mock_store.get.return_value = None
         output = _GetCommandOutput('fetch', self.json_args + ['fake.scope'])
         self.assertIn('Failed to fetch credentials', output)
