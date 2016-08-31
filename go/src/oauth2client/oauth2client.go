@@ -75,9 +75,19 @@ func retrieveAccessToken(url string, params url.Values) (*Token, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var token *Token
-	err := json.Unmarshal(body, &token)
-	return token, err
+
+	if err := json.Unmarshal(body, &token); err != nil {
+		return nil, err
+	}
+
+	if token.ExpiresIn != nil {
+		expiry := int64(time.Now().Unix()) + int64(*token.ExpiresIn)
+		token.Expiry = time.Unix(expiry, 0)
+		token.ExpiresIn = nil
+	}
+	return token, nil
 }
 
 // Run 3LO verification. Sends a request to auth_uri with a verification code.
