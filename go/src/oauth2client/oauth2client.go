@@ -173,7 +173,7 @@ func createJWT(secret map[string]interface{}, scope string, pkey pkeyInterface) 
 	return segments + "." + base64Encode(signedBytes), nil
 }
 
-// Interface for OAuth 2 Client
+// Client interface for OAuth 2.
 type Client interface {
 	// Get an OAuth 2 token for the specified OAuth scope. This method
 	// must be safe for concurrent use by multiple goroutines.
@@ -245,12 +245,15 @@ func (c TwoLeggedClient) GetToken(scope string) (*Token, error) {
 	return retrieveAccessToken(toString(c.secret["token_uri"]), params)
 }
 
-// Create a new OAuth2 Client with given Authorize Handler
-// secretBytes: JSON text that represents either an OAuth client ID or a
-//   service account.
-// authorizeHandler: a function that handles three-legged OAuth authorize flow.
-//   It should take in an URL, let the user authorize access on that URL, and
-//   the verify code. If nil, the client will use defaultAuthorizeFlowHandler.
+// NewClient create a new OAuth2 Client.
+//
+// SecretBytes is a JSON string that represents either an OAuth client ID or a
+// service account.
+//
+// AuthorizeHandler is a function that handles 3LO authorization flow. It
+// take in an auth URL, let the user authorize access on that URL, and return
+// an verification code. If it is nil, the client will use the
+// defaultAuthorizeFlowHandler.
 func NewClient(secretBytes []byte, authorizeHandler func(string) (string, error)) (Client, error) {
 	var secret map[string]interface{}
 	if err := json.Unmarshal(secretBytes, &secret); err != nil {
