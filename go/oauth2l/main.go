@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/google/oauth2l/go/src/oauth2client"
+	"github.com/google/oauth2l/go/oauth2client"
 	"io/ioutil"
 	"strings"
 )
