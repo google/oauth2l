@@ -40,7 +40,7 @@ You can also install the companion `oauth2l` binary and use to fetch
 OAuth access tokens to be used with other scrips and tools.
 
     # Install the binary.
-    $ go get github.com/google/oauth2l/go/src/oauth2l
+    $ go get github.com/google/oauth2l/go/oauth2l
 
     # Print usage help.
     $ $GOPATH/bin/oauth2l
