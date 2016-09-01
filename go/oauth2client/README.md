@@ -46,4 +46,4 @@ OAuth access tokens to be used with other scrips and tools.
     $ $GOPATH/bin/oauth2l
 
     # Fetch an access token.
-    $ $GOPATH/bin/oauth2l header --json cred.json cloud-platform
+    $ $GOPATH/bin/oauth2l --json cred.json header cloud-platform
