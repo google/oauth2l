@@ -1,5 +1,9 @@
 package oauth2client
 
+import (
+	"time"
+)
+
 // Definition for OAuth2 token type.
 // Referenced from https://godoc.org/golang.org/x/oauth2#Token
 type Token struct {
@@ -16,6 +20,14 @@ type Token struct {
 	// if it expires.
 	RefreshToken string `json:"refresh_token,omitempty"`
 
+	// Expiry is the optional expiration time of the access token.
+	//
+	// If zero, TokenSource implementations will reuse the same
+	// token forever and RefreshToken or equivalent
+	// mechanisms for that TokenSource will not be used.
+	Expiry time.Time `json:"expiry,omitempty"`
+	// contains filtered or unexported fields
+
 	// ExpiresIn is the optional expiration time in seconds.
-	ExpiresIn int `json:"expires_in,omitempty"`
+	ExpiresIn *int `json:"expires_in,omitempty"`
 }
