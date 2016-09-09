@@ -2,29 +2,30 @@
 
 This package contains a simple and easy-to-use OAuth 2 client library.
 It supports both 2-legged and 3-legged OAuth for most OAuth providers
-without requiring any code change to your applications.
+without any change to the application code.
 
-It is intended to be a reference design for other programming languages.
+This library is intended to be a reference design for other programming
+languages.
 
 ## Design
 
 The basic design is to create an OAuth client using a JSON credential
-file, and use the client to fetch OAuth access tokens. Because the
-credential file contains all necessary information -- such as client
-id, client secret, auth URL, token URL -- the library itself does not
-refer to any application or any OAuth provider. It allows a user to
-switch application identity or OAuth provider by simply feeding a
-different JSON credential file to an application.
+file, then use the client to fetch OAuth tokens. Because the credential
+file contains all necessary information about the OAuth client and the
+OAuth provider, the library can work with any OAuth provider. It allows
+a user to switch OAuth client ID or OAuth provider by using a different
+JSON credential file with an application.
 
-Normally, you can download the JSON credential files from places, such
-as [Google API Console](https://console.developers.google.com) and
-[Google Cloud Console](https://console.cloud.google.com). You can also
-manually create such files.
+The general developer workflow is to download a JSON credential files
+from an OAuth provider, such as
+[Google API Console](https://console.developers.google.com) and
+[Google Cloud Console](https://console.cloud.google.com), and pass
+the file to the application. You can also manually create such files.
 
 ## Usage
 
-This library has a very simple interface, which you can use in the
-following way:
+This library has a simple interface, which you can use in the following
+way:
 
     // Creates a client using the content of a JSON credential file.
     // The file can be either an OAuth client id or a service account
