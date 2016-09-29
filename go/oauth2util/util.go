@@ -18,6 +18,7 @@ package oauth2util
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
@@ -48,6 +49,11 @@ func defaultAuthorizeFlowHandler(authorizeUrl string) (string, error) {
 // authorizeHandler handels authorize flow in 3-legged OAuth. If not provided, a default handler is used.
 // scope is a list of OAuth scope codes. Read more at https://tools.ietf.org/html/rfc6749.
 func NewTokenSource(ctx context.Context, key []byte, authorizeHandler AuthorizeHandler, scope ...string) (oauth2.TokenSource, error) {
+	// If key is not provided, use DefaultTokenSource.
+	if key == nil {
+		return google.DefaultTokenSource(ctx, scope...)
+	}
+
 	var secret map[string]interface{}
 	if err := json.Unmarshal(key, &secret); err != nil {
 		return nil, err
@@ -97,4 +103,14 @@ func NewTokenSource(ctx context.Context, key []byte, authorizeHandler AuthorizeH
 	}
 
 	return nil, fmt.Errorf("Unsupported token type.")
+}
+
+// NewClient creates an *http.Client that sends oauth2 token in requests. 
+// NewClient internally calls NewTokenSource.
+func NewClient(ctx context.Context, key []byte, authorizeHandler AuthorizeHandler, scope ...string) (*http.Client, error) {
+	tokenSource, err := NewTokenSource(ctx, key, authorizeHandler, scope...)
+	if err != nil {
+		return nil, err
+	}
+	return oauth2.NewClient(ctx, tokenSource), nil
 }
