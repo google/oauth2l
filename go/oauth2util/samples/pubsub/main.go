@@ -16,9 +16,9 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// [START auth]
-
-	// Read service account key from local file.
+	// Read a service account key json from a local file. WARNING: you
+	// should never embed the service account key as a string literal
+	// in the source code.
 	b, err := ioutil.ReadFile("service_account_key.json")
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
@@ -37,7 +37,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not create pubsub Client: %v", err)
 	}
-	// [END auth]
 
 	// Print all the subscriptions in the project.
 	fmt.Println("Listing all subscriptions from the project:")
