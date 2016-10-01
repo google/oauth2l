@@ -19,14 +19,16 @@ func main() {
 	// Read a service account key json from a local file. WARNING: you
 	// should never embed the service account key as a string literal
 	// in the source code.
-	b, err := ioutil.ReadFile("service_account_key.json")
+	key, err := ioutil.ReadFile("service_account_key.json")
 	if err != nil {
 		log.Fatalf("Unable to read client secret file: %v", err)
 	}
 
 	// Create new http.Client from service account key and pubsub OAuth scope.
-	// For service account auth, authorizeHandler is not used.
-	c, err := oauth2util.NewClient(ctx, b, nil /* authorizeHandler */, pubsub.ScopePubSub)
+	// For the service account auth, authorizeHandler is not used. If you want
+	// to use authentication based on runtime context, you can simply pass
+	// nil instead of key.
+	c, err := oauth2util.NewClient(ctx, key, nil /* authorizeHandler */, pubsub.ScopePubSub)
 	if err != nil {
 		log.Fatalf("Failed to get OAuth token: %v", err)
 	}
@@ -42,10 +44,10 @@ func main() {
 	fmt.Println("Listing all topics from the project:")
 	it := client.Topics(ctx)
 	for {
-		t, err := it.Next()
+		topic, err := it.Next()
 		if err != nil {
 			break
 		}
-		fmt.Println(t.String())
+		fmt.Println(topic.String())
 	}
 }
