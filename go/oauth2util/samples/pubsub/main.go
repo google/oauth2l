@@ -38,32 +38,14 @@ func main() {
 		log.Fatalf("Could not create pubsub Client: %v", err)
 	}
 
-	// Print all the subscriptions in the project.
-	fmt.Println("Listing all subscriptions from the project:")
-	subs, err := list(client)
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, sub := range subs {
-		fmt.Println(sub)
-	}
-}
-
-func list(client *pubsub.Client) ([]*pubsub.Subscription, error) {
-	ctx := context.Background()
-	// [START get_all_subscriptions]
-	var subs []*pubsub.Subscription
-	it := client.Subscriptions(ctx)
+	// Print all the topics in the project.
+	fmt.Println("Listing all topics from the project:")
+	it := client.Topics(ctx)
 	for {
-		s, err := it.Next()
-		if err == pubsub.Done {
+		t, err := it.Next()
+		if err != nil {
 			break
 		}
-		if err != nil {
-			return nil, err
-		}
-		subs = append(subs, s)
+		fmt.Println(t.String())
 	}
-	// [END get_all_subscriptions]
-	return subs, nil
 }
