@@ -42,12 +42,15 @@ func defaultAuthorizeFlowHandler(authorizeUrl string) (string, error) {
 	return code, nil
 }
 
-// NewTokenSource creates a new OAuth 2.0 token source. The underlying http
-// requests will use http.RoundTripper provided in ctx.
+// NewTokenSource creates a new OAuth 2.0 token source.
 //
-// key is a JSON string that represents either an OAuth client ID or a service account key.
-// authorizeHandler handels authorize flow in 3-legged OAuth. If not provided, a default handler is used.
-// scope is a list of OAuth scope codes. Read more at https://tools.ietf.org/html/rfc6749.
+// Ctx provides http.RoundTripper for handling the HTTP requests.
+//
+// Key is a JSON string that represents either an OAuth client ID or a service account key.
+//
+// AuthorizeHandler handels authorize flow in 3-legged OAuth. If not provided, a default handler is used.
+//
+// Scope is a list of OAuth scope codes. Read more at https://tools.ietf.org/html/rfc6749.
 func NewTokenSource(ctx context.Context, key []byte, authorizeHandler AuthorizeHandler, scope ...string) (oauth2.TokenSource, error) {
 	// If key is not provided, use DefaultTokenSource.
 	if key == nil {
