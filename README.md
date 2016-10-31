@@ -11,6 +11,9 @@ interacting with Google OAuth system. Its primary use is to fetch and
 print OAuth 2.0 access tokens, which can be used with other command-line
 tools and shell scripts.
 
+If you need to reimplement this functionality in another programming
+language, see [Go OAuth2l](go/oauth2client) for reference.
+
 ## Overview
 
 `oauth2l` supports multiple OAuth 2.0 authentication flows for both user
