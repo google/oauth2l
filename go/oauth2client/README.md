@@ -12,15 +12,18 @@ languages.
 The basic design is to create an OAuth client using a JSON credential
 file, then use the client to fetch OAuth tokens. Because the credential
 file contains all necessary information about the OAuth client and the
-OAuth provider, the library can work with any OAuth provider. It allows
-a user to switch OAuth client ID or OAuth provider by using a different
-JSON credential file with an application.
+OAuth provider, the library can work with different OAuth flows and
+different OAuth providers. It allows developers to switch OAuth
+client ID or service account or OAuth provider by using a different
+JSON credential file without changing the application.
 
 The general developer workflow is to download a JSON credential files
 from an OAuth provider, such as
 [Google API Console](https://console.developers.google.com) and
 [Google Cloud Console](https://console.cloud.google.com), and pass
 the file to the application. You can also manually create such files.
+This client library will generate the OAuth access token for application
+to use.
 
 ## Usage
 
