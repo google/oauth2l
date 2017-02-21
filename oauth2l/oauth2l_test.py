@@ -435,6 +435,42 @@ class TestServiceAccounts(unittest.TestCase):
         self.assertEqual(1, self.from_keyfile.call_count)
 
 
+class TestSso(unittest.TestCase):
+    def setUp(self):
+        # Set up an access token to use
+        self.access_token = 'ya29.abdefghijklmnopqrstuvwxyz'
+
+    @mock.patch('subprocess.Popen')
+    def testSsoFetchSuccess(self, mock_subproc_popen):
+        process_mock = mock.Mock()
+        attrs = {
+            'communicate.return_value': (self.access_token, ''),
+            'returncode': 0
+        }
+        process_mock.configure_mock(**attrs)
+        mock_subproc_popen.return_value = process_mock 
+
+        fetch_args = ['--sso=example@example.com', 'userinfo.email']
+        output = _GetCommandOutput('fetch', fetch_args)
+        self.assertIn(self.access_token, output)
+        self.assertEqual(1, mock_subproc_popen.call_count)
+
+    @mock.patch('subprocess.Popen')
+    def testSsoFetchFail(self, mock_subproc_popen):
+        process_mock = mock.Mock()
+        attrs = {
+            'communicate.return_value': ('', 'error'),
+            'returncode': 1
+        }
+        process_mock.configure_mock(**attrs)
+        mock_subproc_popen.return_value = process_mock 
+
+        fetch_args = ['--sso=example@example.com', 'userinfo.email']
+        output = _GetCommandOutput('fetch', fetch_args)
+        self.assertIn('Failed to fetch OAuth token by SSO.', output)
+        self.assertEqual(1, mock_subproc_popen.call_count)
+
+
 class TestADC(unittest.TestCase):
     def setUp(self):
         # Set up an access token to use

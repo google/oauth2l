@@ -60,6 +60,7 @@ import httplib2
 import json
 import logging
 import os
+import subprocess
 import sys
 import textwrap
 if sys.version_info[0] == 2:
@@ -93,6 +94,13 @@ _GCLOUD_SCOPES = {
     _SCOPE_PREFIX + 'cloud-platform',
     _SCOPE_PREFIX + 'userinfo.email',
 }
+
+# CLI to retrieve OAuth 2 token via Google Corp SSO.
+# The command should be called like:
+# $ sso example@example.com scope1 scope2
+# and the command returns a bare OAuth2 access token.
+_SSO_CLI = '/google/data/ro/teams/oneplatform/sso'
+
 
 class EmptyLoggingHandler(logging.Handler):
     def emit(self, record):
@@ -280,10 +288,30 @@ def _GetCredentialForServiceAccount(json_keyfile, scopes,
     return credentials
 
 
+def _FetchCredentialWithSso(sso_cli, sso_email, scopes):
+    """Fetch a credential with access_token fetched from the sso CLI."""
+    commands = [sso_cli, sso_email] + scopes
+    try:
+        process = subprocess.Popen(
+            commands, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result, _ = process.communicate()
+        if process.returncode != 0:
+            raise Exception
+    except:
+        raise ValueError('Failed to fetch OAuth token by SSO.')
+    
+    return client.AccessTokenCredentials(
+        result.strip(), _DEFAULT_USER_AGENT)
+
+
 def _FetchCredentials(args, client_info=None, credentials_filename=None):
-    """Fetch a credential for the given client_info and scopes."""
-    client_secrets, service_account_json_keyfile = _ProcessJsonArg(args)
+    """Fetch a credential for the given sso/client_info and scopes."""
     scopes = _ExpandScopes(args.scope)
+    if args.sso:
+        return _FetchCredentialWithSso(
+            args.sso_cli if args.sso_cli else _SSO_CLI, args.sso, scopes)
+
+    client_secrets, service_account_json_keyfile = _ProcessJsonArg(args)
     if not scopes:
         raise ValueError('No scopes provided')
     credentials = None
@@ -356,6 +384,16 @@ def _GetParser():
         default='',
         help=('JSON file downloaded from Google Developer Console. '
               'Can be either client ID/secret or a JSON service account key.'))
+    shared_flags.add_argument(
+        '--sso_cli',
+        default='',
+        help=('(optional) CLI for retrieving OAuth token via SSO. If not '
+              'provided, the Google Corp CLI is used (only work on Google '
+              'internal network).'))
+    shared_flags.add_argument(
+        '--sso',
+        default='',
+        help=('Email address for getting OAuth token with SSO.'))
 
     parser = argparse.ArgumentParser(
         description=__doc__,
