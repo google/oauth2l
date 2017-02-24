@@ -141,3 +141,34 @@ file `~/.oauth2l.token`.
 ```
 $ oauth2l reset
 ```
+
+## Options
+
+### `--json`
+
+Specifies an OAuth credential file, either OAuth client ID or Service Account
+key, to start the OAuth flow. 
+You can download the file from
+[Google Cloud Console](https://console.cloud.google.com/apis/credentials).
+
+```
+$ oauth2l fetch --json ~/service_account.json cloud-platform
+```
+
+### `--sso` and `--sso_cli`
+
+A single sign-on (SSO) command to fetch OAuth token. 
+The command outputs an OAuth access token to its stdout. 
+The default command is for Google's corporate SSO.
+It works like:
+
+```
+$ sso me@example.com scope1 scope2
+```
+
+Then use oauth2l with the SSO CLI:
+
+```
+$ oauth2l header --sso me@example.com --sso_cli /usr/bin/sso cloud-platform
+$ oauth2l header --sso me@google.com cloud-platform
+```
