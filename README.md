@@ -62,16 +62,26 @@ the following command prints access token for the following OAuth2 scopes:
 * https://www.googleapis.com/auth/cloud-platform
 
 ```
-$ oauth2l fetch -f bare userinfo.email cloud-platform
+$ oauth2l fetch userinfo.email cloud-platform
 ya29.zyxwvutsrqpnmolkjihgfedcba
 ```
 Note the `-f` flag specifies output format. Supported formats are: 
 bare, header, json, json_compact, pretty(default).
 
-You can also fetch an OAuth token by using the secret json file downloaded from
-[Google Cloud Console](https://console.cloud.google.com/).
 ```
-$ oauth2l fetch -f bare --json service_account.json cloud-platform
+oauth2l fetch -f json userinfo.email cloud-platform
+{
+  "access_token": "ya29.zyxwvutsrqpnmolkjihgfedcba",
+  "token_expiry": "2017-02-27T21:20:47Z",
+  "user_agent": "oauth2l/1.0.0",
+  ...
+}
+```
+
+You can also fetch an OAuth token by using the secret json file downloaded from
+[Google Cloud Console](https://console.cloud.google.com/apis/credentials).
+```
+$ oauth2l fetch --json service_account.json cloud-platform
 ya29.zyxwvutsrqpnmolkjihgfedcba
 
 ```

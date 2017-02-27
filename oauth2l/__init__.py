@@ -407,7 +407,7 @@ def _GetParser():
     fetch.set_defaults(func=_Fetch)
     fetch.add_argument(
         '-f', '--credentials_format',
-        default='pretty', choices=sorted(_FORMATS),
+        default='bare', choices=sorted(_FORMATS),
         help='Output format for token.')
     fetch.add_argument(
         'scope',
