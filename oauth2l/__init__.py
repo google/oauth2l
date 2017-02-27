@@ -83,7 +83,7 @@ _OAUTH2_TOKENINFO_TEMPLATE = (
 
 # Keep in sync with setup.py. (Currently just used for UserAgent
 # tagging, so not critical.)
-_OAUTH2L_VERSION = '0.9.3'
+_OAUTH2L_VERSION = '1.0.0'
 _DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
 # Prefix of Google OAuth scopes
 _SCOPE_PREFIX = 'https://www.googleapis.com/auth/'
