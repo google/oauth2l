@@ -57,7 +57,7 @@ $ pip install --user google-oauth2l
 
 ## Command Options
 
-### `--json`
+### --json
 
 Specifies an OAuth credential file, either an OAuth client ID or a Service
 Account key, to start the OAuth flow. You can download the file from
@@ -67,7 +67,7 @@ Account key, to start the OAuth flow. You can download the file from
 $ oauth2l fetch --json ~/service_account.json cloud-platform
 ```
 
-### `--sso` and `--sso_cli`
+### --sso and --sso_cli
 
 Using an external Single Sign-on (SSO) command to fetch OAuth token.  
 The command outputs an OAuth access token to its stdout. The default
