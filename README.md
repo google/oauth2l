@@ -12,43 +12,76 @@ print OAuth 2.0 access tokens, which can be used with other command-line
 tools and shell scripts.
 
 If you need to reimplement this functionality in another programming
-language, see [Go OAuth2l](go/oauth2client) for reference.
+language, please see [Go OAuth2l](go/oauth2client) for reference.
 
 ## Overview
 
-`oauth2l` supports multiple OAuth 2.0 authentication flows for both user
-accounts and service accounts:
+`oauth2l` supports all Google OAuth 2.0 authentication flows for both user
+accounts and service accounts in different environments:
 
-* When running inside Google Compute Engine (GCE) and Google Container
-Engine (GKE), it uses the credentials of the current GCE service account
-(if it exists).
+*   When running inside Google Compute Engine (GCE) and Google Container
+    Engine (GKE), it uses the credentials of the current service account
+   (if it exists).
 
-* When running inside user context that has an active Google Cloud SDK
-(gcloud) session, it uses the gcloud credential.
+*   When running inside user context that has an active Google Cloud SDK
+    (gcloud) session, it uses the current gcloud credentials.
 
-* When running with command line flag `--json xxx`, where `xxx` points to a
-JSON credential file -- either a service account or an OAuth client ID --
-downloaded from Google API Console, `oauth2l` will use the JSON file to start
-the OAuth session.
+*   When running with command-line flag `--json xxx`, where `xxx` points to
+    a JSON credential file downloaded from
+    [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
+    `oauth2l` uses the file to start an OAuth session. The file can be a
+    service account key or an OAuth client ID.
 
-NOTE: `oauth2l` will cache the OAuth credential until its expiration to avoid
-prompting user repeatedly.
+*   When running with command-line flag `--sso {email}`, it invokes an
+    external command to retrieve Single Sign-on (SSO) access token.
+
+NOTE: `oauth2l` caches the OAuth credentials to avoid prompting user
+repeatedly.
 
 ## Install
 
 ```
-# Mac only. Install pip.
+# Mac only. Install `pip` first.
 $ sudo easy_install pip
 
-# Install oauth2l under OS, typically "/usr/local/bin".
+# Install `oauth2l` under the OS, typically "/usr/local/bin".
 $ pip install google-oauth2l --upgrade
 
 # If you see an error on OS X El Capitan or up, please try
 $ pip install google-oauth2l --upgrade --ignore-installed
 
-# Install oauth2l under current user, typically "~/.local/bin" (on Linux)
+# Install `oauth2l` under the current user, typically "~/.local/bin" (on Linux)
 # and "~/Library/Python/2.7/bin" (on Mac).
 $ pip install --user google-oauth2l
+```
+
+## Command Options
+
+### `--json`
+
+Specifies an OAuth credential file, either an OAuth client ID or a Service
+Account key, to start the OAuth flow. You can download the file from
+[Google Cloud Console](https://console.cloud.google.com/apis/credentials).
+
+```
+$ oauth2l fetch --json ~/service_account.json cloud-platform
+```
+
+### `--sso` and `--sso_cli`
+
+Using an external Single Sign-on (SSO) command to fetch OAuth token.  
+The command outputs an OAuth access token to its stdout. The default
+command is for Google's corporate SSO. For example:
+
+```
+$ sso me@example.com scope1 scope2
+```
+
+Then use oauth2l with the SSO CLI:
+
+```
+$ oauth2l header --sso me@example.com --sso_cli /usr/bin/sso cloud-platform
+$ oauth2l header --sso me@google.com cloud-platform
 ```
 
 ## Commands
@@ -58,18 +91,14 @@ $ pip install --user google-oauth2l
 Fetch and print an access token for the specified OAuth scopes. For example,
 the following command prints access token for the following OAuth2 scopes:
 
-* https://www.googleapis.com/auth/userinfo.email
-* https://www.googleapis.com/auth/cloud-platform
+*   https://www.googleapis.com/auth/userinfo.email
+*   https://www.googleapis.com/auth/cloud-platform
 
 ```
 $ oauth2l fetch userinfo.email cloud-platform
 ya29.zyxwvutsrqpnmolkjihgfedcba
-```
-Note the `-f` flag specifies output format. Supported formats are: 
-bare, header, json, json_compact, pretty(default).
 
-```
-oauth2l fetch -f json userinfo.email cloud-platform
+$ oauth2l fetch -f json userinfo.email cloud-platform
 {
   "access_token": "ya29.zyxwvutsrqpnmolkjihgfedcba",
   "token_expiry": "2017-02-27T21:20:47Z",
@@ -78,13 +107,8 @@ oauth2l fetch -f json userinfo.email cloud-platform
 }
 ```
 
-You can also fetch an OAuth token by using the secret json file downloaded from
-[Google Cloud Console](https://console.cloud.google.com/apis/credentials).
-```
-$ oauth2l fetch --json service_account.json cloud-platform
-ya29.zyxwvutsrqpnmolkjihgfedcba
-
-```
+NOTE: the `-f` flag specifies the output format. The supported formats are: 
+bare (default), header, json, json_compact, pretty.
 
 ### header
 
@@ -99,11 +123,11 @@ The `header` command is designed to be easy to use with `curl`. For example,
 the following command uses the BigQuery API to list all projects.
 
 ```
-$ curl -H "$(oauth2l header bigquery)" 'https://www.googleapis.com/bigquery/v2/projects'
+$ curl -H "$(oauth2l header bigquery)" https://www.googleapis.com/bigquery/v2/projects
 ```
 
-If you need to call Google APIs frequently using the `header` command, you
-can define a shell alias for it, for example:
+If you need to call Google APIs frequently using `curl`, you can define a
+shell alias for it. For example:
 
 ```
 $ alias gcurl='curl -H "$(oauth2l header cloud-platform)" -H "Content-Type: application/json" '
@@ -119,15 +143,14 @@ and expiration time. If the token has either the
 address of the authenticated identity.
 
 ```
-$ oauth2l info $(oauth2l fetch -f bare bigquery)
+$ oauth2l info $(oauth2l fetch bigquery)
 {
     "expires_in": 3599,
     "scope": "https://www.googleapis.com/auth/bigquery",
     "email": "user@gmail.com"
+    ...
 }
 ```
-
-NOTE: The actual output may have a few more fields.
 
 ### test
 
@@ -150,35 +173,4 @@ file `~/.oauth2l.token`.
 
 ```
 $ oauth2l reset
-```
-
-## Options
-
-### `--json`
-
-Specifies an OAuth credential file, either OAuth client ID or Service Account
-key, to start the OAuth flow. 
-You can download the file from
-[Google Cloud Console](https://console.cloud.google.com/apis/credentials).
-
-```
-$ oauth2l fetch --json ~/service_account.json cloud-platform
-```
-
-### `--sso` and `--sso_cli`
-
-A single sign-on (SSO) command to fetch OAuth token. 
-The command outputs an OAuth access token to its stdout. 
-The default command is for Google's corporate SSO.
-It works like:
-
-```
-$ sso me@example.com scope1 scope2
-```
-
-Then use oauth2l with the SSO CLI:
-
-```
-$ oauth2l header --sso me@example.com --sso_cli /usr/bin/sso cloud-platform
-$ oauth2l header --sso me@google.com cloud-platform
 ```
