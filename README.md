@@ -7,7 +7,9 @@ oauth2l
 [![Versions](https://img.shields.io/pypi/pyversions/google-oauth2l.svg)](https://pypi.python.org/pypi/google-oauth2l)
 
 `oauth2l` (pronounced "oauth tool") is a simple command-line tool for
-interacting with Google OAuth system. Its primary use is to fetch and
+working with
+[Google OAuth 2.0](https://developers.google.com/identity/protocols/OAuth2).
+Its primary use is to fetch and
 print OAuth 2.0 access tokens, which can be used with other command-line
 tools and shell scripts.
 
