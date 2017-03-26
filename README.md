@@ -13,8 +13,10 @@ Its primary use is to fetch and
 print OAuth 2.0 access tokens, which can be used with other command-line
 tools and shell scripts.
 
-If you need to reimplement this functionality in another programming
-language, please see [Go OAuth2l](go/oauth2client) for reference.
+It also serves the purpose of demonstrating how to design a simple and
+easy-to-use OAuth 2.0 client library experience. If you need to
+reimplement this functionality in another programming language,
+please use [Go OAuth2l](go/oauth2client) as reference code.
 
 ## Overview
 
