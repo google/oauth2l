@@ -14,20 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""oauth2l configuration."""
+import io
 
-import platform
-
-try:
-    import setuptools
-except ImportError:
-    from ez_setup import use_setuptools
-    use_setuptools()
-    import setuptools
+from setuptools import find_packages
+from setuptools import setup
 
 # Configure the required packages and scripts to install, depending on
 # Python version and OS.
-REQUIRED_PACKAGES = [
+DEPENDENCIES = [
     'httplib2>=0.9.1',
     'oauth2client>=2.1.0',
     'setuptools>=18.5',
@@ -35,41 +29,25 @@ REQUIRED_PACKAGES = [
     'fasteners>=0.14.1'
 ]
 
-TESTING_PACKAGES = [
-    'mock>=1.0.1',
-]
-
 CONSOLE_SCRIPTS = [
     'oauth2l = oauth2l:main',
 ]
 
-py_version = platform.python_version()
+with io.open('README.md', 'r') as fh:
+    README = fh.read()
 
-if py_version < '2.7' or ('3' < py_version < '3.4'):
-    raise ValueError('oauth2l requires Python 2.7 or 3.4+')
-
-# Keep in sync with oauth2l/__init__.py.
-_OAUTH2L_VERSION = '1.0.0'
-
-with open('README.md') as fileobj:
-    README = fileobj.read()
-
-setuptools.setup(
+setup(
     name='google-oauth2l',
-    version=_OAUTH2L_VERSION,
+    version='1.0.0',
     description='command-line google oauth tools',
     long_description=README,
     url='http://github.com/google/oauth2l',
     author='Craig Citro',
     author_email='craigcitro@google.com',
     # Contained modules and scripts.
-    packages=setuptools.find_packages(),
+    packages=find_packages(),
     entry_points={'console_scripts': CONSOLE_SCRIPTS},
-    install_requires=REQUIRED_PACKAGES,
-    tests_require=REQUIRED_PACKAGES + TESTING_PACKAGES,
-    extras_require={
-        'testing': TESTING_PACKAGES,
-    },
+    install_requires=DEPENDENCIES,
     # PyPI package information.
     classifiers=[
         'License :: OSI Approved :: Apache Software License',

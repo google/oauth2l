@@ -73,6 +73,7 @@ from oauth2client import GOOGLE_TOKEN_INFO_URI
 from oauth2client import service_account
 from oauth2client import tools
 from oauth2client.contrib import multiprocess_file_storage
+import pkg_resources
 
 # We could use a generated client here, but it's used for precisely
 # one URL, with one parameter and no worries about URL encoding. Let's
@@ -83,7 +84,7 @@ _OAUTH2_TOKENINFO_TEMPLATE = (
 
 # Keep in sync with setup.py. (Currently just used for UserAgent
 # tagging, so not critical.)
-_OAUTH2L_VERSION = '1.0.0'
+_OAUTH2L_VERSION = pkg_resources.get_distribution('google-oauth2l').version
 _DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
 # Prefix of Google OAuth scopes
 _SCOPE_PREFIX = 'https://www.googleapis.com/auth/'

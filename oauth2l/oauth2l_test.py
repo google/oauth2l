@@ -181,7 +181,7 @@ class TestFetch(unittest.TestCase):
             self.credentials.access_token = "refreshed_credentials"
         mock_refresh.side_effect = refreshCredentials
         self.credentials.access_token = None
-        self.credentials.access_token_expired = False
+        self.credentials.token_expiry = None
         output = _GetCommandOutput('fetch',
                                    self.json_args + ['userinfo.email'])
 
@@ -198,7 +198,7 @@ class TestFetch(unittest.TestCase):
             self.credentials.access_token = "refreshed_credentials"
         mock_refresh.side_effect = refreshCredentials
         self.credentials.access_token = "some_token"
-        self.credentials.access_token_expired = True
+        self.credentials.token_expiry = None
         output = _GetCommandOutput('fetch',
                                    self.json_args + ['userinfo.email'])
 
@@ -295,7 +295,7 @@ class TestOtherCommands(unittest.TestCase):
         scopes = [u'https://www.googleapis.com/auth/userinfo.email',
                   u'https://www.googleapis.com/auth/cloud-platform']
         content = json.dumps({'scope': ' '.join(scopes)})
-        if isinstance(content, bytes):
+        if isinstance(content, bytes):  # pragma: NO COVER
             content = content.decode('utf8')
         with mock.patch.object(httplib2, 'Http', autospec=True) as mock_http:
             mock_http.return_value = mock_h = mock.MagicMock()

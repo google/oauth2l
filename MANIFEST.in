@@ -1,4 +1,2 @@
-include *.py
-include *.txt
-include *.md
-recursive-include oauth2l *.py
+include README.md LICENSE.txt
+recursive-include oauth2l *.json

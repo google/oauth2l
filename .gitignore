@@ -8,6 +8,7 @@ distribute-*
 # Test files
 .tox/
 nosetests.xml
+.cache/
 
 # Coverage related
 .coverage
