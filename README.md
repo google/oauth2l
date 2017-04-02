@@ -13,10 +13,10 @@ Its primary use is to fetch and
 print OAuth 2.0 access tokens, which can be used with other command-line
 tools and shell scripts.
 
-It also serves the purpose of demonstrating how to design a simple and
-easy-to-use OAuth 2.0 client library experience. If you need to
-reimplement this functionality in another programming language,
-please use [Go OAuth2l](go/oauth2client) as reference code.
+This tool also demonstrates how to design a simple and easy-to-use OAuth
+2.0 client experience. If you need to reimplement this functionality in
+another programming language, please use [Go OAuth2l](go/oauth2client)
+as reference code.
 
 ## Overview
 
@@ -25,22 +25,22 @@ accounts and service accounts in different environments:
 
 *   When running inside Google Compute Engine (GCE) and Google Container
     Engine (GKE), it uses the credentials of the current service account
-   (if it exists).
+    if it is available.
 
 *   When running inside user context that has an active Google Cloud SDK
     (gcloud) session, it uses the current gcloud credentials.
 
-*   When running with command-line flag `--json xxx`, where `xxx` points to
+*   When running with command option `--json xxx`, where `xxx` points to
     a JSON credential file downloaded from
     [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
-    `oauth2l` uses the file to start an OAuth session. The file can be a
-    service account key or an OAuth client ID.
+    `oauth2l` uses the file to start an OAuth session. The file can be
+    either a service account key or an OAuth client ID.
 
-*   When running with command-line flag `--sso {email}`, it invokes an
-    external command to retrieve Single Sign-on (SSO) access token.
+*   When running with command option `--sso {email}`, it invokes an
+    external `sso` command to retrieve Single Sign-on (SSO) access token.
 
-NOTE: `oauth2l` caches the OAuth credentials to avoid prompting user
-repeatedly.
+NOTE: `oauth2l` caches the OAuth credentials in user's home directory to
+avoid prompting user repeatedly.
 
 ## Install
 
@@ -116,7 +116,7 @@ bare (default), header, json, json_compact, pretty.
 
 ### header
 
-Same as `fetch`, except that we print the token in HTTP header format:
+The same as `fetch`, except the output is in HTTP header format:
 
 ```
 $ oauth2l header userinfo.email
