@@ -89,6 +89,9 @@ _DEFAULT_USER_AGENT = 'oauth2l/' + _OAUTH2L_VERSION
 # Prefix of Google OAuth scopes
 _SCOPE_PREFIX = 'https://www.googleapis.com/auth/'
 
+# Scopes defined by OpenID standard and does not have Google's URI prefix
+_PREFIXLESS_SCOPES = ['profile', 'email', 'openid']
+
 # We need to know the gcloud scopes in order to decide when to use the
 # Application Default Credentials.
 _GCLOUD_SCOPES = {
@@ -125,8 +128,8 @@ def GetClientInfoFromFile(client_secrets):
 
 
 def _ExpandScopes(scopes):
-    return [s if s.startswith('https://') else _SCOPE_PREFIX + s
-            for s in scopes]
+    return [s if s.startswith('https://') or s in _PREFIXLESS_SCOPES 
+            else _SCOPE_PREFIX + s for s in scopes]
 
 
 def _PrettyJson(data):
