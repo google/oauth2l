@@ -38,7 +38,7 @@ with io.open('README.md', 'r') as fh:
 
 setup(
     name='google-oauth2l',
-    version='1.0.0',
+    version='1.0.1',
     description='command-line google oauth tools',
     long_description=README,
     url='http://github.com/google/oauth2l',
