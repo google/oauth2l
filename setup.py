@@ -26,7 +26,8 @@ DEPENDENCIES = [
     'oauth2client>=2.1.0',
     'setuptools>=18.5',
     'six>=1.9.0',
-    'fasteners>=0.14.1'
+    'fasteners>=0.14.1',
+    'pyopenssl>=17.5.0'
 ]
 
 CONSOLE_SCRIPTS = [
@@ -38,7 +39,7 @@ with io.open('README.md', 'r') as fh:
 
 setup(
     name='google-oauth2l',
-    version='1.0.1',
+    version='1.0.2',
     description='command-line google oauth tools',
     long_description=README,
     url='http://github.com/google/oauth2l',

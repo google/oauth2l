@@ -15,6 +15,7 @@
 
 """Tests for oauth2l."""
 
+import base64
 import json
 import os
 import sys
@@ -350,7 +351,7 @@ class TestOtherCommands(unittest.TestCase):
         os.remove = mock_remove = mock.MagicMock()
         os.path.exists = mock_exists = mock.MagicMock()
         mock_exists.return_value = False
-        output = _GetCommandOutput('reset', []) 
+        output = _GetCommandOutput('reset', [])
         mock_remove.assert_not_called()
         os.remove = orig_os_remove
         os.path.exists = orig_os_path_exist
@@ -384,7 +385,7 @@ class TestServiceAccounts(unittest.TestCase):
         self.from_keyfile.return_value = self.credentials
         self.addCleanup(patcher_service_account.stop)
 
-    @mock.patch.object(oauth2l, '_GetCredentialForServiceAccount', 
+    @mock.patch.object(oauth2l, '_GetCredentialForServiceAccount',
                        autospec=True)
     def testServiceAccounts(self, mock_get):
         mock_get.return_value = self.credentials
@@ -448,7 +449,7 @@ class TestSso(unittest.TestCase):
             'returncode': 0
         }
         process_mock.configure_mock(**attrs)
-        mock_subproc_popen.return_value = process_mock 
+        mock_subproc_popen.return_value = process_mock
 
         fetch_args = ['--sso=example@example.com', 'userinfo.email']
         output = _GetCommandOutput('fetch', fetch_args)
@@ -463,13 +464,43 @@ class TestSso(unittest.TestCase):
             'returncode': 1
         }
         process_mock.configure_mock(**attrs)
-        mock_subproc_popen.return_value = process_mock 
+        mock_subproc_popen.return_value = process_mock
 
         fetch_args = ['--sso=example@example.com', 'userinfo.email']
         output = _GetCommandOutput('fetch', fetch_args)
         self.assertIn('Failed to fetch OAuth token by SSO.', output)
         self.assertEqual(1, mock_subproc_popen.call_count)
 
+class TestJwt(unittest.TestCase):
+    def setUp(self):
+        self.fake_time = 1515009554
+        self.expected_jwt_header = {
+            "typ": "JWT",
+            "alg": "RS256",
+            "kid": "abc"
+        }
+        self.expected_jwt_payload = {
+            "iss": "123-abc@developer.gserviceaccount.com",
+            "iat": 1515009494,
+            "exp": 1515013094,
+            "sub": "123-abc@developer.gserviceaccount.com",
+            "aud": "https://fake/audience"
+        }
+
+    @mock.patch('time.time')
+    def testJwtFetchSuccess(self, mock_time):
+        mock_time.return_value = self.fake_time
+        service_account_path = os.path.join(
+            os.path.dirname(__file__), 'testdata/fake_service_account.json')
+
+        fetch_args = ['--jwt', '--json=' + service_account_path, 'https://fake/audience']
+        output = _GetCommandOutput('fetch', fetch_args)
+        header_base64, payload_base64, signature_base64 = output.split('.')
+        header = json.loads(base64.urlsafe_b64decode(header_base64))
+        payload = json.loads(base64.urlsafe_b64decode(payload_base64 + "=="))
+        self.assertEqual(self.expected_jwt_header, header)
+        self.assertEqual(self.expected_jwt_payload, payload)
+        self.assertEqual(1, mock_time.call_count)
 
 class TestADC(unittest.TestCase):
     def setUp(self):
