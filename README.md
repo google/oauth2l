@@ -98,7 +98,7 @@ needed but a single JWT audience must be provided.
 Example:
 
 ```
-oauth2l fetch --jwt --json ~/service_account.json https://bigquery.googleapis.com/google.cloud.bigquery.v3.QueryService
+oauth2l fetch --jwt --json ~/service_account.json https://pubsub.googleapis.com/google.pubsub.v1.Publisher
 ```
 
 ## Commands
@@ -137,10 +137,10 @@ Authorization: Bearer ya29.zyxwvutsrqpnmolkjihgfedcba
 ```
 
 The `header` command is designed to be easy to use with `curl`. For example,
-the following command uses the BigQuery API to list all projects.
+the following command uses the PubSub API to list all PubSub topics.
 
 ```
-$ curl -H "$(oauth2l header bigquery)" https://www.googleapis.com/bigquery/v2/projects
+$ curl -H "$(oauth2l header pubsub)" https://pubsub.googleapis.com/v1/projects/my-project-id/topics
 ```
 
 If you need to call Google APIs frequently using `curl`, you can define a
@@ -148,7 +148,7 @@ shell alias for it. For example:
 
 ```
 $ alias gcurl='curl -H "$(oauth2l header cloud-platform)" -H "Content-Type: application/json" '
-$ gcurl 'https://www.googleapis.com/bigquery/v2/projects'
+$ gcurl 'https://pubsub.googleapis.com/v1/projects/my-project-id/topics'
 ```
 
 ### info
@@ -160,10 +160,10 @@ and expiration time. If the token has either the
 address of the authenticated identity.
 
 ```
-$ oauth2l info $(oauth2l fetch bigquery)
+$ oauth2l info $(oauth2l fetch pubsub)
 {
     "expires_in": 3599,
-    "scope": "https://www.googleapis.com/auth/bigquery",
+    "scope": "https://www.googleapis.com/auth/pubsub",
     "email": "user@gmail.com"
     ...
 }
