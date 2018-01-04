@@ -496,8 +496,8 @@ class TestJwt(unittest.TestCase):
         fetch_args = ['--jwt', '--json=' + service_account_path, 'https://fake/audience']
         output = _GetCommandOutput('fetch', fetch_args)
         header_base64, payload_base64, signature_base64 = output.split('.')
-        header = json.loads(base64.urlsafe_b64decode(header_base64))
-        payload = json.loads(base64.urlsafe_b64decode(payload_base64 + "=="))
+        header = json.loads(base64.urlsafe_b64decode(header_base64.encode('utf-8')).decode())
+        payload = json.loads(base64.urlsafe_b64decode((payload_base64 + "==").encode('utf-8')).decode())
         self.assertEqual(self.expected_jwt_header, header)
         self.assertEqual(self.expected_jwt_payload, payload)
         self.assertEqual(1, mock_time.call_count)

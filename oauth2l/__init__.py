@@ -316,11 +316,11 @@ def _ConstructJwtCredential(json_keyfile, audience):
         "exp": current_time + 3600
     }
 
-    jwt_header_base64 = base64.urlsafe_b64encode(json.dumps(jwt_header, separators=(',', ':'))).strip('=')
-    jwt_payload_base64 = base64.urlsafe_b64encode(json.dumps(jwt_payload, separators=(',', ':'))).strip('=')
+    jwt_header_base64 = base64.urlsafe_b64encode(json.dumps(jwt_header, separators=(',', ':')).encode('utf-8')).decode().strip('=')
+    jwt_payload_base64 = base64.urlsafe_b64encode(json.dumps(jwt_payload, separators=(',', ':')).encode('utf-8')).decode().strip('=')
     jwt_base_string = jwt_header_base64 + '.' + jwt_payload_base64
 
-    jwt_signature = base64.urlsafe_b64encode(crypto.sign(pkey, jwt_base_string, "sha256")).strip('=')
+    jwt_signature = base64.urlsafe_b64encode(crypto.sign(pkey, jwt_base_string, "sha256")).decode().strip('=')
 
     jwt = jwt_base_string + '.' + jwt_signature
 
