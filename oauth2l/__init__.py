@@ -56,6 +56,7 @@ into other programs:
 from __future__ import print_function
 
 import argparse
+import base64
 import httplib2
 import json
 import logging
@@ -63,6 +64,7 @@ import os
 import subprocess
 import sys
 import textwrap
+import time
 if sys.version_info[0] == 2:
   import httplib as http_client
 else:
@@ -73,6 +75,7 @@ from oauth2client import GOOGLE_TOKEN_INFO_URI
 from oauth2client import service_account
 from oauth2client import tools
 from oauth2client.contrib import multiprocess_file_storage
+from OpenSSL import crypto
 import pkg_resources
 
 # We could use a generated client here, but it's used for precisely
@@ -128,7 +131,7 @@ def GetClientInfoFromFile(client_secrets):
 
 
 def _ExpandScopes(scopes):
-    return [s if s.startswith('https://') or s in _PREFIXLESS_SCOPES 
+    return [s if s.startswith('https://') or s in _PREFIXLESS_SCOPES
             else _SCOPE_PREFIX + s for s in scopes]
 
 
@@ -275,7 +278,7 @@ def _GetCredentialsVia3LO(client_info, credentials_filename=None):
     return credentials
 
 
-def _GetCredentialForServiceAccount(json_keyfile, scopes, 
+def _GetCredentialForServiceAccount(json_keyfile, scopes,
                                     credentials_filename=None):
     with open(json_keyfile, 'r') as json_keyfile_obj:
         client_credentials = json.load(json_keyfile_obj)
@@ -291,6 +294,37 @@ def _GetCredentialForServiceAccount(json_keyfile, scopes,
         credentials.set_store(credential_store)
     return credentials
 
+def _ConstructJwtCredential(json_keyfile, audience):
+    with open(json_keyfile, 'r') as json_keyfile_obj:
+        client_credentials = json.load(json_keyfile_obj)
+
+    pkey = crypto.load_privatekey(crypto.FILETYPE_PEM, client_credentials['private_key'])
+
+    jwt_header = {
+        "alg": "RS256",
+        "typ": "JWT",
+        "kid": client_credentials['private_key_id']
+    }
+
+    # Use time 1 minute before now to avoid clock skew with Google servers
+    current_time = int(time.time()) - 60
+    jwt_payload = {
+        "iss": client_credentials['client_email'],
+        "sub": client_credentials['client_email'],
+        "aud": audience,
+        "iat": current_time,
+        "exp": current_time + 3600
+    }
+
+    jwt_header_base64 = base64.urlsafe_b64encode(json.dumps(jwt_header, separators=(',', ':')).encode('utf-8')).decode().strip('=')
+    jwt_payload_base64 = base64.urlsafe_b64encode(json.dumps(jwt_payload, separators=(',', ':')).encode('utf-8')).decode().strip('=')
+    jwt_base_string = jwt_header_base64 + '.' + jwt_payload_base64
+
+    jwt_signature = base64.urlsafe_b64encode(crypto.sign(pkey, jwt_base_string, "sha256")).decode().strip('=')
+
+    jwt = jwt_base_string + '.' + jwt_signature
+
+    return client.AccessTokenCredentials(jwt, _DEFAULT_USER_AGENT)
 
 def _FetchCredentialWithSso(sso_cli, sso_email, scopes):
     """Fetch a credential with access_token fetched from the sso CLI."""
@@ -303,7 +337,7 @@ def _FetchCredentialWithSso(sso_cli, sso_email, scopes):
             raise Exception
     except:
         raise ValueError('Failed to fetch OAuth token by SSO.')
-    
+
     return client.AccessTokenCredentials(
         result.strip(), _DEFAULT_USER_AGENT)
 
@@ -316,6 +350,14 @@ def _FetchCredentials(args, client_info=None, credentials_filename=None):
             args.sso_cli if args.sso_cli else _SSO_CLI, args.sso, scopes)
 
     client_secrets, service_account_json_keyfile = _ProcessJsonArg(args)
+
+    if service_account_json_keyfile and args.jwt:
+        if not scopes:
+            raise ValueError('No audience provided')
+        if len(scopes) > 1:
+            raise ValueError('More than one audience provided')
+        return _ConstructJwtCredential(service_account_json_keyfile, args.scope[0])
+
     if not scopes:
         raise ValueError('No scopes provided')
     credentials = None
@@ -323,7 +365,7 @@ def _FetchCredentials(args, client_info=None, credentials_filename=None):
     # takes precedence.
     if service_account_json_keyfile:
         credentials = _GetCredentialForServiceAccount(
-            service_account_json_keyfile, scopes, 
+            service_account_json_keyfile, scopes,
             credentials_filename or args.credentials_filename)
     elif client_secrets:
         client_info = GetClientInfoFromFile(client_secrets)
@@ -398,6 +440,10 @@ def _GetParser():
         '--sso',
         default='',
         help=('Email address for getting OAuth token with SSO.'))
+    shared_flags.add_argument(
+        '--jwt',
+        action='store_true',
+        help=('Use specified service account json key to generate a JWT token instead of access token.'))
 
     parser = argparse.ArgumentParser(
         description=__doc__,

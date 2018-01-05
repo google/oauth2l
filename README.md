@@ -73,7 +73,7 @@ $ oauth2l fetch --json ~/service_account.json cloud-platform
 
 ### --sso and --sso_cli
 
-Using an external Single Sign-on (SSO) command to fetch OAuth token.  
+Using an external Single Sign-on (SSO) command to fetch OAuth token.
 The command outputs an OAuth access token to its stdout. The default
 command is for Google's corporate SSO. For example:
 
@@ -86,6 +86,19 @@ Then use oauth2l with the SSO CLI:
 ```
 $ oauth2l header --sso me@example.com --sso_cli /usr/bin/sso cloud-platform
 $ oauth2l header --sso me@google.com cloud-platform
+```
+
+### --jwt
+
+When this option is set and the json file specified in the `--json` option
+is a service account key file, a JWT token signed by the service account
+private key will be generated. When this option is set, no scope list is
+needed but a single JWT audience must be provided.
+
+Example:
+
+```
+oauth2l fetch --jwt --json ~/service_account.json https://pubsub.googleapis.com/google.pubsub.v1.Publisher
 ```
 
 ## Commands
@@ -111,7 +124,7 @@ $ oauth2l fetch -f json userinfo.email cloud-platform
 }
 ```
 
-NOTE: the `-f` flag specifies the output format. The supported formats are: 
+NOTE: the `-f` flag specifies the output format. The supported formats are:
 bare (default), header, json, json_compact, pretty.
 
 ### header
@@ -124,10 +137,10 @@ Authorization: Bearer ya29.zyxwvutsrqpnmolkjihgfedcba
 ```
 
 The `header` command is designed to be easy to use with `curl`. For example,
-the following command uses the BigQuery API to list all projects.
+the following command uses the PubSub API to list all PubSub topics.
 
 ```
-$ curl -H "$(oauth2l header bigquery)" https://www.googleapis.com/bigquery/v2/projects
+$ curl -H "$(oauth2l header pubsub)" https://pubsub.googleapis.com/v1/projects/my-project-id/topics
 ```
 
 If you need to call Google APIs frequently using `curl`, you can define a
@@ -135,7 +148,7 @@ shell alias for it. For example:
 
 ```
 $ alias gcurl='curl -H "$(oauth2l header cloud-platform)" -H "Content-Type: application/json" '
-$ gcurl 'https://www.googleapis.com/bigquery/v2/projects'
+$ gcurl 'https://pubsub.googleapis.com/v1/projects/my-project-id/topics'
 ```
 
 ### info
@@ -147,10 +160,10 @@ and expiration time. If the token has either the
 address of the authenticated identity.
 
 ```
-$ oauth2l info $(oauth2l fetch bigquery)
+$ oauth2l info $(oauth2l fetch pubsub)
 {
     "expires_in": 3599,
-    "scope": "https://www.googleapis.com/auth/bigquery",
+    "scope": "https://www.googleapis.com/auth/pubsub",
     "email": "user@gmail.com"
     ...
 }
