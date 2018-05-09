@@ -93,7 +93,8 @@ $ oauth2l header --sso me@google.com cloud-platform
 When this option is set and the json file specified in the `--json` option
 is a service account key file, a JWT token signed by the service account
 private key will be generated. When this option is set, no scope list is
-needed but a single JWT audience must be provided.
+needed but a single JWT audience must be provided. See how to construct the
+audience [here](https://developers.google.com/identity/protocols/OAuth2ServiceAccount#jwt-auth).
 
 Example:
 
