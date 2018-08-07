@@ -17,3 +17,6 @@ htmlcov/
 
 # Make sure a generated file isn't accidentally committed.
 reduced.pylintrc
+
+# GoLand
+go/.idea/
