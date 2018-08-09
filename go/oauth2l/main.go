@@ -35,15 +35,15 @@ func help() {
 		"[--jwt] [--json] [--sso] [--ssocli] {scope|aud|email}")
 }
 
-func readJSON(file string) (string) {
+func readJSON(file string) (string, error) {
 	if file != "" {
 		secretBytes, err := ioutil.ReadFile(file)
 		if err != nil {
-			panic(fmt.Sprintf("Failed to read file %s.\n", file))
+			return "", err
 		}
-		return string(secretBytes)
+		return string(secretBytes), nil
 	}
-	return ""
+	return "", nil
 }
 
 // Default 3LO authorization handler. Prints the authorization URL on stdout
@@ -107,8 +107,15 @@ func main() {
 	if task, ok := fetchTasks[cmd]; ok {
 		if *jwtFlag {
 			// JWT flow
+			json, err := readJSON(*jsonFile)
+			if err != nil {
+				fmt.Println("Failed to open file: " + *jsonFile)
+				fmt.Println(err.Error())
+				return
+			}
+
 			settings := &sgauth.Settings{
-				CredentialsJSON: readJSON(*jsonFile),
+				CredentialsJSON: json,
 				Audience: flagSet.Args()[len(flagSet.Args()) - 1],
 			}
 			task(settings)
@@ -118,10 +125,17 @@ func main() {
 				parseScopes(flagSet.Args()[1:]))
 		} else {
 			// OAuth flow
+			json, err := readJSON(*jsonFile)
+			if err != nil {
+				fmt.Println("Failed to open file: " + *jsonFile)
+				fmt.Println(err.Error())
+				return
+			}
+
 			// 3LO or 2LO depending on the credential type.
 			// For 2LO flow OAuthFlowHandler and State are not needed.
 			settings := &sgauth.Settings{
-				CredentialsJSON:  readJSON(*jsonFile),
+				CredentialsJSON:  json,
 				Scope:            parseScopes(flagSet.Args()),
 				OAuthFlowHandler: defaultAuthorizeFlowHandler,
 				State:            "state",

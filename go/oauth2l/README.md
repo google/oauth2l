@@ -9,10 +9,6 @@ Its primary use is to fetch and
 print OAuth 2.0 access tokens, which can be used with other command-line
 tools and shell scripts.
 
-This tool also demonstrates how to design a simple and easy-to-use OAuth
-2.0 client experience with [Google Authenticator](https://github.com/shinfan/sgauth/).
-Please use [this package](oauth2l/) as reference code.
-
 ## Overview
 
 `oauth2l` supports all Google OAuth 2.0 authentication flows for both user
