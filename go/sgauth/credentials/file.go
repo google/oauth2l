@@ -16,8 +16,8 @@ package credentials
 
 import (
 	"fmt"
-	"github.com/shinfan/sgauth/internal"
 	"golang.org/x/net/context"
+	"github.com/google/oauth2l/go/sgauth/internal"
 )
 
 // DefaultTokenURL is Google's OAuth 2.0 token URL to use with the JWT flow.

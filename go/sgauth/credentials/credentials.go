@@ -14,7 +14,7 @@
 // limitations under the License.
 package credentials
 
-import "github.com/shinfan/sgauth/internal"
+import "github.com/google/oauth2l/go/sgauth/internal"
 
 // Credentials holds Google credentials, including "Application Default Credentials".
 // For more details, see:

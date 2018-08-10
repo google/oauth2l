@@ -29,7 +29,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"context"
-	"github.com/shinfan/sgauth/internal"
+	"github.com/google/oauth2l/go/sgauth/internal"
 )
 
 var (
@@ -110,7 +110,6 @@ func (js jwtSource) Token() (*internal.Token, error) {
 		Scope: strings.Join(js.conf.Scopes, " "),
 		Aud:   js.conf.TokenURL,
 	}
-	fmt.Println("Token URL: " + js.conf.TokenURL)
 	if subject := js.conf.Subject; subject != "" {
 		claimSet.Sub = subject
 		// prn is the old name of sub. Keep setting it

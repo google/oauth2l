@@ -15,7 +15,7 @@
 package sgauth
 
 import (
-	"github.com/shinfan/sgauth/internal"
+	"github.com/google/oauth2l/go/sgauth/internal"
 	"net/http"
 	"golang.org/x/net/context"
 )

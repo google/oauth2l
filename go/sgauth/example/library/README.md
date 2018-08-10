@@ -4,7 +4,7 @@ Google Authenticator(GA) Prototype
 
 To install the Google Authenticator prototype, run:
 ```
-go get github.com/shinfan/sgauth/example/library
+go get github.com/google/oauth2l/go/sgauth/example/library
 ```
 ## Credentials
 Currently Google Authenticator reads the service account JSON credential file from environment path:

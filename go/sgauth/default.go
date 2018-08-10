@@ -17,17 +17,17 @@ package sgauth
 import (
 	gRPCCredentials "google.golang.org/grpc/credentials"
 	"context"
-	"github.com/shinfan/sgauth/internal"
 	"os"
 	"fmt"
 	"io/ioutil"
 	"encoding/json"
 	"strings"
-	"github.com/shinfan/sgauth/credentials"
 	"cloud.google.com/go/compute/metadata"
 	"runtime"
 	"path/filepath"
 	"os/user"
+	"github.com/google/oauth2l/go/sgauth/internal"
+	"github.com/google/oauth2l/go/sgauth/credentials"
 )
 
 // DefaultTokenSource returns the token source for
