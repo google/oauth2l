@@ -19,7 +19,7 @@ import (
 	"net/http"
 	"io/ioutil"
 	"errors"
-	"github.com/shinfan/sgauth"
+	"github.com/google/oauth2l/go/sgauth"
 	"context"
 )
 
