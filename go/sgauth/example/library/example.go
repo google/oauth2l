@@ -18,7 +18,7 @@ import (
 	"github.com/wora/protorpc/client"
 	"fmt"
 	"google.golang.org/genproto/googleapis/example/library/v1"
-	"github.com/shinfan/sgauth"
+	"github.com/google/oauth2l/go/sgauth"
 	"github.com/golang/protobuf/proto"
 	"golang.org/x/net/context"
 )

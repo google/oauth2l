@@ -28,7 +28,7 @@ To use the authenticator library in your application simply import the package i
 code:
 
 ```go
-import "github.com/shinfan/sgauth"
+import "github.com/google/oauth2l/go/sgauth"
 ```
 
 To use the authenticator to call Google APIs, simply create a authenticator settings object with
@@ -36,7 +36,7 @@ the credentials supported by Google APIs, and use the settings to create the cli
 For example, to call Google API with HTTP and API key:
 
 ```go
-import "github.com/shinfan/sgauth"
+import "github.com/google/oauth2l/go/sgauth"
 
 // Create the settings with pasted API key.
 settings := &sgauth.Settings{
@@ -74,7 +74,7 @@ __REST, gRPC, ProtoRPC__
 
 To use the library calling __REST APIs__, simply create a HTTP client:
 ```go
-import "github.com/shinfan/sgauth"
+import "github.com/google/oauth2l/go/sgauth"
 
 // Create the settings
 settings := &sgauth.Settings{
@@ -90,7 +90,7 @@ if err != nil {
 Or you can use the library with a __gRPC API client__:
 
 ```go
-import "github.com/shinfan/sgauth"
+import "github.com/google/oauth2l/go/sgauth"
 
 // Create the settings
 settings := &sgauth.Settings{
@@ -106,7 +106,7 @@ client := library.NewLibraryServiceClient(conn)
 
 To use the library calling __ProtoRPC APIs__:
 ```go
-import "github.com/shinfan/sgauth"
+import "github.com/google/oauth2l/go/sgauth"
 import "github.com/wora/protorpc/client"
 
 // Create the settings

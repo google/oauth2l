@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"fmt"
-	"github.com/shinfan/sgauth/internal"
+	"github.com/google/oauth2l/go/sgauth/internal"
 )
 
 func NewGrpcConn(ctx context.Context, settings *Settings, host string, port string) (*grpc.ClientConn, error) {

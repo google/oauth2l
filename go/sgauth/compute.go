@@ -21,7 +21,7 @@ import (
 	"strings"
 	"fmt"
 	"time"
-	"github.com/shinfan/sgauth/internal"
+	"github.com/google/oauth2l/go/sgauth/internal"
 )
 
 // ComputeTokenSource returns a token source that fetches access tokens
