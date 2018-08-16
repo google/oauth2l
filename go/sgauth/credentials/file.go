@@ -23,6 +23,9 @@ import (
 // DefaultTokenURL is Google's OAuth 2.0 token URL to use with the JWT flow.
 const DefaultTokenURL = "https://accounts.google.com/o/oauth2/token"
 
+// DefaultAuthURL is Google's OAuth 2.0 Auth URL to use with the 2LO flow.
+const DefaultAuthURL = "https://accounts.google.com/o/oauth2/auth"
+
 // JSON key file types.
 const (
 	ServiceAccountKey  = "service_account"
@@ -90,8 +93,8 @@ func (f *File) TokenSource(ctx context.Context, scopes []string,
 			ClientSecret: f.ClientSecret,
 			Scopes:       scopes,
 			Endpoint:     internal.Endpoint{
-				AuthURL: f.AuthURL,
-				TokenURL: f.TokenURL,
+				AuthURL: DefaultAuthURL,
+				TokenURL: DefaultTokenURL,
 			},
 		}
 		tok := &internal.Token{RefreshToken: f.RefreshToken}
