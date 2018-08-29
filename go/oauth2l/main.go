@@ -31,7 +31,7 @@ var (
 )
 
 func help() {
-	fmt.Println("Usage: oauth2l {fetch|header|info|test} " +
+	fmt.Println("Usage: oauth2l {fetch|header|info|test|reset} " +
 		"[--jwt] [--json] [--sso] [--ssocli] {scope|aud|email}")
 }
 
@@ -69,7 +69,7 @@ func parseScopes(scopes []string) string {
 }
 
 func main() {
-	if len(os.Args) < 3 {
+	if len(os.Args) < 2 {
 		help()
 		return
 	}
@@ -144,6 +144,8 @@ func main() {
 		}
 	} else if task, ok := infoTasks[cmd]; ok {
 		task(flagSet.Args()[len(flagSet.Args()) - 1])
+	} else if cmd == "reset" {
+		util.Reset()
 	} else {
 		// Unknown command, print usage.
 		help()

@@ -41,20 +41,14 @@ func PrintToken(tokenType string, token string, headerFormat bool) {
 // Fetches and prints the token in plain text with the given settings
 // using Google Authenticator.
 func Fetch(settings *sgauth.Settings) {
-	token, err := sgauth.FetchToken(context.Background(), settings)
-	if err != nil {
-		fmt.Println(err)
-	}
+	token := fetchToken(settings)
 	PrintToken(token.TokenType, token.AccessToken, false)
 }
 
 // Fetches and prints the token in header format with the given settings
 // using Google Authenticator.
 func Header(settings *sgauth.Settings) {
-	token, err := sgauth.FetchToken(context.Background(), settings)
-	if err != nil {
-		fmt.Println(err)
-	}
+	token := fetchToken(settings)
 	PrintToken(token.TokenType, token.AccessToken, true)
 }
 
@@ -79,6 +73,14 @@ func Test(token string) {
 	}
 }
 
+// Reset the cache
+func Reset() {
+	err := ClearCache()
+	if err != nil {
+		fmt.Print(err)
+	}
+}
+
 func getTokenInfo(token string) (string, error) {
 	c := http.DefaultClient
 	resp, err := c.Get(googleTokenInfoURLPrefix + token)
@@ -90,4 +92,20 @@ func getTokenInfo(token string) (string, error) {
 		return "", errors.New(string(data))
 	}
 	return string(data), err
+}
+
+func fetchToken(settings *sgauth.Settings) (*sgauth.Token) {
+	token, _ := LookupCache(settings)
+	if token != nil {
+		return token
+	}
+	token, err := sgauth.FetchToken(context.Background(), settings)
+	if err != nil {
+		fmt.Println(err)
+	}
+	err = InsertCache(settings, token)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return token
 }
