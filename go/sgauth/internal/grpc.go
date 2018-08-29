@@ -22,13 +22,14 @@ type GrpcTokenSource struct {
 	ApiKey string
 
 	// Additional metadata attached as headers
-	QuotaUser string
+	QuotaUser    string
 	QuotaProject string
 	IAMAuthToken string
 }
 
 // GetRequestMetadata gets the request metadata as a map from a TokenSource.
-func (ts GrpcTokenSource) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+func (ts GrpcTokenSource) GetRequestMetadata(ctx context.Context, uri ...string) (
+	map[string]string, error) {
 	metadata := map[string]string{}
 	if ts.ApiKey != "" {
 		metadata[headerApiKey] = ts.ApiKey
