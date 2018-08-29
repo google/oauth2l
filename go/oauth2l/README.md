@@ -170,3 +170,12 @@ $ oauth2l test ya29.justkiddingmadethisoneup
 $ echo $?
 1
 ```
+
+### reset
+
+Reset all tokens cached locally. We cache previously retrieved tokens in the
+file `~/.oauth2l.token`.
+
+```bash
+$ oauth2l reset
+```
