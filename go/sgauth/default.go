@@ -15,7 +15,6 @@
 package sgauth
 
 import (
-	gRPCCredentials "google.golang.org/grpc/credentials"
 	"context"
 	"os"
 	"fmt"
@@ -34,7 +33,7 @@ import (
 // "Application Default Credentials".
 // It is a shortcut for FindDefaultCredentials(ctx, scope).TokenSource.
 func DefaultTokenSource(ctx context.Context, scope string) (internal.TokenSource, error) {
-	creds, err := applicationDefaultCredentials(ctx, &Settings{Scope:scope,})
+	creds, err := applicationDefaultCredentials(ctx, &Settings{Scope: scope,})
 	if err != nil {
 		return nil, err
 	}
@@ -57,26 +56,6 @@ func JWTTokenSource(ctx context.Context, settings *Settings) (internal.TokenSour
 	}
 	ts, err := credentials.JWTAccessTokenSourceFromJSON(creds.JSON, settings.Audience)
 	return ts, err
-}
-
-func NewGrpcApplicationDefault(ctx context.Context, settings *Settings) (gRPCCredentials.PerRPCCredentials, error) {
-	t, err := DefaultTokenSource(ctx, settings.Scope)
-	if err != nil {
-		return nil, err
-	}
-	return internal.GrpcTokenSource{t}, nil
-}
-
-func NewGrpcJWT(ctx context.Context, aud string) (gRPCCredentials.PerRPCCredentials, error) {
-	creds, err := applicationDefaultCredentials(ctx, &Settings{})
-	if creds != nil {
-		ts, err := credentials.JWTAccessTokenSourceFromJSON(creds.JSON, aud)
-		if (err != nil) {
-			return nil, err
-		}
-		return internal.GrpcTokenSource{ts}, nil
-	}
-	return nil, err
 }
 
 func findJSONCredentials(ctx context.Context, settings *Settings) (*credentials.Credentials, error) {
@@ -139,7 +118,7 @@ func readCredentialsFile(ctx context.Context, filename string, settings *Setting
 }
 
 func credentialsFromJSON(ctx context.Context, jsonData []byte, scopes []string,
-	handler func(string)(string, error), state string) (*credentials.Credentials, error) {
+	handler func(string) (string, error), state string) (*credentials.Credentials, error) {
 	var f credentials.File
 	if err := json.Unmarshal(jsonData, &f); err != nil {
 		return nil, err

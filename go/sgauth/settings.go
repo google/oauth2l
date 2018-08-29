@@ -35,11 +35,11 @@ type Settings struct {
 	// We should have named them as quotaUser and quotaProject.
 	QuotaUser string
 	QuotaProject string
-
+	// IAM context attributes
+	IAMAuthToken string
 	// End-user OAuth Flow handler that redirects the user to the given URL
 	// and returns the token.
 	OAuthFlowHandler func(url string) (token string, err error)
-
 	// The state string used for 3LO session verification.
 	State string
 }
