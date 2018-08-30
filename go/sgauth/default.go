@@ -41,7 +41,7 @@ func DefaultTokenSource(ctx context.Context, scope string) (internal.TokenSource
 }
 
 func OAuthJSONTokenSource(ctx context.Context, settings *Settings) (internal.TokenSource, error) {
-	creds, err := findJSONCredentials(ctx, settings)
+	creds, err := FindJSONCredentials(ctx, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func OAuthJSONTokenSource(ctx context.Context, settings *Settings) (internal.Tok
 }
 
 func JWTTokenSource(ctx context.Context, settings *Settings) (internal.TokenSource, error) {
-	creds, err := findJSONCredentials(ctx, settings)
+	creds, err := FindJSONCredentials(ctx, settings)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func JWTTokenSource(ctx context.Context, settings *Settings) (internal.TokenSour
 	return ts, err
 }
 
-func findJSONCredentials(ctx context.Context, settings *Settings) (*credentials.Credentials, error) {
+func FindJSONCredentials(ctx context.Context, settings *Settings) (*credentials.Credentials, error) {
 	if settings.CredentialsJSON != "" {
 		return credentialsFromJSON(ctx, []byte(settings.CredentialsJSON),
 			strings.Split(settings.Scope, " "), settings.OAuthFlowHandler, settings.State)
@@ -131,6 +131,7 @@ func credentialsFromJSON(ctx context.Context, jsonData []byte, scopes []string,
 		ProjectID:   f.ProjectID,
 		TokenSource: ts,
 		JSON:        jsonData,
+		Type:        f.CredentialsType(),
 	}, nil
 }
 

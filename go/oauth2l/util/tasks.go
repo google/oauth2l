@@ -21,35 +21,34 @@ import (
 	"errors"
 	"github.com/google/oauth2l/go/sgauth"
 	"context"
+	"encoding/json"
+	"log"
 )
 
 const (
 	// Base URL to fetch the token info
-	googleTokenInfoURLPrefix =
-		"https://www.googleapis.com/oauth2/v3/tokeninfo/?access_token="
+	googleTokenInfoURLPrefix = "https://www.googleapis.com/oauth2/v3/tokeninfo/?access_token="
 )
 
-// Prints the token in either plain or header format
-func PrintToken(tokenType string, token string, headerFormat bool) {
-	if headerFormat {
-		fmt.Printf("Authorization: %s %s\n", tokenType, token)
-	} else {
-		fmt.Println(token)
-	}
-}
+// Supported output formats
+const (
+	formatJson        = "json"
+	formatJsonCompact = "json_compact"
+	formatPretty      = "pretty"
+	formatHeader      = "header"
+	formatBare        = "bare"
+)
 
 // Fetches and prints the token in plain text with the given settings
 // using Google Authenticator.
-func Fetch(settings *sgauth.Settings) {
-	token := fetchToken(settings)
-	PrintToken(token.TokenType, token.AccessToken, false)
+func Fetch(settings *sgauth.Settings, format string) {
+	printToken(fetchToken(settings), format, getCredentialType(settings))
 }
 
 // Fetches and prints the token in header format with the given settings
 // using Google Authenticator.
-func Header(settings *sgauth.Settings) {
-	token := fetchToken(settings)
-	PrintToken(token.TokenType, token.AccessToken, true)
+func Header(settings *sgauth.Settings, format string) {
+	Fetch(settings, formatHeader)
 }
 
 // Fetch the information of the given token.
@@ -108,4 +107,48 @@ func fetchToken(settings *sgauth.Settings) (*sgauth.Token) {
 		fmt.Println(err)
 	}
 	return token
+}
+
+func getCredentialType(settings *sgauth.Settings) (string) {
+	cred, err := sgauth.FindJSONCredentials(context.Background(), settings)
+	if err != nil {
+		return ""
+	}
+	return cred.Type
+}
+
+// Prints the token with the specified format
+func printToken(token *sgauth.Token, format string, credType string) {
+	switch format {
+	case formatBare:
+		fmt.Println(token.AccessToken)
+	case formatHeader:
+		printHeader(token.TokenType, token.AccessToken)
+	case formatJson:
+		json, err := json.MarshalIndent(token.Raw, "", "  ")
+		if err != nil {
+			log.Fatal(err.Error())
+			return
+		}
+		fmt.Println(string(json))
+	case formatJsonCompact:
+		json, err := json.Marshal(token.Raw)
+		if err != nil {
+			log.Fatal(err.Error())
+			return
+		}
+		fmt.Println(string(json))
+	case formatPretty:
+		fmt.Printf("Fetched credentials of type:\n  %s\n"+
+			"Access Token:\n  %s\n",
+			credType, token.AccessToken)
+	default:
+		log.Fatalf("Invalid choice: '%s' "+
+			"(choose from 'bare', 'header', 'json', 'json_compact', 'pretty')",
+			format)
+	}
+}
+
+func printHeader(tokenType string, token string) {
+	fmt.Printf("Authorization: %s %s\n", tokenType, token)
 }
