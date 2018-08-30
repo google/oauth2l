@@ -21,10 +21,10 @@ import (
 )
 
 // DefaultTokenURL is Google's OAuth 2.0 token URL to use with the JWT flow.
-const DefaultTokenURL = "https://accounts.google.com/o/oauth2/token"
+const DefaultTokenURL = "https://oauth2.googleapis.com/token"
 
 // DefaultAuthURL is Google's OAuth 2.0 Auth URL to use with the 2LO flow.
-const DefaultAuthURL = "https://accounts.google.com/o/oauth2/auth"
+const DefaultAuthURL = "https://oauth2.googleapis.com/auth"
 
 // JSON key file types.
 const (
