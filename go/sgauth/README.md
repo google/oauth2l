@@ -66,6 +66,10 @@ need to specify the `scope` value.
 will try to look for your service account JSON file at the default path --- the path specified
 by the `$GOOGLE_APPLICATION_CREDENTIAL` environment variable.
 
+- __Authorized User__: If no above conditions are defined and you can still auth to google by genearating
+ADC with command `gcloud auth application-default login`. This will store ADC at wellknown path 
+`~/.config/gcloud/application_default_credentials.json`
+
 Protocols
 ---------
 
