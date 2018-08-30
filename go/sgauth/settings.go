@@ -30,17 +30,25 @@ type Settings struct {
 	// The Google API key
 	APIKey string
 	// This is only used for domain-wide delegation.
+	// UNIMPLEMENTED
 	User string
-	// This name is confusing now. Since we have quotaUser and userProject.
-	// We should have named them as quotaUser and quotaProject.
+	// The identifier to the user that the per-user quota will be charged
+	// against. If not specified, the identifier to the authenticated account
+	// is used. If there is no authenticated account too, the caller's network
+	// IP address will be used.
+	// UNIMPLEMENTED
 	QuotaUser string
+	// A user specified project that is responsible for the request quota and
+	// billing charges.
 	QuotaProject string
 	// IAM context attributes
+	// UNIMPLEMENTED
 	IAMAuthToken string
 	// End-user OAuth Flow handler that redirects the user to the given URL
 	// and returns the token.
 	OAuthFlowHandler func(url string) (token string, err error)
 	// The state string used for 3LO session verification.
+	// UNIMPLEMENTED
 	State string
 }
 

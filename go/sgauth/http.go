@@ -40,7 +40,7 @@ func NewHTTPClient(ctx context.Context, settings *Settings) (*http.Client, error
 		if err != nil {
 			return nil, err
 		}
-		transport.Source = ts
+		transport.Source = *ts
 	}
 	return &http.Client{
 		Transport: transport,
