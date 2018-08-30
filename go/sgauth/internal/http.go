@@ -12,14 +12,13 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package sgauth
+package internal
 
 import (
 	"errors"
 	"io"
 	"net/http"
 	"sync"
-	"github.com/google/oauth2l/go/sgauth/internal"
 )
 
 // Transport is an http.RoundTripper that makes OAuth 2.0 HTTP requests,
@@ -31,9 +30,13 @@ import (
 type Transport struct {
 	// Source supplies the token to add to outgoing requests'
 	// Authorization headers.
-	Source internal.TokenSource
-
+	Source TokenSource
 	APIKey string
+
+	// Additional metadata attached as headers
+	QuotaUser    string
+	QuotaProject string
+	IAMAuthToken string
 
 	// Base is the base RoundTripper used to make HTTP requests.
 	// If nil, http.DefaultTransport is used.
@@ -54,10 +57,10 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			}
 		}()
 	}
-	
+
 	req2 := cloneRequest(req) // per RoundTripper contract
 	if t.APIKey != "" {
-		req2.Header.Set("X-Goog-Api-Key", t.APIKey)
+		req2.Header.Set(headerApiKey, t.APIKey)
 	} else {
 		if t.Source == nil {
 			return nil, errors.New("oauth2: Transport's Source is nil")
@@ -68,6 +71,9 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 		token.SetAuthHeader(req2)
 	}
+
+	attachAdditionalHeaders(t, req2)
+
 	t.setModReq(req, req2)
 	res, err := t.base().RoundTrip(req2)
 
@@ -156,5 +162,17 @@ func (r *onEOFReader) runFunc() {
 	if fn := r.fn; fn != nil {
 		fn()
 		r.fn = nil
+	}
+}
+
+func attachAdditionalHeaders(t *Transport, req *http.Request) {
+	if (t.QuotaUser != "") {
+		req.Header.Set(headerQuotaUser, t.QuotaUser)
+	}
+	if (t.QuotaProject != "") {
+		req.Header.Set(headerQuotaProject, t.QuotaProject)
+	}
+	if (t.IAMAuthToken != "") {
+		req.Header.Set(headerIAMAuthToken, t.IAMAuthToken)
 	}
 }

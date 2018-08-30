@@ -20,46 +20,29 @@ import (
 	"golang.org/x/net/context"
 )
 
-// createClient creates an *http.Client from a TokenSource.
-// The returned client is not valid beyond the lifetime of the context.
-func createAuthTokenClient(src internal.TokenSource) *http.Client {
-	if src == nil {
-		return http.DefaultClient
-	}
-	return &http.Client{
-		Transport: &Transport{
-			Base:   http.DefaultClient.Transport,
-			Source: internal.ReuseTokenSource(nil, src),
-		},
-	}
-}
-
-// createClient creates an *http.Client from a TokenSource.
-// The returned client is not valid beyond the lifetime of the context.
-func createAPIKeyClient(key string) *http.Client {
-	if key == "" {
-		return http.DefaultClient
-	}
-	return &http.Client{
-		Transport: &Transport{
-			Base:   http.DefaultClient.Transport,
-			APIKey: key,
-		},
-	}
-}
-
 var DefaultScope = "https://www.googleapis.com/auth/cloud-platform"
 
-// DefaultClient returns an HTTP Client that uses the
-// DefaultTokenSource to obtain authentication credentials.
+// Returns the HTTP client using the given settings.
 func NewHTTPClient(ctx context.Context, settings *Settings) (*http.Client, error) {
+	transport := &internal.Transport{
+		Base:         http.DefaultClient.Transport,
+		QuotaUser:    settings.QuotaUser,
+		QuotaProject: settings.QuotaProject,
+		IAMAuthToken: settings.IAMAuthToken,
+	}
+
 	if settings.APIKey != "" {
-		return createAPIKeyClient(settings.APIKey), nil
+		// API key
+		transport.APIKey = settings.APIKey
 	} else {
+		// OAuth or JWT token
 		ts, err := newTokenSource(ctx, settings)
 		if err != nil {
 			return nil, err
 		}
-		return createAuthTokenClient(*ts), nil
+		transport.Source = *ts
 	}
+	return &http.Client{
+		Transport: transport,
+	}, nil
 }
