@@ -88,13 +88,22 @@ func (f *File) TokenSource(ctx context.Context, scopes []string,
 		cfg := JWTConfigFromFile(f, scopes)
 		return cfg.TokenSource(ctx), nil
 	case UserCredentialsKey:
+		authURL := f.AuthURL
+		tokenURL := f.TokenURL
+		// Falling back to default URLs only if file URLs are empty
+		if authURL == "" {
+			authURL = DefaultAuthURL
+		}
+		if tokenURL == "" {
+			tokenURL = DefaultTokenURL
+		}
 		cfg := &internal.Config{
 			ClientID:     f.ClientID,
 			ClientSecret: f.ClientSecret,
 			Scopes:       scopes,
 			Endpoint:     internal.Endpoint{
-				AuthURL: DefaultAuthURL,
-				TokenURL: DefaultTokenURL,
+				AuthURL: authURL,
+				TokenURL: tokenURL,
 			},
 		}
 		tok := &internal.Token{RefreshToken: f.RefreshToken}
