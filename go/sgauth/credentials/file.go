@@ -20,10 +20,12 @@ import (
 	"github.com/google/oauth2l/go/sgauth/internal"
 )
 
-// DefaultTokenURL is Google's OAuth 2.0 token URL to use with the JWT flow.
-const DefaultTokenURL = "https://accounts.google.com/o/oauth2/token"
+// DefaultTokenURL is Google's OAuth 2.0 token URL to use with the service
+// account flow.
+const DefaultTokenURL = "https://oauth2.googleapis.com/token"
 
-// DefaultAuthURL is Google's OAuth 2.0 Auth URL to use with the 2LO flow.
+// DefaultAuthURL is Google's OAuth 2.0 Auth URL to use with the end-user
+// authentication flow.
 const DefaultAuthURL = "https://accounts.google.com/o/oauth2/auth"
 
 // JSON key file types.
