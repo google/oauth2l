@@ -28,4 +28,7 @@ type Credentials struct {
 	// environment and not with a credentials file, e.g. when code is
 	// running on Google Cloud Platform.
 	JSON []byte
+
+	// The type of the credentials. e.g. service account.
+	Type string
 }

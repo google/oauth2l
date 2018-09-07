@@ -27,7 +27,7 @@ import (
 var (
 	// Common prefix for google oauth scope
 	scopePrefix = "https://www.googleapis.com/auth/"
-	cmds = []string{"fetch", "header", "info", "test"}
+	cmds        = []string{"fetch", "header", "info", "test"}
 )
 
 func help() {
@@ -79,6 +79,9 @@ func main() {
 	helpFlag := flagSet.Bool("help", false, "Print help message.")
 	flagSet.BoolVar(helpFlag, "h", false, "")
 	jsonFile := flagSet.String("json", "", "Path to secret json file.")
+	format := flagSet.String("credentials_format", "bare", "Output format. The supported formats are: "+
+		"bare(default), header, json, json_compact, pretty")
+	flagSet.StringVar(format, "f", "bare", "")
 	jwtFlag := flagSet.Bool("jwt", false, "Use JWT auth flow")
 	ssoFlag := flagSet.Bool("sso", false, "Use SSO auth flow")
 	ssocli := flagSet.String("ssocli", "", "Path to SSO CLI")
@@ -93,14 +96,14 @@ func main() {
 	cmd := os.Args[1]
 
 	// Tasks that fetch the access token.
-	fetchTasks := map[string]func(*sgauth.Settings){
+	fetchTasks := map[string]func(*sgauth.Settings, string){
 		"fetch":  util.Fetch,
 		"header": util.Header,
 	}
 
 	// Tasks that verify the existing token.
 	infoTasks := map[string]func(string){
-		"info":  util.Info,
+		"info": util.Info,
 		"test": util.Test,
 	}
 
@@ -116,9 +119,9 @@ func main() {
 
 			settings := &sgauth.Settings{
 				CredentialsJSON: json,
-				Audience: flagSet.Args()[len(flagSet.Args()) - 1],
+				Audience:        flagSet.Args()[len(flagSet.Args())-1],
 			}
-			task(settings)
+			task(settings, *format)
 		} else if *ssoFlag {
 			// SSO flow
 			util.SSOFetch(flagSet.Args()[0], *ssocli, cmd,
@@ -140,10 +143,10 @@ func main() {
 				OAuthFlowHandler: defaultAuthorizeFlowHandler,
 				State:            "state",
 			}
-			task(settings)
+			task(settings, *format)
 		}
 	} else if task, ok := infoTasks[cmd]; ok {
-		task(flagSet.Args()[len(flagSet.Args()) - 1])
+		task(flagSet.Args()[len(flagSet.Args())-1])
 	} else if cmd == "reset" {
 		util.Reset()
 	} else {

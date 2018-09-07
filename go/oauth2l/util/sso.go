@@ -36,5 +36,9 @@ func SSOFetch(email string, cli string, task string, scope string) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	PrintToken("Bearer", out.String(), task == "header")
+	if task == "header" {
+		printHeader("Bearer", out.String())
+	} else {
+		println(out.String())
+	}
 }
