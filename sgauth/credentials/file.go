@@ -17,7 +17,7 @@ package credentials
 import (
 	"fmt"
 	"golang.org/x/net/context"
-	"github.com/google/oauth2l/go/sgauth/internal"
+	"github.com/google/oauth2l/sgauth/internal"
 )
 
 // DefaultTokenURL is Google's OAuth 2.0 token URL to use with the service

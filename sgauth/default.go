@@ -25,8 +25,8 @@ import (
 	"runtime"
 	"path/filepath"
 	"os/user"
-	"github.com/google/oauth2l/go/sgauth/internal"
-	"github.com/google/oauth2l/go/sgauth/credentials"
+	"github.com/google/oauth2l/sgauth/internal"
+	"github.com/google/oauth2l/sgauth/credentials"
 )
 
 // DefaultTokenSource returns the token source for

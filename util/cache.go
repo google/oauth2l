@@ -19,7 +19,7 @@ import (
 	"io/ioutil"
 	"encoding/json"
 	"os"
-	"github.com/google/oauth2l/go/sgauth"
+	"github.com/google/oauth2l/sgauth"
 	"os/user"
 )
 

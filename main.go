@@ -19,8 +19,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"strings"
-	"github.com/google/oauth2l/go/sgauth"
-	"github.com/google/oauth2l/go/oauth2l/util"
+	"github.com/google/oauth2l/sgauth"
+	"github.com/google/oauth2l/util"
 	"os"
 )
 

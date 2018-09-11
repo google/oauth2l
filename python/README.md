@@ -1,13 +1,22 @@
 oauth2l
 -------
 
+[![Build Status](https://travis-ci.org/google/oauth2l.svg?branch=master)](https://travis-ci.org/google/oauth2l)
+[![Coverage](https://coveralls.io/repos/google/oauth2l/badge.svg?branch=master)](https://coveralls.io/r/google/oauth2l?branch=master)
+[![PyPI](https://img.shields.io/pypi/v/google-oauth2l.svg)](https://pypi.python.org/pypi/google-oauth2l)
+[![Versions](https://img.shields.io/pypi/pyversions/google-oauth2l.svg)](https://pypi.python.org/pypi/google-oauth2l)
+
 `oauth2l` (pronounced "oauth tool") is a simple command-line tool for
 working with
-[Google OAuth 2.0](https://developers.google.com/identity/protocols/OAuth2)
-written in Go.
+[Google OAuth 2.0](https://developers.google.com/identity/protocols/OAuth2).
 Its primary use is to fetch and
 print OAuth 2.0 access tokens, which can be used with other command-line
 tools and shell scripts.
+
+This tool also demonstrates how to design a simple and easy-to-use OAuth
+2.0 client experience. If you need to reimplement this functionality in
+another programming language, please use [Go OAuth2l](go/oauth2client)
+as reference code.
 
 ## Overview
 
@@ -30,31 +39,24 @@ accounts and service accounts in different environments:
 *   When running with command option `--sso {email}`, it invokes an
     external `sso` command to retrieve Single Sign-on (SSO) access token.
 
-## Quickstart
+NOTE: `oauth2l` caches the OAuth credentials in user's home directory to
+avoid prompting user repeatedly.
 
-You will need to meet the following requirement to use this tool:
+## Install
 
-__Minimum requirements:__
-- The tool is only available for _Linux_ or _Mac_
-- _Go 1.10.3_ or higher
+```
+# Mac only. Install `pip` first.
+$ sudo easy_install pip
 
-__Nice to have:__
-- Add your _$GOPATH/bin_ into your _$PATH_ ([instuctions](
-https://github.com/golang/go/wiki/GOPATH))
+# Install `oauth2l` under the OS, typically "/usr/local/bin".
+$ pip install google-oauth2l --upgrade
 
+# If you see an error on OS X El Capitan or up, please try
+$ pip install google-oauth2l --upgrade --ignore-installed
 
-```bash
-# Get the package from Github
-$ go get github.com/google/oauth2l/go/oauth2l
-
-# Install the package into your $GOPATH/bin/
-$ go install github.com/google/oauth2l/go/oauth2l
-
-# Fetch the access token from your credentials with cloud-platform scope
-$ ~/go/bin/oauth2l fetch --json ~/your_credentials.json cloud-platform
-
-# Or you can run if you $GOPATH/bin is already in your $PATH
-$ oauth2l fetch --json ~/your_credentials.json cloud-platform
+# Install `oauth2l` under the current user, typically "~/.local/bin" (on Linux)
+# and "~/Library/Python/2.7/bin" (on Mac).
+$ pip install --user google-oauth2l
 ```
 
 ## Command Options
@@ -65,7 +67,7 @@ Specifies an OAuth credential file, either an OAuth client ID or a Service
 Account key, to start the OAuth flow. You can download the file from
 [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
 
-```bash
+```
 $ oauth2l fetch --json ~/service_account.json cloud-platform
 ```
 
@@ -75,13 +77,13 @@ Using an external Single Sign-on (SSO) command to fetch OAuth token.
 The command outputs an OAuth access token to its stdout. The default
 command is for Google's corporate SSO. For example:
 
-```bash
+```
 $ sso me@example.com scope1 scope2
 ```
 
 Then use oauth2l with the SSO CLI:
 
-```bash
+```
 $ oauth2l header --sso me@example.com --sso_cli /usr/bin/sso cloud-platform
 $ oauth2l header --sso me@google.com cloud-platform
 ```
@@ -96,7 +98,7 @@ audience [here](https://developers.google.com/identity/protocols/OAuth2ServiceAc
 
 Example:
 
-```bash
+```
 oauth2l fetch --jwt --json ~/service_account.json https://pubsub.googleapis.com/google.pubsub.v1.Publisher
 ```
 
@@ -110,16 +112,27 @@ the following command prints access token for the following OAuth2 scopes:
 *   https://www.googleapis.com/auth/userinfo.email
 *   https://www.googleapis.com/auth/cloud-platform
 
-```bash
+```
 $ oauth2l fetch userinfo.email cloud-platform
 ya29.zyxwvutsrqpnmolkjihgfedcba
+
+$ oauth2l fetch -f json userinfo.email cloud-platform
+{
+  "access_token": "ya29.zyxwvutsrqpnmolkjihgfedcba",
+  "token_expiry": "2017-02-27T21:20:47Z",
+  "user_agent": "oauth2l/1.0.0",
+  ...
+}
 ```
+
+NOTE: the `-f` flag specifies the output format. The supported formats are:
+bare (default), header, json, json_compact, pretty.
 
 ### header
 
 The same as `fetch`, except the output is in HTTP header format:
 
-```bash
+```
 $ oauth2l header userinfo.email
 Authorization: Bearer ya29.zyxwvutsrqpnmolkjihgfedcba
 ```
@@ -127,14 +140,14 @@ Authorization: Bearer ya29.zyxwvutsrqpnmolkjihgfedcba
 The `header` command is designed to be easy to use with `curl`. For example,
 the following command uses the PubSub API to list all PubSub topics.
 
-```bash
+```
 $ curl -H "$(oauth2l header pubsub)" https://pubsub.googleapis.com/v1/projects/my-project-id/topics
 ```
 
 If you need to call Google APIs frequently using `curl`, you can define a
 shell alias for it. For example:
 
-```bash
+```
 $ alias gcurl='curl -H "$(oauth2l header cloud-platform)" -H "Content-Type: application/json" '
 $ gcurl 'https://pubsub.googleapis.com/v1/projects/my-project-id/topics'
 ```
@@ -147,7 +160,7 @@ and expiration time. If the token has either the
 `https://www.googleapis.com/auth/plus.me` scope, it also prints the email
 address of the authenticated identity.
 
-```bash
+```
 $ oauth2l info $(oauth2l fetch pubsub)
 {
     "expires_in": 3599,
@@ -162,7 +175,7 @@ $ oauth2l info $(oauth2l fetch pubsub)
 Test a token. This sets an exit code of 0 for a valid token and 1 otherwise,
 which can be useful in shell pipelines.
 
-```bash
+```
 $ oauth2l test ya29.zyxwvutsrqpnmolkjihgfedcba
 $ echo $?
 0
@@ -176,6 +189,6 @@ $ echo $?
 Reset all tokens cached locally. We cache previously retrieved tokens in the
 file `~/.oauth2l.token`.
 
-```bash
+```
 $ oauth2l reset
 ```
