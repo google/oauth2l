@@ -41,9 +41,6 @@ type Settings struct {
 	// A user specified project that is responsible for the request quota and
 	// billing charges.
 	QuotaProject string
-	// IAM context attributes
-	// UNIMPLEMENTED
-	IAMAuthToken string
 	// End-user OAuth Flow handler that redirects the user to the given URL
 	// and returns the token.
 	OAuthFlowHandler func(url string) (token string, err error)
