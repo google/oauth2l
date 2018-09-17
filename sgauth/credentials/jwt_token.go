@@ -21,7 +21,7 @@ import (
 
 	"golang.org/x/oauth2/jws"
 	"encoding/json"
-	"github.com/google/oauth2l/go/sgauth/internal"
+	"github.com/google/oauth2l/sgauth/internal"
 	"encoding/pem"
 	"crypto/x509"
 	"errors"

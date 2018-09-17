@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"golang.org/x/net/context"
-	"github.com/google/oauth2l/go/sgauth/internal"
+	"github.com/google/oauth2l/sgauth/internal"
 )
 
 // appengineFlex is set at init time by appengineflex_hook.go. If true, we are on App Engine Flex.

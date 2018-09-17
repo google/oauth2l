@@ -29,7 +29,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"context"
-	"github.com/google/oauth2l/go/sgauth/internal"
+	"github.com/google/oauth2l/sgauth/internal"
 )
 
 var (

@@ -19,4 +19,4 @@ htmlcov/
 reduced.pylintrc
 
 # GoLand
-go/.idea/
+.idea/
