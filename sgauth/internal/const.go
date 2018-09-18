@@ -16,9 +16,8 @@ package internal
 
 // Keys for HTTP google headers
 const (
-	headerAuth = "authorization"
-	headerApiKey = "X-Goog-Api-Key"
-	headerQuotaUser = "X-Goog-Quota-User"
+	headerAuth         = "authorization"
+	headerApiKey       = "X-Goog-Api-Key"
+	headerQuotaUser    = "X-Goog-Quota-User"
 	headerQuotaProject = "X-Goog-User-Project"
-	headerIAMAuthToken = "X-Goog-IAM-Authorization-Token"
 )

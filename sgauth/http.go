@@ -16,8 +16,8 @@ package sgauth
 
 import (
 	"github.com/google/oauth2l/sgauth/internal"
-	"net/http"
 	"golang.org/x/net/context"
+	"net/http"
 )
 
 var DefaultScope = "https://www.googleapis.com/auth/cloud-platform"
@@ -28,7 +28,6 @@ func NewHTTPClient(ctx context.Context, settings *Settings) (*http.Client, error
 		Base:         http.DefaultClient.Transport,
 		QuotaUser:    settings.QuotaUser,
 		QuotaProject: settings.QuotaProject,
-		IAMAuthToken: settings.IAMAuthToken,
 	}
 
 	if settings.APIKey != "" {
