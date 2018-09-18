@@ -36,7 +36,6 @@ type Transport struct {
 	// Additional metadata attached as headers
 	QuotaUser    string
 	QuotaProject string
-	IAMAuthToken string
 
 	// Base is the base RoundTripper used to make HTTP requests.
 	// If nil, http.DefaultTransport is used.
@@ -166,13 +165,10 @@ func (r *onEOFReader) runFunc() {
 }
 
 func attachAdditionalHeaders(t *Transport, req *http.Request) {
-	if (t.QuotaUser != "") {
+	if t.QuotaUser != "" {
 		req.Header.Set(headerQuotaUser, t.QuotaUser)
 	}
-	if (t.QuotaProject != "") {
+	if t.QuotaProject != "" {
 		req.Header.Set(headerQuotaProject, t.QuotaProject)
-	}
-	if (t.IAMAuthToken != "") {
-		req.Header.Set(headerIAMAuthToken, t.IAMAuthToken)
 	}
 }

@@ -24,7 +24,6 @@ type GrpcTokenSource struct {
 	// Additional metadata attached as headers
 	QuotaUser    string
 	QuotaProject string
-	IAMAuthToken string
 }
 
 // GetRequestMetadata gets the request metadata as a map from a TokenSource.
@@ -55,8 +54,5 @@ func attachAdditionalMetadata(metadata map[string]string, ts GrpcTokenSource) {
 	}
 	if ts.QuotaProject != "" {
 		metadata[headerQuotaProject] = ts.QuotaProject
-	}
-	if ts.IAMAuthToken != "" {
-		metadata[headerIAMAuthToken] = ts.IAMAuthToken
 	}
 }

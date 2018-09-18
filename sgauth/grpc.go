@@ -15,9 +15,9 @@
 package sgauth
 
 import (
+	"crypto/x509"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"crypto/x509"
 	"google.golang.org/grpc/credentials"
 
 	"fmt"
@@ -37,7 +37,6 @@ func NewGrpcConn(ctx context.Context, settings *Settings, host string, port stri
 	perRPC := internal.GrpcTokenSource{
 		QuotaUser:    settings.QuotaUser,
 		QuotaProject: settings.QuotaProject,
-		IAMAuthToken: settings.IAMAuthToken,
 	}
 
 	if settings.APIKey != "" {
