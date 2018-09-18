@@ -52,10 +52,10 @@ https://github.com/golang/go/wiki/GOPATH))
 
 ```bash
 # Get the package from Github
-$ go get github.com/google/oauth2l/go/oauth2l
+$ go get github.com/google/oauth2l
 
 # Install the package into your $GOPATH/bin/
-$ go install github.com/google/oauth2l/go/oauth2l
+$ go install github.com/google/oauth2l
 
 # Fetch the access token from your credentials with cloud-platform scope
 $ ~/go/bin/oauth2l fetch --json ~/your_credentials.json cloud-platform
