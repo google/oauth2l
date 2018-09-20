@@ -128,6 +128,12 @@ func main() {
 				parseScopes(flagSet.Args()[1:]))
 		} else {
 			// OAuth flow
+			if (len(flagSet.Args()) < 1) {
+				fmt.Println("Missing scope for OAuth 2.0")
+				help()
+				return
+			}
+
 			json, err := readJSON(*jsonFile)
 			if err != nil {
 				fmt.Println("Failed to open file: " + *jsonFile)
