@@ -92,6 +92,7 @@ var brokenAuthHeaderProviders = []string{
 	"https://openapi.baidu.com/",
 	"https://slack.com/",
 	"https://test-sandbox.auth.corp.google.com",
+	"https://test-www.sandbox.googleapis.com",
 	"https://test.salesforce.com/",
 	"https://user.gini.net/",
 	"https://www.douban.com/",
@@ -157,6 +158,7 @@ func retrieveToken(ctx context.Context, clientID, clientSecret, tokenURL string,
 			v.Set("client_secret", clientSecret)
 		}
 	}
+
 	req, err := http.NewRequest("POST", tokenURL, strings.NewReader(v.Encode()))
 	if err != nil {
 		return nil, err
