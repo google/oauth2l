@@ -158,7 +158,6 @@ func retrieveToken(ctx context.Context, clientID, clientSecret, tokenURL string,
 			v.Set("client_secret", clientSecret)
 		}
 	}
-
 	req, err := http.NewRequest("POST", tokenURL, strings.NewReader(v.Encode()))
 	if err != nil {
 		return nil, err
