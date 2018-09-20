@@ -92,6 +92,7 @@ var brokenAuthHeaderProviders = []string{
 	"https://openapi.baidu.com/",
 	"https://slack.com/",
 	"https://test-sandbox.auth.corp.google.com",
+	"https://test-www.sandbox.googleapis.com",
 	"https://test.salesforce.com/",
 	"https://user.gini.net/",
 	"https://www.douban.com/",
