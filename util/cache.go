@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	cacheFileName = ".oauth2l.token"
+	cacheFileName = ".oauth2l"
 )
 
 // The key struct that used to identify an auth token fetch operation.

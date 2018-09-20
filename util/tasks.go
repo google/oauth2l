@@ -101,10 +101,12 @@ func fetchToken(settings *sgauth.Settings) (*sgauth.Token) {
 	token, err := sgauth.FetchToken(context.Background(), settings)
 	if err != nil {
 		fmt.Println(err)
+		return nil
 	}
 	err = InsertCache(settings, token)
 	if err != nil {
 		fmt.Println(err)
+		return nil
 	}
 	return token
 }
@@ -119,33 +121,35 @@ func getCredentialType(settings *sgauth.Settings) (string) {
 
 // Prints the token with the specified format
 func printToken(token *sgauth.Token, format string, credType string) {
-	switch format {
-	case formatBare:
-		fmt.Println(token.AccessToken)
-	case formatHeader:
-		printHeader(token.TokenType, token.AccessToken)
-	case formatJson:
-		json, err := json.MarshalIndent(token.Raw, "", "  ")
-		if err != nil {
-			log.Fatal(err.Error())
-			return
+	if token != nil {
+		switch format {
+		case formatBare:
+			fmt.Println(token.AccessToken)
+		case formatHeader:
+			printHeader(token.TokenType, token.AccessToken)
+		case formatJson:
+			json, err := json.MarshalIndent(token.Raw, "", "  ")
+			if err != nil {
+				log.Fatal(err.Error())
+				return
+			}
+			fmt.Println(string(json))
+		case formatJsonCompact:
+			json, err := json.Marshal(token.Raw)
+			if err != nil {
+				log.Fatal(err.Error())
+				return
+			}
+			fmt.Println(string(json))
+		case formatPretty:
+			fmt.Printf("Fetched credentials of type:\n  %s\n"+
+				"Access Token:\n  %s\n",
+				credType, token.AccessToken)
+		default:
+			log.Fatalf("Invalid choice: '%s' "+
+				"(choose from 'bare', 'header', 'json', 'json_compact', 'pretty')",
+				format)
 		}
-		fmt.Println(string(json))
-	case formatJsonCompact:
-		json, err := json.Marshal(token.Raw)
-		if err != nil {
-			log.Fatal(err.Error())
-			return
-		}
-		fmt.Println(string(json))
-	case formatPretty:
-		fmt.Printf("Fetched credentials of type:\n  %s\n"+
-			"Access Token:\n  %s\n",
-			credType, token.AccessToken)
-	default:
-		log.Fatalf("Invalid choice: '%s' "+
-			"(choose from 'bare', 'header', 'json', 'json_compact', 'pretty')",
-			format)
 	}
 }
 
