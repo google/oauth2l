@@ -14,6 +14,7 @@
 // limitations under the License.
 //
 // +build appengine appenginevm
+
 package sgauth
 
 import "google.golang.org/appengine"
