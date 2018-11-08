@@ -44,7 +44,7 @@ __Minimum requirements:__
 - _Go 1.10.3_ or higher
 
 __Nice to have:__
-- Add your _$GOPATH/bin_ into your _$PATH_ ([instuctions](
+- Add your _$GOPATH/bin_ into your _$PATH_ ([instructions](
 https://github.com/golang/go/wiki/GOPATH))
 
 
