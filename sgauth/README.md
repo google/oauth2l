@@ -8,7 +8,7 @@ The project is still at very early stage so __everything is subject to change__.
 
 Concept
 -------
-Google Authenticator is a future-proof client library that supports __Sharded Google__ and aims 
+Google Authenticator is a future-proof client library that aims 
 to simplify the developer experience with Google API authentication. 
 
 
