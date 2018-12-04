@@ -140,10 +140,10 @@ func wellKnownFile() string {
 	if runtime.GOOS == "windows" {
 		return filepath.Join(os.Getenv("APPDATA"), "gcloud", f)
 	}
-	return filepath.Join(guessUnixHomeDir(), ".config", "gcloud", f)
+	return filepath.Join(GuessUnixHomeDir(), ".config", "gcloud", f)
 }
 
-func guessUnixHomeDir() string {
+func GuessUnixHomeDir() string {
 	// Prefer $HOME over user.Current due to glibc bug: golang.org/issue/13470
 	if v := os.Getenv("HOME"); v != "" {
 		return v

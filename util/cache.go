@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"os"
 	"github.com/google/oauth2l/sgauth"
-	"os/user"
+	"path/filepath"
 )
 
 const (
@@ -113,11 +113,7 @@ func loadCache() (map[string][]byte, error) {
 }
 
 func cacheLocation() string {
-	usr, err := user.Current()
-	if err != nil {
-		log.Fatal( err )
-	}
-	return usr.HomeDir + "/" + cacheFileName
+	return filepath.Join(sgauth.GuessUnixHomeDir(), cacheFileName)
 }
 
 func createKey(settings *sgauth.Settings) CacheKey {
