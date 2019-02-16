@@ -15,6 +15,7 @@
 package credentials
 
 import (
+	"errors"
 	"fmt"
 	"golang.org/x/net/context"
 	"github.com/google/oauth2l/sgauth/internal"
@@ -116,6 +117,11 @@ func (f *File) TokenSource(ctx context.Context, scopes []string,
 			oauth = f.Web
 		} else {
 			oauth = f.Installed
+		}
+
+		if len(oauth.RedirectURL) == 0 {
+			// Redirect URL is a required field for end-user oauth flow.
+			return nil, errors.New("incomplete client key: redirect url is missing")
 		}
 
 		if handler == nil {
