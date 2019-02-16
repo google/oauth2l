@@ -8,7 +8,7 @@ go get github.com/google/oauth2l/sgauth/example/library
 ```
 ## Credentials
 Currently Google Authenticator reads the service account JSON credential file from environment path:
-1) Go to the Pantheon UI ([Prod](https://pantheon.corp.google.com/)|[TestGaia](https://pantheon-testgaia.corp.google.com))
+1) Go to the [Pantheon UI](https://pantheon.corp.google.com/)
 2) Enable the corresponding API if you haven't. (E.g. Service Management API in the example below)
 2) Create the service account key.
 2) Download the JSON credentials.
@@ -32,18 +32,14 @@ For more information about JWT token please read: [Service account authorization
 
 ## Sample Usage
 
-### Work with Test GAIA
-
-The following commands run the example with the Test GAIA instance so that your credential JSON needs to be generated from Test GAIA Pantheon. Currently the API service is hosted within a sandbox environment for prototyping purpose.
-
 #### ProtoRPC
 ```
-go run *.go protorpc --host test-xxiang-library-example.sandbox.googleapis.com \
+go run *.go protorpc --host library-example.googleapis.com  \
 --api_name google.example.library.v1.LibraryService
 ```
 #### gRPC
 ```
-go run *.go grpc --host test-xxiang-library-example.sandbox.googleapis.com \
+go run *.go grpc --host library-example.googleapis.com  \
 --api_name google.example.library.v1.LibraryService 
 ```
 
@@ -54,27 +50,19 @@ You can always set the audience explicitly by using the `--aud` flag.
 To authorize with OAuth, you only need specify the extra `--scope` flag, for example:
 ```
 go run *.go grpc --scope https://www.googleapis.com/auth/xapi.zoo \
---host test-xxiang-library-example.sandbox.googleapis.com
+--host library-example.googleapis.com 
 ```
 
 #### API Key
 
 To access the API with an API key:
 ```
-go run *.go protorpc --host test-xxiang-library-example.sandbox.googleapis.com \
+go run *.go protorpc --host library-example.googleapis.com \
 --api_name google.example.library.v1.LibraryService \
---api_key ANVavNK3PDM8pIprU7xmF4BlEvmKn37f4_N7D3k
+--api_key {API_KEY}
 ```
 or if you wanna use gRPC:
 ```
-go run *.go grpc --host test-xxiang-library-example.sandbox.googleapis.com \
---api_key ANVavNK3PDM8pIprU7xmF4BlEvmKn37f4_N7D3k
-```
-
-### Work with Prod GAIA
-
-If you want to work with Prod GAIA, you can switch to use the public Library API service and everything else should be the same. e.g.
-```
-go run *.go grpc --host library-example.googleapis.com \
---scope https://www.googleapis.com/auth/xapi.zoo
+go run *.go grpc --host library-example.googleapis.com  \
+--api_key {API_KEY}
 ```
