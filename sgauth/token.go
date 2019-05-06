@@ -15,7 +15,6 @@
 package sgauth
 
 import (
-	"errors"
 	"github.com/google/oauth2l/sgauth/internal"
 	"golang.org/x/net/context"
 )
@@ -31,28 +30,21 @@ type Token struct {
 // Default method to return a token source from a given settings.
 // Returns nil for API keys.
 func newTokenSource(ctx context.Context, settings *Settings) (*internal.TokenSource, error) {
+	var ts internal.TokenSource
+	var err error
 	if settings == nil {
-		return nil, errors.New("settings cannot be nil")
-	}
-	if settings.APIKey != "" {
+		ts, err = DefaultTokenSource(ctx, DefaultScope)
+	} else if settings.APIKey != "" {
 		return nil, nil
+	} else if settings.Scope != "" {
+		ts, err = OAuthJSONTokenSource(ctx, settings)
 	} else {
-		var ts internal.TokenSource
-		var err error
-		if settings != nil {
-			if settings.Scope != "" {
-				ts, err = OAuthJSONTokenSource(ctx, settings)
-			} else {
-				ts, err = JWTTokenSource(ctx, settings)
-			}
-		} else {
-			ts, err = DefaultTokenSource(ctx, DefaultScope)
-			if err != nil {
-				return nil, err
-			}
-		}
-		return &ts, err
+		ts, err = JWTTokenSource(ctx, settings)
 	}
+	if err != nil {
+		return nil, err
+	}
+	return &ts, err
 }
 
 // Returns a token from the given settings.
