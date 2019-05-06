@@ -15,6 +15,7 @@
 package sgauth
 
 import (
+	"errors"
 	"github.com/google/oauth2l/sgauth/internal"
 	"golang.org/x/net/context"
 )
@@ -30,6 +31,9 @@ type Token struct {
 // Default method to return a token source from a given settings.
 // Returns nil for API keys.
 func newTokenSource(ctx context.Context, settings *Settings) (*internal.TokenSource, error) {
+	if settings == nil {
+		return nil, errors.New("settings cannot be nil")
+	}
 	if settings.APIKey != "" {
 		return nil, nil
 	} else {

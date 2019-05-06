@@ -24,6 +24,11 @@ var DefaultScope = "https://www.googleapis.com/auth/cloud-platform"
 
 // Returns the HTTP client using the given settings.
 func NewHTTPClient(ctx context.Context, settings *Settings) (*http.Client, error) {
+	if settings == nil {
+		settings = &Settings{
+			Scope: DefaultScope,
+		}
+	}
 	transport := &internal.Transport{
 		Base:         http.DefaultClient.Transport,
 		QuotaUser:    settings.QuotaUser,
