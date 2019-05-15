@@ -16,11 +16,12 @@ package util
 
 import (
 	"encoding/json"
-	"github.com/google/oauth2l/sgauth"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/google/oauth2l/sgauth"
 )
 
 const CacheFileName = ".oauth2l"
@@ -40,6 +41,9 @@ type CacheKey struct {
 }
 
 func LookupCache(settings *sgauth.Settings) (*sgauth.Token, error) {
+	if CacheLocation == "" {
+		return nil, nil
+	}
 	var token sgauth.Token
 	var cache, err = loadCache()
 	if err != nil {
@@ -58,6 +62,9 @@ func LookupCache(settings *sgauth.Settings) (*sgauth.Token, error) {
 }
 
 func InsertCache(settings *sgauth.Settings, token *sgauth.Token) error {
+	if CacheLocation == "" {
+		return nil
+	}
 	var cache, err = loadCache()
 	if err != nil {
 		return err
@@ -79,6 +86,9 @@ func InsertCache(settings *sgauth.Settings, token *sgauth.Token) error {
 }
 
 func ClearCache() error {
+	if CacheLocation == "" {
+		return nil
+	}
 	if _, err := os.Stat(CacheLocation); os.IsNotExist(err) {
 		// Noop if file does not exist.
 		return nil
@@ -101,7 +111,7 @@ func loadCache() (map[string][]byte, error) {
 		log.Fatal(err)
 		return nil, err
 	}
-	m := map[string][]byte{}
+	m := make(map[string][]byte)
 	if len(data) > 0 {
 		err = json.Unmarshal(data, &m)
 		if err != nil {
