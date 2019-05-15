@@ -82,7 +82,7 @@ func main() {
 	jwtFlag := flagSet.Bool("jwt", false, "Use JWT auth flow")
 	ssoFlag := flagSet.Bool("sso", false, "Use SSO auth flow")
 	ssocli := flagSet.String("ssocli", "", "Path to SSO CLI")
-	flagSet.StringVar(&util.CacheLocation, "cache", util.CacheLocation, "Path to the credential cache file.")
+	flagSet.StringVar(&util.CacheLocation, "cache", util.CacheLocation, "Path to the credential cache file. Disables caching if set to empty.")
 
 	if len(os.Args) < 2 {
 		help(flagSet)
