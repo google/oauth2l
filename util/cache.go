@@ -15,17 +15,18 @@
 package util
 
 import (
-	"log"
-	"io/ioutil"
 	"encoding/json"
+	"io/ioutil"
+	"log"
 	"os"
-	"github.com/google/oauth2l/sgauth"
 	"path/filepath"
+
+	"github.com/google/oauth2l/sgauth"
 )
 
-const (
-	cacheFileName = ".oauth2l"
-)
+const CacheFileName = ".oauth2l"
+
+var CacheLocation string = filepath.Join(sgauth.GuessUnixHomeDir(), CacheFileName)
 
 // The key struct that used to identify an auth token fetch operation.
 type CacheKey struct {
@@ -40,6 +41,9 @@ type CacheKey struct {
 }
 
 func LookupCache(settings *sgauth.Settings) (*sgauth.Token, error) {
+	if CacheLocation == "" {
+		return nil, nil
+	}
 	var token sgauth.Token
 	var cache, err = loadCache()
 	if err != nil {
@@ -58,6 +62,9 @@ func LookupCache(settings *sgauth.Settings) (*sgauth.Token, error) {
 }
 
 func InsertCache(settings *sgauth.Settings, token *sgauth.Token) error {
+	if CacheLocation == "" {
+		return nil
+	}
 	var cache, err = loadCache()
 	if err != nil {
 		return err
@@ -75,33 +82,36 @@ func InsertCache(settings *sgauth.Settings, token *sgauth.Token) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(cacheLocation(), data, 0666)
+	return ioutil.WriteFile(CacheLocation, data, 0666)
 }
 
 func ClearCache() error {
-	if _, err := os.Stat(cacheLocation()); os.IsNotExist(err) {
+	if CacheLocation == "" {
+		return nil
+	}
+	if _, err := os.Stat(CacheLocation); os.IsNotExist(err) {
 		// Noop if file does not exist.
 		return nil
 	}
-	return os.Remove(cacheLocation())
+	return os.Remove(CacheLocation)
 }
 
 func loadCache() (map[string][]byte, error) {
-	if _, err := os.Stat(cacheLocation()); os.IsNotExist(err) {
+	if _, err := os.Stat(CacheLocation); os.IsNotExist(err) {
 		// Create the cache file if not existing.
-		f, err := os.OpenFile(cacheLocation(), os.O_RDONLY|os.O_CREATE, 0666)
+		f, err := os.OpenFile(CacheLocation, os.O_RDONLY|os.O_CREATE, 0666)
 		if err != nil {
 			log.Fatal(err)
 			return nil, err
 		}
 		f.Close()
 	}
-	data, err := ioutil.ReadFile(cacheLocation())
+	data, err := ioutil.ReadFile(CacheLocation)
 	if err != nil {
 		log.Fatal(err)
 		return nil, err
 	}
-	m := map[string][]byte{}
+	m := make(map[string][]byte)
 	if len(data) > 0 {
 		err = json.Unmarshal(data, &m)
 		if err != nil {
@@ -112,16 +122,11 @@ func loadCache() (map[string][]byte, error) {
 	return m, nil
 }
 
-func cacheLocation() string {
-	return filepath.Join(sgauth.GuessUnixHomeDir(), cacheFileName)
-}
-
 func createKey(settings *sgauth.Settings) CacheKey {
 	return CacheKey{
 		CredentialsJSON: settings.CredentialsJSON,
-		Scope: settings.Scope,
-		Audience: settings.Audience,
-		APIKey: settings.APIKey,
+		Scope:           settings.Scope,
+		Audience:        settings.Audience,
+		APIKey:          settings.APIKey,
 	}
 }
-

@@ -18,10 +18,11 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"strings"
+
 	"github.com/google/oauth2l/sgauth"
 	"github.com/google/oauth2l/util"
-	"os"
 )
 
 var (
@@ -30,9 +31,10 @@ var (
 	cmds        = []string{"fetch", "header", "info", "test"}
 )
 
-func help() {
-	fmt.Println("Usage: oauth2l {fetch|header|info|test|reset} " +
-		"[--jwt] [--json] [--sso] [--ssocli] {scope|aud|email}")
+func help(f *flag.FlagSet) {
+	fmt.Println("Usage: oauth2l fetch|header|info|test|reset [flags]... [scope|aud|email]...")
+	f.PrintDefaults()
+	os.Exit(0)
 }
 
 func readJSON(file string) (string, error) {
@@ -69,11 +71,6 @@ func parseScopes(scopes []string) string {
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		help()
-		return
-	}
-
 	// Configure the CLI
 	flagSet := flag.NewFlagSet("fetch", flag.ExitOnError)
 	helpFlag := flagSet.Bool("help", false, "Print help message.")
@@ -85,11 +82,16 @@ func main() {
 	jwtFlag := flagSet.Bool("jwt", false, "Use JWT auth flow")
 	ssoFlag := flagSet.Bool("sso", false, "Use SSO auth flow")
 	ssocli := flagSet.String("ssocli", "", "Path to SSO CLI")
+	flagSet.StringVar(&util.CacheLocation, "cache", util.CacheLocation, "Path to the credential cache file. Disables caching if set to empty.")
+
+	if len(os.Args) < 2 {
+		help(flagSet)
+	}
+
 	flagSet.Parse(os.Args[2:])
 
 	if *helpFlag {
-		help()
-		return
+		help(flagSet)
 	}
 
 	// Get the command keyword from the first argument.
@@ -128,9 +130,9 @@ func main() {
 				parseScopes(flagSet.Args()[1:]))
 		} else {
 			// OAuth flow
-			if (len(flagSet.Args()) < 1) {
-				fmt.Println("Missing scope for OAuth 2.0")
-				help()
+			if len(flagSet.Args()) < 1 {
+				fmt.Println("Missing scope argument for OAuth 2.0")
+				help(flagSet)
 				return
 			}
 
@@ -157,6 +159,6 @@ func main() {
 		util.Reset()
 	} else {
 		// Unknown command, print usage.
-		help()
+		help(flagSet)
 	}
 }
