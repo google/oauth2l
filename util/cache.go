@@ -15,17 +15,17 @@
 package util
 
 import (
-	"log"
-	"io/ioutil"
 	"encoding/json"
-	"os"
 	"github.com/google/oauth2l/sgauth"
+	"io/ioutil"
+	"log"
+	"os"
 	"path/filepath"
 )
 
-const (
-	cacheFileName = ".oauth2l"
-)
+const CacheFileName = ".oauth2l"
+
+var CacheLocation string = filepath.Join(sgauth.GuessUnixHomeDir(), CacheFileName)
 
 // The key struct that used to identify an auth token fetch operation.
 type CacheKey struct {
@@ -75,28 +75,28 @@ func InsertCache(settings *sgauth.Settings, token *sgauth.Token) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(cacheLocation(), data, 0666)
+	return ioutil.WriteFile(CacheLocation, data, 0666)
 }
 
 func ClearCache() error {
-	if _, err := os.Stat(cacheLocation()); os.IsNotExist(err) {
+	if _, err := os.Stat(CacheLocation); os.IsNotExist(err) {
 		// Noop if file does not exist.
 		return nil
 	}
-	return os.Remove(cacheLocation())
+	return os.Remove(CacheLocation)
 }
 
 func loadCache() (map[string][]byte, error) {
-	if _, err := os.Stat(cacheLocation()); os.IsNotExist(err) {
+	if _, err := os.Stat(CacheLocation); os.IsNotExist(err) {
 		// Create the cache file if not existing.
-		f, err := os.OpenFile(cacheLocation(), os.O_RDONLY|os.O_CREATE, 0666)
+		f, err := os.OpenFile(CacheLocation, os.O_RDONLY|os.O_CREATE, 0666)
 		if err != nil {
 			log.Fatal(err)
 			return nil, err
 		}
 		f.Close()
 	}
-	data, err := ioutil.ReadFile(cacheLocation())
+	data, err := ioutil.ReadFile(CacheLocation)
 	if err != nil {
 		log.Fatal(err)
 		return nil, err
@@ -112,16 +112,11 @@ func loadCache() (map[string][]byte, error) {
 	return m, nil
 }
 
-func cacheLocation() string {
-	return filepath.Join(sgauth.GuessUnixHomeDir(), cacheFileName)
-}
-
 func createKey(settings *sgauth.Settings) CacheKey {
 	return CacheKey{
 		CredentialsJSON: settings.CredentialsJSON,
-		Scope: settings.Scope,
-		Audience: settings.Audience,
-		APIKey: settings.APIKey,
+		Scope:           settings.Scope,
+		Audience:        settings.Audience,
+		APIKey:          settings.APIKey,
 	}
 }
-
