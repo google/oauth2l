@@ -20,8 +20,8 @@ import (
 	"os"
 	"strings"
 	"github.com/google/oauth2l/sgauth"
+	"github.com/andyrzhao/oauth2l/util"
 	"github.com/jessevdk/go-flags"
-	"./util"
 )
 
 const (
