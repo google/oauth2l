@@ -26,7 +26,7 @@ const (
 )
 
 // Fetches and returns OAuth access token using SSO CLI.
-func SSOFetch(email string, cli string, task string, scope string) string{
+func SSOFetch(email string, cli string, task string, scope string) (string, error) {
 	if cli == "" {
 		cli = defaultCli
 	}
@@ -37,6 +37,8 @@ func SSOFetch(email string, cli string, task string, scope string) string{
 	err := cmd.Run()
 	if err != nil {
 		fmt.Println(err)
+		return "", err
+	} else {
+		return out.String(), nil
 	}
-	return out.String()
 }

@@ -217,9 +217,15 @@ func main() {
 				Audience:		audience,
 			}
 
+			// Prepare taskArgs based on command type
 			var taskArgs []string
 			if cmd == "curl" {
-				taskArgs = append([]string{curlcli}, remainingArgs...)
+				if len(remainingArgs) > 0 {
+					taskArgs = append([]string{curlcli}, remainingArgs...)
+				} else {
+					fmt.Println("Missing url argument for Curl")
+					return
+				}
 			} else if cmd == "fetch" {
 				taskArgs = []string{format}
 			}
@@ -250,12 +256,21 @@ func main() {
 			}
 
 			// SSO flow
-			token := util.SSOFetch(email, ssocli, cmd,
+			token, err := util.SSOFetch(email, ssocli, cmd,
 				parseScopes(scopes))
+			if err != nil {
+				fmt.Println("Failed to fetch SSO token")
+				return
+			}
 			header := util.BuildHeader("Bearer", token)
 			if cmd == "curl" {
-				url := remainingArgs[0]
-				util.CurlCommand(curlcli, header, url, remainingArgs[1:]...)
+				if len(remainingArgs) > 0 {
+					url := remainingArgs[0]
+					util.CurlCommand(curlcli, header, url, remainingArgs[1:]...)
+				} else {
+					fmt.Println("Missing url argument for Curl")
+					return
+				}
 			} else if cmd == "header"{
 				fmt.Println(header)
 			} else {
@@ -292,9 +307,16 @@ func main() {
 				OAuthFlowHandler: defaultAuthorizeFlowHandler,
 				State:			"state",
 			}
+
+			// Prepare taskArgs based on command type
 			var taskArgs []string
 			if cmd == "curl" {
-				taskArgs = append([]string{curlcli}, remainingArgs...)
+				if len(remainingArgs) > 0 {
+					taskArgs = append([]string{curlcli}, remainingArgs...)
+				} else {
+					fmt.Println("Missing url argument for Curl")
+					return
+				}
 			} else if cmd == "fetch" {
 				taskArgs = []string{format}
 			}

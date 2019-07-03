@@ -56,10 +56,12 @@ func Header(settings *sgauth.Settings, args ... string) {
 // and use the token as header to make curl request.
 func Curl(settings *sgauth.Settings, args ...string) {
 	token := fetchToken(settings)
-	header := BuildHeader(token.TokenType,token.AccessToken)
-	curlcli := args [0]
-	url := args[1]
-	CurlCommand(curlcli, header, url, args[2:]...)
+	if token != nil {
+		header := BuildHeader(token.TokenType,token.AccessToken)
+		curlcli := args [0]
+		url := args[1]
+		CurlCommand(curlcli, header, url, args[2:]...)
+	}
 }
 
 // Fetches the information of the given token.
