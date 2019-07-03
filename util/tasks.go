@@ -41,17 +41,28 @@ const (
 
 // Fetches and prints the token in plain text with the given settings
 // using Google Authenticator.
-func Fetch(settings *sgauth.Settings, format string) {
+func Fetch(settings *sgauth.Settings, args ...string) {
+	format := args[0]
 	printToken(fetchToken(settings), format, getCredentialType(settings))
 }
 
 // Fetches and prints the token in header format with the given settings
 // using Google Authenticator.
-func Header(settings *sgauth.Settings, format string) {
+func Header(settings *sgauth.Settings, args ... string) {
 	Fetch(settings, formatHeader)
 }
 
-// Fetch the information of the given token.
+// Fetches token with the given settings using Google Authenticator
+// and use the token as header to make curl request.
+func Curl(settings *sgauth.Settings, args ...string) {
+	token := fetchToken(settings)
+	header := BuildHeader(token.TokenType,token.AccessToken)
+	curlcli := args [0]
+	url := args[1]
+	CurlCommand(curlcli, header, url, args[2:]...)
+}
+
+// Fetches the information of the given token.
 func Info(token string) {
 	info, err := getTokenInfo(token)
 	if err != nil {
@@ -61,7 +72,7 @@ func Info(token string) {
 	}
 }
 
-// Test the given token. Returns 0 for valid tokens.
+// Tests the given token. Returns 0 for valid tokens.
 // Otherwise returns 1.
 func Test(token string) {
 	_, err := getTokenInfo(token)
@@ -72,12 +83,17 @@ func Test(token string) {
 	}
 }
 
-// Reset the cache
+// Resets the cache.
 func Reset() {
 	err := ClearCache()
 	if err != nil {
 		fmt.Print(err)
 	}
+}
+
+// Returns the given token in standard header format.
+func BuildHeader(tokenType string, token string) string {
+	return fmt.Sprintf("Authorization: %s %s", tokenType, token)
 }
 
 func getTokenInfo(token string) (string, error) {
@@ -154,5 +170,5 @@ func printToken(token *sgauth.Token, format string, credType string) {
 }
 
 func printHeader(tokenType string, token string) {
-	fmt.Printf("Authorization: %s %s\n", tokenType, token)
+	fmt.Println(BuildHeader(tokenType, token))
 }
