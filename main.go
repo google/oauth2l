@@ -92,13 +92,13 @@ type fetchOptions struct {
 	// oauth - Executes 2LO flow for Service Account and 3LO flow for OAuth Client ID. Returns OAuth token.
 	// jwt - Signs claims (in JWT format) using PK. Returns signature as token. Only works for Service Account.
 	// sso - Exchanges LOAS credential to OAuth token.
-	AuthType string `short:"t" long:"type" choice:"oauth" choice:"jwt" choice:"sso" description:"The authentication type." default:"oauth"`
+	AuthType string `long:"type" choice:"oauth" choice:"jwt" choice:"sso" description:"The authentication type." default:"oauth"`
 
 	// GUAC parameters
-	Credentials string `short:"c" long:"credentials" description:"Credentials file containing OAuth Client Id or Service Account Key. Optional if environment variable GOOGLE_APPLICATION_CREDENTIALS is set."`
-	Scope string `short:"s" long:"scope" description:"List of OAuth scopes requested. Required for oauth and sso authentication type. Comma delimited."`
-	Audience string `short:"a" long:"audience" description:"Audience used for JWT self-signed token. Required for jwt authentication type."`
-	Email string `short:"e" long:"email" description:"Email associated with SSO. Required for sso authentication type."`
+	Credentials string `long:"credentials" description:"Credentials file containing OAuth Client Id or Service Account Key. Optional if environment variable GOOGLE_APPLICATION_CREDENTIALS is set."`
+	Scope string `long:"scope" description:"List of OAuth scopes requested. Required for oauth and sso authentication type. Comma delimited."`
+	Audience string `long:"audience" description:"Audience used for JWT self-signed token. Required for jwt authentication type."`
+	Email string `long:"email" description:"Email associated with SSO. Required for sso authentication type."`
 
 	// Client parameters
 	Format string `long:"output_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" description:"Token's output format." default:"bare"`
@@ -117,7 +117,7 @@ type fetchOptions struct {
 
 // Options for "info" and "test" commands.
 type infoOptions struct {
-	Token string `short:"t" long:"token" description:"OAuth access token to analyze."`
+	Token string `long:"token" description:"OAuth access token to analyze."`
 }
 
 // Options for "reset" command.
