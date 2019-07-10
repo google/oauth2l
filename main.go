@@ -116,7 +116,7 @@ type commonFetchOptions struct {
 // Additional options for "fetch" command
 type fetchOptions struct {
 	commonFetchOptions
-    Format string `long:"output_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" description:"Token's output format." default:"bare"`
+	Format string `long:"output_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" description:"Token's output format." default:"bare"`
 }
 
 // Additional options for "header" command
@@ -144,7 +144,7 @@ type resetOptions struct {
 
 func main() {
 	// Parse command-line flags via "go-flags" library
-	parser := flags.NewParser(&opts,flags.Default)
+	parser := flags.NewParser(&opts, flags.Default)
 
 	// Arguments that are not recognized by the parser are stored in remainingArgs.
 	remainingArgs, err := parser.Parse()
@@ -231,7 +231,7 @@ func main() {
 
 			settings := &sgauth.Settings{
 				CredentialsJSON: json,
-				Audience:		audience,
+				Audience:        audience,
 			}
 
 			// Prepare taskArgs based on command type
@@ -309,9 +309,9 @@ func main() {
 			// For 2LO flow OAuthFlowHandler and State are not needed.
 			settings := &sgauth.Settings{
 				CredentialsJSON:  json,
-				Scope:			parseScopes(scopes),
+				Scope:            parseScopes(scopes),
 				OAuthFlowHandler: defaultAuthorizeFlowHandler,
-				State:			"state",
+				State:            "state",
 			}
 
 			// Prepare taskArgs based on command type

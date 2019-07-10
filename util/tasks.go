@@ -57,7 +57,7 @@ func Header(settings *sgauth.Settings, args ... string) {
 func Curl(settings *sgauth.Settings, args ...string) {
 	token := fetchToken(settings)
 	if token != nil {
-		header := BuildHeader(token.TokenType,token.AccessToken)
+		header := BuildHeader(token.TokenType, token.AccessToken)
 		curlcli := args [0]
 		url := args[1]
 		CurlCommand(curlcli, header, url, args[2:]...)
