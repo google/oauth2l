@@ -78,15 +78,15 @@ func setCacheLocation(cache *string) {
 // Top level command-line flags (first argument after program name).
 type commandOptions struct {
 	Fetch fetchOptions `command:"fetch" description:"Fetch an access token."`
-	Header fetchOptions `command:"header" description:"Fetch an access token and return it in header format."`
-	Curl fetchOptions `command:"curl" description:"Fetch an access token and use it to make a curl request."`
+	Header headerOptions `command:"header" description:"Fetch an access token and return it in header format."`
+	Curl curlOptions `command:"curl" description:"Fetch an access token and use it to make a curl request."`
 	Info infoOptions `command:"info" description:"Display info about an OAuth access token."`
 	Test infoOptions `command:"test" description:"Tests an OAuth access token. Returns 0 for valid token."`
 	Reset resetOptions `command:"reset" description:"Resets the cache."`
 }
 
-// Options for "fetch", "header", and "curl" commands.
-type fetchOptions struct {
+// Common options for "fetch", "header", and "curl" commands.
+type commonFetchOptions struct {
 	// Currently there are 3 authentication types that are mutually exclusive:
 	//
 	// oauth - Executes 2LO flow for Service Account and 3LO flow for OAuth Client ID. Returns OAuth token.
@@ -101,9 +101,7 @@ type fetchOptions struct {
 	Email string `long:"email" description:"Email associated with SSO. Required for sso authentication type."`
 
 	// Client parameters
-	Format string `long:"output_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" description:"Token's output format." default:"bare"`
-	SsoCli string `long:"ssocli" description:"Path to SSO CLI."`
-	CurlCli string `long:"curlcli" description:"Path to Curl CLI."`
+	SsoCli string `long:"ssocli" description:"Path to SSO CLI. Optional."`
 
 	// Cache is declared as a pointer type and can be one of nil, empty (""), or a custom file path.
 	Cache *string `long:"cache" description:"Path to the credential cache file. Disables caching if set to empty. Defaults to ~/.oauth2l."`
@@ -113,6 +111,24 @@ type fetchOptions struct {
 	Jwt bool `long:"jwt" description:"Deprecated. Same as --type jwt." hidden:"true"`
 	Sso bool `long:"sso" description:"Deprecated. Same as --type sso." hidden:"true"`
 	OldFormat string `long:"credentials_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" description:"Deprecated. Same as --output_format" hidden:"true"`
+}
+
+// Additional options for "fetch" command
+type fetchOptions struct {
+	commonFetchOptions
+    Format string `long:"output_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" description:"Token's output format." default:"bare"`
+}
+
+// Additional options for "header" command
+type headerOptions struct {
+	commonFetchOptions
+}
+
+// Additional options for "curl" command
+type curlOptions struct {
+	commonFetchOptions
+	CurlCli string `long:"curlcli" description:"Path to Curl CLI. Optional."`
+	Url string `long:"url" description:"URL endpoint for the curl request." required:"true"`
 }
 
 // Options for "info" and "test" commands.
@@ -153,14 +169,14 @@ func main() {
 	}
 
 	if task, ok := fetchTasks[cmd]; ok {
-		// Get the fetch options.
-		var fetchOpts fetchOptions
+		// Get the common fetch options.
+		var fetchOpts commonFetchOptions
 		if cmd == "fetch" {
-			fetchOpts = opts.Fetch
+			fetchOpts = opts.Fetch.commonFetchOptions
 		} else if cmd == "header" {
-			fetchOpts = opts.Header
+			fetchOpts = opts.Header.commonFetchOptions
 		} else if cmd == "curl" {
-			fetchOpts = opts.Curl
+			fetchOpts = opts.Curl.commonFetchOptions
 		}
 
 		// Get the authentication type, with backward compatibility
@@ -181,17 +197,18 @@ func main() {
 		scope := fetchOpts.Scope
 		audience := fetchOpts.Audience
 		email := fetchOpts.Email
+		ssocli := fetchOpts.SsoCli
+		setCacheLocation (fetchOpts.Cache)
 
-		// Get the output format, with backward compatibility
-		format := fetchOpts.Format
-		if fetchOpts.OldFormat != "" {
-			format = fetchOpts.OldFormat
+		// Get the fetch output format, with backward compatibility
+		format := opts.Fetch.Format
+		if opts.Fetch.OldFormat != "" {
+			format = opts.Fetch.OldFormat
 		}
 
-		ssocli := fetchOpts.SsoCli
-		curlcli := fetchOpts.CurlCli
-
-		setCacheLocation (fetchOpts.Cache)
+		// Get the curl specific flags
+		curlcli := opts.Curl.CurlCli
+		url := opts.Curl.Url
 
 		if authType == "jwt"{
 			// JWT flow
@@ -220,12 +237,7 @@ func main() {
 			// Prepare taskArgs based on command type
 			var taskArgs []string
 			if cmd == "curl" {
-				if len(remainingArgs) > 0 {
-					taskArgs = append([]string{curlcli}, remainingArgs...)
-				} else {
-					fmt.Println("Missing url argument for Curl")
-					return
-				}
+				taskArgs = append([]string{curlcli, url}, remainingArgs...)
 			} else if cmd == "fetch" {
 				taskArgs = []string{format}
 			}
@@ -264,13 +276,7 @@ func main() {
 			}
 			header := util.BuildHeader("Bearer", token)
 			if cmd == "curl" {
-				if len(remainingArgs) > 0 {
-					url := remainingArgs[0]
-					util.CurlCommand(curlcli, header, url, remainingArgs[1:]...)
-				} else {
-					fmt.Println("Missing url argument for Curl")
-					return
-				}
+				util.CurlCommand(curlcli, header, url, remainingArgs...)
 			} else if cmd == "header"{
 				fmt.Println(header)
 			} else {
@@ -311,12 +317,7 @@ func main() {
 			// Prepare taskArgs based on command type
 			var taskArgs []string
 			if cmd == "curl" {
-				if len(remainingArgs) > 0 {
-					taskArgs = append([]string{curlcli}, remainingArgs...)
-				} else {
-					fmt.Println("Missing url argument for Curl")
-					return
-				}
+				taskArgs = append([]string{curlcli, url}, remainingArgs...)
 			} else if cmd == "fetch" {
 				taskArgs = []string{format}
 			}

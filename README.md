@@ -26,14 +26,18 @@ accounts and service accounts in different environments:
 *   When running inside user context that has an active Google Cloud SDK
     (gcloud) session, it uses the current gcloud credentials.
 
-*   When running with command option `--json xxx`, where `xxx` points to
+*   When running with command option `--credentials xxx`, where `xxx` points to
     a JSON credential file downloaded from
     [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
     `oauth2l` uses the file to start an OAuth session. The file can be
     either a service account key or an OAuth client ID.
 
-*   When running with command option `--sso {email}`, it invokes an
+*   When running with command option `--type sso --email xxx`, it invokes an
     external `sso` command to retrieve Single Sign-on (SSO) access token.
+
+*   When running with command option `--cache xxx`, the retrieved token will
+    be cached locally. Defaults to "~/.oauth2l" if not configured. Disables
+    caching if set to empty ("").
 
 ## Quickstart
 
@@ -100,13 +104,7 @@ scopes and uses the token to make a curl request (via 'usr/bin/curl' by
 default). Additional flags after "--" will be treated as curl flags.
 
 ```bash
-$ oauth2l curl --scope cloud-platform,pubsub https://pubsub.googleapis.com/v1/projects/my-project-id/topics -- -i
-HTTP/2 200
-x-google-esf-cloud-client-params:
-backend_service_name: "pubsub.googleapis.com"
-backend_fully_qualified_method: "google.pubsub.v1.Publisher.ListTopics"
-...
-{}
+$ oauth2l curl --scope cloud-platform,pubsub --url https://pubsub.googleapis.com/v1/projects/my-project-id/topics -- -i
 ```
 
 ### info
@@ -162,10 +160,18 @@ Account key) to start the OAuth flow. You can download the file from
 $ oauth2l fetch --credentials ~/service_account.json --scope cloud-platform
 ```
 
+If this option is not supplied, it will be read from the environment variable
+GOOGLE_APPLICATION_CREDENTIALS.
+
+```bash
+$ export GOOGLE_APPLICATION_CREDENTIALS="~/service_account.json"
+$ oauth2l fetch --scope cloud-platform
+```
+
 ### --type
 
 The authentication type. The currently supported types are "oauth", "jwt", or
-"sso. Defaults to "oauth".
+"sso". Defaults to "oauth".
 
 #### oauth
 
@@ -188,7 +194,7 @@ needed but a single JWT audience must be provided. See how to construct the
 audience [here](https://developers.google.com/identity/protocols/OAuth2ServiceAccount#jwt-auth).
 
 ```bash
-oauth2l fetch --type jwt --credentials ~/service_account.json --audience https://pubsub.googleapis.com/google.pubsub.v1.Publisher
+$ oauth2l fetch --type jwt --credentials ~/service_account.json --audience https://pubsub.googleapis.com/google.pubsub.v1.Publisher
 ```
 
 #### sso
@@ -196,17 +202,23 @@ oauth2l fetch --type jwt --credentials ~/service_account.json --audience https:/
 When sso is selected, the tool will use an external Single Sign-on (SSO)
 CLI to fetch an OAuth access token. The default SSO CLI only works with
 Google's corporate SSO. An email is required in addition to scope.
-Example usage of SSO CLI:
+
+To use oauth2l with the default SSO CLI:
+
+```bash
+$ oauth2l header --type sso --email me@google.com --scope cloud-platform
+```
+
+To use oauth2l with a custom SSO CLI:
+
+```bash
+$ oauth2l header --type sso --ssocli /usr/bin/sso --email me@google.com --scope cloud-platform
+```
+
+Note: The custom SSO CLI should have the following interface:
 
 ```bash
 $ /usr/bin/sso me@example.com scope1 scope2
-```
-
-To use oauth2l with the SSO CLI:
-
-```bash
-$ oauth2l fetch --type sso --ssocli /usr/bin/sso --email me@google.com --scope cloud-platform
-$ oauth2l fetch --type sso --email me@google.com --scope cloud-platform
 ```
 
 ### --scope
@@ -236,14 +248,6 @@ The email associated with SSO. Required for sso authentication type.
 $ oauth2l fetch --type sso --email me@google.com --scope cloud-platform
 ```
 
-### --output_format
-
-Token's output format. One of bare, header, json, json_compact, pretty. Default is bare.
-
-```bash
-$ oauth2l fetch --output_format pretty --scope cloud-platform
-```
-
 ### --ssocli
 
 Path to SSO CLI. For optional use with "sso" authentication type.
@@ -252,18 +256,34 @@ Path to SSO CLI. For optional use with "sso" authentication type.
 $ oauth2l fetch --type sso --ssocli /usr/bin/sso --email me@google.com --scope cloud-platform
 ```
 
-### --curlcli
-
-Path to Curl CLI. For optional use with "curl" command.
-
-```bash
-$ oauth2l curl --curlcli /usr/bin/curl --type sso --email me@google.com --scope cloud-platform https://pubsub.googleapis.com/v1/projects/my-project-id/topics
-```
-
 ### --cache
 
 Path to token cache file. Disables caching if set to empty (""). Defaults to ~/.oauth2l
 
 ```bash
 $ oauth2l fetch --cache ~/different_path/.oauth2l --scope cloud-platform
+```
+
+### fetch --output_format
+
+Token's output format for "fetch" command. One of bare, header, json, json_compact, pretty. Default is bare.
+
+```bash
+$ oauth2l fetch --output_format pretty --scope cloud-platform
+```
+
+### curl --url
+
+URL endpoint for curl request. Required for "curl" command.
+
+```bash
+$ oauth2l curl --scope cloud-platform --url https://pubsub.googleapis.com/v1/projects/my-project-id/topics
+```
+
+### curl --curlcli
+
+Path to Curl CLI. For optional use with "curl" command.
+
+```bash
+$ oauth2l curl --curlcli /usr/bin/curl --type sso --email me@google.com --scope cloud-platform --url https://pubsub.googleapis.com/v1/projects/my-project-id/topics
 ```
