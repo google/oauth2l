@@ -7,7 +7,24 @@ working with
 written in Go. Its primary use is to fetch and print OAuth 2.0 access
 tokens, which can be used with other command-line tools and shell scripts.
 
-## Previous Version
+## July 2019 Update
+
+The `oauth2l` client has been redesigned to support a richer set of
+command-line options. Options such as "scope", "audience", and "email" can
+now be specified explicitly in order to avoid ambiguity and mis-use.
+Furthermore, several options have been deprecated and/or renamed for clarity:
+
+*   `--json` is now `--credentials`
+*   `--credentials_format` is now `--output_format`
+*   `--jwt` is now `--type jwt`
+*   `--sso` is now `--type sso`
+
+Note: The tool maintains backward compatibility with the old option names
+and continues to accept implicit options for "scope", "audience", and
+"email" based on context. However, please use the new style of explicit
+options going forth. Refer to the "Command Options" section for details.
+
+## Previous Version (Before Sept 2018)
 
 The previous version of `oauth2l` was written in Python and it is located
 at the [python](/python) directory. The Python version is deprecated because
@@ -32,12 +49,15 @@ accounts and service accounts in different environments:
     `oauth2l` uses the file to start an OAuth session. The file can be
     either a service account key or an OAuth client ID.
 
-*   When running with command option `--type sso --email xxx`, it invokes an
-    external `sso` command to retrieve Single Sign-on (SSO) access token.
+*   When running with command option `--type jwt --audience xxx` and a service
+    account key, a JWT token signed by the service account key will be generated.
 
-*   When running with command option `--cache xxx`, the retrieved token will
-    be cached locally. Defaults to "~/.oauth2l" if not configured. Disables
-    caching if set to empty ("").
+*   When running with command option `--type sso --email xxx`, `oauth2l` invokes
+    an external `sso` command to retrieve Single Sign-on (SSO) access token.
+
+*   By default, retrieved tokens will be cached and stored in "~/.oauth2l".
+    The cache location can be overridden via `--cache xxx`. To disable
+    caching, set cache location to empty ("").
 
 ## Quickstart
 
@@ -54,10 +74,10 @@ https://github.com/golang/go/wiki/GOPATH))
 
 ```bash
 # Get the package from Github
-$ go get github.com/google/oauth2l
+$ go get -u github.com/andyrzhao/oauth2l
 
 # Install the package into your $GOPATH/bin/
-$ go install github.com/google/oauth2l
+$ go install github.com/andyrzhao/oauth2l
 
 # Fetch the access token from your credentials with cloud-platform scope
 $ ~/go/bin/oauth2l fetch --credentials ~/your_credentials.json --scope cloud-platform
@@ -150,6 +170,18 @@ $ oauth2l reset
 
 ## Command Options
 
+### --help
+
+Prints help messages for the main program or a specific command.
+
+```bash
+$ oauth2l --help
+```
+
+```bash
+$ oauth2l fetch --help
+```
+
 ### --credentials
 
 Specifies an OAuth credential file (either an OAuth client ID or a Service
@@ -161,7 +193,8 @@ $ oauth2l fetch --credentials ~/service_account.json --scope cloud-platform
 ```
 
 If this option is not supplied, it will be read from the environment variable
-GOOGLE_APPLICATION_CREDENTIALS.
+GOOGLE_APPLICATION_CREDENTIALS. For more information, please read
+[Getting started with Authentication](https://cloud.google.com/docs/authentication/getting-started).
 
 ```bash
 $ export GOOGLE_APPLICATION_CREDENTIALS="~/service_account.json"
@@ -178,8 +211,8 @@ The authentication type. The currently supported types are "oauth", "jwt", or
 When oauth is selected, the tool will fetch an OAuth access token through one
 of two different flows. If service account key is provided, 2-legged OAuth flow
 is performed. If OAuth Client ID is provided, 3-legged OAuth flow is performed,
-which requires user consent. Learn about the different types of OAuth [here]
-(https://developers.google.com/identity/protocols/OAuth2).
+which requires user consent. Learn about the different types of OAuth
+[here](https://developers.google.com/identity/protocols/OAuth2).
 
 ```bash
 $ oauth2l fetch --type oauth --credentials ~/client_credentials.json --scope cloud-platform
@@ -194,7 +227,7 @@ needed but a single JWT audience must be provided. See how to construct the
 audience [here](https://developers.google.com/identity/protocols/OAuth2ServiceAccount#jwt-auth).
 
 ```bash
-$ oauth2l fetch --type jwt --credentials ~/service_account.json --audience https://pubsub.googleapis.com/google.pubsub.v1.Publisher
+$ oauth2l fetch --type jwt --credentials ~/service_account.json --audience https://pubsub.googleapis.com/
 ```
 
 #### sso
@@ -225,7 +258,8 @@ $ /usr/bin/sso me@example.com scope1 scope2
 
 The scope(s) that will be authorized by the OAuth access token. Required for
 oauth and sso authentication types. When using multiple scopes, provide the
-the parameter as a comma-delimited list and do not include spaces.
+the parameter as a comma-delimited list and do not include spaces. (Alternatively,
+multiple scopes can be specified as a space-delimited string surrounded in quotes.)
 
 ```bash
 $ oauth2l fetch --scope cloud-platform,pubsub
@@ -237,7 +271,7 @@ The single audience to include in the signed JWT token. Required for jwt
 authentication type.
 
 ```bash
-$ oauth2l fetch --type jwt --audience https://pubsub.googleapis.com/google.pubsub.v1.Publisher
+$ oauth2l fetch --type jwt --audience https://pubsub.googleapis.com/
 ```
 
 ### --email
@@ -258,7 +292,7 @@ $ oauth2l fetch --type sso --ssocli /usr/bin/sso --email me@google.com --scope c
 
 ### --cache
 
-Path to token cache file. Disables caching if set to empty (""). Defaults to ~/.oauth2l
+Path to token cache file. Disables caching if set to empty (""). Defaults to ~/.oauth2l if not configured.
 
 ```bash
 $ oauth2l fetch --cache ~/different_path/.oauth2l --scope cloud-platform

@@ -19,7 +19,10 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"regexp"
 	"github.com/google/oauth2l/sgauth"
+	//TODO: After PR merge, replace below with "github.com/google/oauth2l/util"
+	//Also, update the README.md
 	"github.com/andyrzhao/oauth2l/util"
 	"github.com/jessevdk/go-flags"
 )
@@ -32,48 +35,10 @@ const (
 var (
 	// Holds the parsed command-line flags
 	opts commandOptions
+
+	// Multiple scopes are separate by comma, space, or comma-space.
+	scopeDelimiter = regexp.MustCompile("[, ] *")
 )
-
-// Reads and returns content of JSON file
-func readJSON(file string) (string, error) {
-	if file != "" {
-		secretBytes, err := ioutil.ReadFile(file)
-		if err != nil {
-			return "", err
-		}
-		return string(secretBytes), nil
-	}
-	return "", nil
-}
-
-// Default 3LO authorization handler. Prints the authorization URL on stdout
-// and reads the verification code from stdin.
-func defaultAuthorizeFlowHandler(authorizeUrl string) (string, error) {
-	// Print the url on console, let user authorize and paste the token back.
-	fmt.Printf("Go to the following link in your browser:\n\n   %s\n\n", authorizeUrl)
-	fmt.Println("Enter verification code: ")
-	var code string
-	fmt.Scanln(&code)
-	return code, nil
-}
-
-// Append Google OAuth scope prefix if not provided and joins
-// the slice into a whitespace-separated string.
-func parseScopes(scopes []string) string {
-	for i := 0; i < len(scopes); i++ {
-		if !strings.Contains(scopes[i], "//") {
-			scopes[i] = scopePrefix + scopes[i]
-		}
-	}
-	return strings.Join(scopes, " ")
-}
-
-// Overrides default cache location if configured
-func setCacheLocation(cache *string) {
-	if cache != nil {
-		util.CacheLocation = *cache
-	}
-}
 
 // Top level command-line flags (first argument after program name).
 type commandOptions struct {
@@ -113,18 +78,18 @@ type commonFetchOptions struct {
 	OldFormat string `long:"credentials_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" description:"Deprecated. Same as --output_format" hidden:"true"`
 }
 
-// Additional options for "fetch" command
+// Additional options for "fetch" command.
 type fetchOptions struct {
 	commonFetchOptions
 	Format string `long:"output_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" description:"Token's output format." default:"bare"`
 }
 
-// Additional options for "header" command
+// Additional options for "header" command.
 type headerOptions struct {
 	commonFetchOptions
 }
 
-// Additional options for "curl" command
+// Additional options for "curl" command.
 type curlOptions struct {
 	commonFetchOptions
 	CurlCli string `long:"curlcli" description:"Path to Curl CLI. Optional."`
@@ -140,6 +105,126 @@ type infoOptions struct {
 type resetOptions struct {
 	// Cache is declared as a pointer type and can be one of nil or a custom file path.
 	Cache *string `long:"cache" description:"Path to the credential cache file to remove. Defaults to ~/.oauth2l."`
+}
+
+// Reads and returns content of JSON file.
+func readJSON(file string) (string, error) {
+	if file != "" {
+		secretBytes, err := ioutil.ReadFile(file)
+		if err != nil {
+			return "", err
+		}
+		return string(secretBytes), nil
+	}
+	return "", nil
+}
+
+// Default 3LO authorization handler. Prints the authorization URL on stdout
+// and reads the verification code from stdin.
+func defaultAuthorizeFlowHandler(authorizeUrl string) (string, error) {
+	// Print the url on console, let user authorize and paste the token back.
+	fmt.Printf("Go to the following link in your browser:\n\n   %s\n\n", authorizeUrl)
+	fmt.Println("Enter verification code: ")
+	var code string
+	fmt.Scanln(&code)
+	return code, nil
+}
+
+// Append Google OAuth scope prefix if not provided and joins
+// the slice into a whitespace-separated string.
+func parseScopes(scopes []string) string {
+	for i := 0; i < len(scopes); i++ {
+		if !strings.Contains(scopes[i], "//") {
+			scopes[i] = scopePrefix + scopes[i]
+		}
+	}
+	return strings.Join(scopes, " ")
+}
+
+// Overrides default cache location if configured.
+func setCacheLocation(cache *string) {
+	if cache != nil {
+		util.CacheLocation = *cache
+	}
+}
+
+// Extracts the common fetch options based on chosen command.
+func getCommonFetchOptions (cmdOpts commandOptions, cmd string) commonFetchOptions {
+	var commonOpts commonFetchOptions
+	switch cmd {
+	case "fetch":
+		commonOpts = cmdOpts.Fetch.commonFetchOptions
+	case "header":
+		commonOpts = cmdOpts.Header.commonFetchOptions
+	case "curl":
+		commonOpts = cmdOpts.Curl.commonFetchOptions
+	}
+	return commonOpts
+}
+
+// Get the authentication type, with backward compatibility.
+func getAuthTypeWithFallback (commonOpts commonFetchOptions) string {
+	authType := commonOpts.AuthType
+	if commonOpts.Jwt {
+		authType = "jwt"
+	} else if commonOpts.Sso {
+		authType = "sso"
+	}
+	return authType
+}
+
+// Get the credentials file, with backward compatibility.
+func getCredentialsWithFallback (commonOpts commonFetchOptions) string {
+	credentials := commonOpts.Credentials
+	if commonOpts.Json != "" {
+		credentials = commonOpts.Json
+	}
+	return credentials
+}
+
+// Get the fetch output format, with backward compatibility.
+func getOutputFormatWithFallback (fetchOpts fetchOptions) string {
+	format := fetchOpts.Format
+	if fetchOpts.OldFormat != "" {
+		format = fetchOpts.OldFormat
+	}
+	return format
+}
+
+// Converts scope argument to string slice, with backward compatibility.
+func getScopesWithFallback (scope string, remainingArgs ...string) []string {
+	var scopes []string
+	// Fallback to reading scope from remaining args
+	if scope == "" {
+		scopes = remainingArgs
+	} else {
+		scopes = scopeDelimiter.Split(scope, -1)
+	}
+	return scopes
+}
+
+// Construct taskArgs based on chosen command.
+func getTaskArgs(cmd, curlcli, url, format string, remainingArgs ...string) []string {
+	var taskArgs []string
+	switch cmd {
+	case "curl":
+		taskArgs = append([]string{curlcli, url}, remainingArgs...)
+	case "fetch":
+		taskArgs = []string{format}
+	}
+	return taskArgs
+}
+
+// Extracts the info options based on chosen command.
+func getInfoOptions (cmdOpts commandOptions, cmd string) infoOptions {
+	var infoOpts infoOptions
+	switch cmd {
+	case "info":
+		infoOpts = cmdOpts.Info
+	case "test":
+		infoOpts = cmdOpts.Test
+	}
+	return infoOpts
 }
 
 func main() {
@@ -169,44 +254,15 @@ func main() {
 	}
 
 	if task, ok := fetchTasks[cmd]; ok {
-		// Get the common fetch options.
-		var fetchOpts commonFetchOptions
-		if cmd == "fetch" {
-			fetchOpts = opts.Fetch.commonFetchOptions
-		} else if cmd == "header" {
-			fetchOpts = opts.Header.commonFetchOptions
-		} else if cmd == "curl" {
-			fetchOpts = opts.Curl.commonFetchOptions
-		}
-
-		// Get the authentication type, with backward compatibility
-		authType := fetchOpts.AuthType
-		if fetchOpts.Jwt {
-			authType = "jwt"
-		}
-		if fetchOpts.Sso {
-			authType = "sso"
-		}
-
-		// Get the credentials file, with backward compatibility
-		credentials := fetchOpts.Credentials
-		if fetchOpts.Json != "" {
-			credentials = fetchOpts.Json
-		}
-
-		scope := fetchOpts.Scope
-		audience := fetchOpts.Audience
-		email := fetchOpts.Email
-		ssocli := fetchOpts.SsoCli
-		setCacheLocation (fetchOpts.Cache)
-
-		// Get the fetch output format, with backward compatibility
-		format := opts.Fetch.Format
-		if opts.Fetch.OldFormat != "" {
-			format = opts.Fetch.OldFormat
-		}
-
-		// Get the curl specific flags
+		commonOpts := getCommonFetchOptions(opts, cmd)
+		authType := getAuthTypeWithFallback(commonOpts)
+		credentials := getCredentialsWithFallback(commonOpts)
+		scope := commonOpts.Scope
+		audience := commonOpts.Audience
+		email := commonOpts.Email
+		ssocli := commonOpts.SsoCli
+		setCacheLocation (commonOpts.Cache)
+		format := getOutputFormatWithFallback(opts.Fetch)
 		curlcli := opts.Curl.CurlCli
 		url := opts.Curl.Url
 
@@ -222,7 +278,7 @@ func main() {
 			// Fallback to reading audience from first remaining arg
 			if audience == "" {
 				if len(remainingArgs) > 0 {
-					audience = remainingArgs [0]
+					audience = remainingArgs[0]
 				} else {
 					fmt.Println("Missing audience argument for JWT")
 					return
@@ -234,34 +290,22 @@ func main() {
 				Audience:        audience,
 			}
 
-			// Prepare taskArgs based on command type
-			var taskArgs []string
-			if cmd == "curl" {
-				taskArgs = append([]string{curlcli, url}, remainingArgs...)
-			} else if cmd == "fetch" {
-				taskArgs = []string{format}
-			}
+			taskArgs := getTaskArgs(cmd, curlcli, url, format, remainingArgs...)
 			task(settings, taskArgs...)
 		} else if authType == "sso" {
 			// Fallback to reading email from first remaining arg
+			argProcessedIndex := 0
 			if email == "" {
 				if len(remainingArgs) > 0 {
-					email = remainingArgs [0]
+					email = remainingArgs[argProcessedIndex]
+					argProcessedIndex++
 				} else {
 					fmt.Println("Missing email argument for SSO")
 					return
 				}
 			}
 
-			var scopes []string
-
-			// Fallback to reading scope from other remaining args
-			if scope == "" {
-				scopes = remainingArgs [1:]
-			} else {
-				scopes = strings.Split(scope, ",")
-			}
-
+			scopes := getScopesWithFallback(scope, remainingArgs[argProcessedIndex:]...)
 			if len(scopes) < 1 {
 				fmt.Println("Missing scope argument for SSO")
 				return
@@ -275,24 +319,18 @@ func main() {
 				return
 			}
 			header := util.BuildHeader("Bearer", token)
-			if cmd == "curl" {
+
+			switch cmd {
+			case "curl":
 				util.CurlCommand(curlcli, header, url, remainingArgs...)
-			} else if cmd == "header"{
+			case "header":
 				fmt.Println(header)
-			} else {
+			default:
 				fmt.Println(token)
 			}
 		} else {
 			// OAuth flow
-			var scopes []string
-
-			// Fallback to reading scope from remaining args
-			if scope == "" {
-				scopes = remainingArgs
-			} else {
-				scopes = strings.Split(scope, ",")
-			}
-
+			scopes := getScopesWithFallback(scope, remainingArgs...)
 			if len(scopes) < 1 {
 				fmt.Println("Missing scope argument for OAuth 2.0")
 				return
@@ -314,29 +352,21 @@ func main() {
 				State:            "state",
 			}
 
-			// Prepare taskArgs based on command type
-			var taskArgs []string
-			if cmd == "curl" {
-				taskArgs = append([]string{curlcli, url}, remainingArgs...)
-			} else if cmd == "fetch" {
-				taskArgs = []string{format}
-			}
+			taskArgs := getTaskArgs(cmd, curlcli, url, format, remainingArgs...)
 			task(settings, taskArgs...)
 		}
 	} else if task, ok := infoTasks[cmd]; ok {
-		// Get the info options.
-		var infoOpts infoOptions
-		if cmd == "info" {
-			infoOpts = opts.Info
-		} else if cmd == "test" {
-			infoOpts = opts.Test
-		}
-
-		token := infoOpts.Token;
+		infoOpts := getInfoOptions(opts, cmd)
+		token := infoOpts.Token
 
 		// Fallback to reading token from remaining args.
 		if token == "" {
-			token = remainingArgs [0]
+			if len(remainingArgs) > 0 {
+				token = remainingArgs[0]
+			} else {
+				fmt.Println("Missing token to analyze")
+				return
+			}
 		}
 
 		task(token)
