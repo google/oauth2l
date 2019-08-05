@@ -1,5 +1,5 @@
 //
-// Copyright 2018 Google Inc.
+// Copyright 2019 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,27 +18,26 @@ import (
 	"os/exec"
 	"bytes"
 	"fmt"
-	"strings"
 )
 
 const (
-	defaultCli = "/google/data/ro/teams/oneplatform/sso"
+	defaultCurlCli = "/usr/bin/curl"
 )
 
-// Fetches and returns OAuth access token using SSO CLI.
-func SSOFetch(email string, cli string, task string, scope string) (string, error) {
+// Executes curl command with provided header and params.
+func CurlCommand(cli string, header string, url string, extraArgs ...string) {
 	if cli == "" {
-		cli = defaultCli
+		cli = defaultCurlCli
 	}
-	cmdArgs := append([]string{email}, strings.Split(scope, " ")...)
+	requiredArgs := []string{"-H", header, url}
+	cmdArgs := append(requiredArgs, extraArgs...)
+
 	cmd := exec.Command(cli, cmdArgs...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	err := cmd.Run()
 	if err != nil {
 		fmt.Println(err)
-		return "", err
-	} else {
-		return out.String(), nil
 	}
+	print(out.String())
 }
