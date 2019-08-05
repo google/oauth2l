@@ -7,24 +7,7 @@ working with
 written in Go. Its primary use is to fetch and print OAuth 2.0 access
 tokens, which can be used with other command-line tools and shell scripts.
 
-## July 2019 Update
-
-The `oauth2l` client has been redesigned to support a richer set of
-command-line options. Options such as "scope", "audience", and "email" can
-now be specified explicitly in order to avoid ambiguity and mis-use.
-Furthermore, several options have been deprecated and/or renamed for clarity:
-
-*   `--json` is now `--credentials`
-*   `--credentials_format` is now `--output_format`
-*   `--jwt` is now `--type jwt`
-*   `--sso` is now `--type sso`
-
-Note: The tool maintains backward compatibility with the old option names
-and continues to accept implicit options for "scope", "audience", and
-"email" based on context. However, please use the new style of explicit
-options going forth. Refer to the "Command Options" section for details.
-
-## Previous Version (Before Sept 2018)
+## Previous Version
 
 The previous version of `oauth2l` was written in Python and it is located
 at the [python](/python) directory. The Python version is deprecated because

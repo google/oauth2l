@@ -1,5 +1,5 @@
 //
-// Copyright 2018 Google Inc.
+// Copyright 2019 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -261,7 +261,7 @@ func main() {
 		audience := commonOpts.Audience
 		email := commonOpts.Email
 		ssocli := commonOpts.SsoCli
-		setCacheLocation (commonOpts.Cache)
+		setCacheLocation(commonOpts.Cache)
 		format := getOutputFormatWithFallback(opts.Fetch)
 		curlcli := opts.Curl.CurlCli
 		url := opts.Curl.Url
@@ -371,7 +371,7 @@ func main() {
 
 		task(token)
 	} else if cmd == "reset" {
-		setCacheLocation (opts.Reset.Cache)
+		setCacheLocation(opts.Reset.Cache)
 		util.Reset()
 	}
 }

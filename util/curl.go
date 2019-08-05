@@ -1,5 +1,5 @@
 //
-// Copyright 2018 Google Inc.
+// Copyright 2019 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ func CurlCommand(cli string, header string, url string, extraArgs ...string) {
 	if cli == "" {
 		cli = defaultCurlCli
 	}
-	requiredArgs := [] string{"-H", header, url}
+	requiredArgs := []string{"-H", header, url}
 	cmdArgs := append(requiredArgs, extraArgs...)
 
 	cmd := exec.Command(cli, cmdArgs...)
