@@ -21,9 +21,7 @@ import (
 	"strings"
 	"regexp"
 	"github.com/google/oauth2l/sgauth"
-	//TODO: After PR merge, replace below with "github.com/google/oauth2l/util"
-	//Also, update the README.md
-	"github.com/andyrzhao/oauth2l/util"
+	"github.com/google/oauth2l/util"
 	"github.com/jessevdk/go-flags"
 )
 
