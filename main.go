@@ -36,9 +36,6 @@ var (
 
 	// Multiple scopes are separate by comma, space, or comma-space.
 	scopeDelimiter = regexp.MustCompile("[, ] *")
-
-	// OpenId scopes should not be prefixed with scopePrefix.
-	openIdScopes = regexp.MustCompile("openid|profile|email")
 )
 
 // Top level command-line flags (first argument after program name).
@@ -135,7 +132,7 @@ func defaultAuthorizeFlowHandler(authorizeUrl string) (string, error) {
 // the slice into a whitespace-separated string.
 func parseScopes(scopes []string) string {
 	for i := 0; i < len(scopes); i++ {
-		if !strings.Contains(scopes[i], "//") && !openIdScopes.MatchString(scopes[i]) {
+		if !strings.Contains(scopes[i], "//") {
 			scopes[i] = scopePrefix + scopes[i]
 		}
 	}
