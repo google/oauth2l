@@ -1,21 +1,21 @@
-language: python
-sudo: false
-env:
-  - TOX_ENV=py27
-  - TOX_ENV=py35
-install:
-  - cd python
-  - pip install tox
-  - pip install .
-script: tox -e $TOX_ENV
-after_success:
-  - if [[ "${TOX_ENV}" == "py27" ]]; then tox -e coveralls; fi
+language: go
 
-# Tweak for adding python3.5; see
-# https://github.com/travis-ci/travis-ci/issues/4794
-addons:
-  apt:
-    sources:
-      - deadsnakes
-    packages:
-      - python3.5
+env:
+  - GO111MODULE=on
+
+go:
+  - 1.12.x
+
+# Only clone the most recent commit.
+git:
+  depth: 1
+
+# Skip the install step.
+install: true
+
+# Don't email the results of the test runs.
+notifications:
+  email: false
+
+script:
+  - go test integration/cli_test.go
