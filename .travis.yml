@@ -4,12 +4,20 @@ env:
   - GO111MODULE=on
 
 go:
-  - 1.12.x
-  - 1.11.x
+  - '1.13.x'
+  - '1.12.x'
+  - '1.11.x'
 
 # Only clone the most recent commit.
 git:
+  quiet: true
   depth: 1
+
+# Cache module downloads
+cache:
+  directories:
+  - $HOME/.cache/go-build
+  - $HOME/gopath/pkg/mod
 
 # Skip the install step.
 install: true
