@@ -7,13 +7,6 @@ working with
 written in Go. Its primary use is to fetch and print OAuth 2.0 access
 tokens, which can be used with other command-line tools and shell scripts.
 
-## Previous Version
-
-The previous version of `oauth2l` was written in Python and it is located
-at the [python](/python) directory. The Python version is deprecated because
-it depends on a legacy auth library and contains some features that are
-no longer best practice. Please switch to use the Go version instead.
-
 ## Overview
 
 `oauth2l` supports all Google OAuth 2.0 authentication flows for both user
@@ -44,7 +37,13 @@ accounts and service accounts in different environments:
 
 ## Quickstart
 
-You will need to meet the following requirement to use this tool:
+On Mac OS X, you can install `oauth2l` via [Homebrew](https://brew.sh):
+
+```bash
+$ brew install oauth2l
+```
+
+On other systems, you need to meet the following requirements to use this tool:
 
 __Minimum requirements:__
 - The tool is only available for _Linux_ or _Mac_
@@ -304,3 +303,10 @@ Path to Curl CLI. For optional use with "curl" command.
 ```bash
 $ oauth2l curl --curlcli /usr/bin/curl --type sso --email me@google.com --scope cloud-platform --url https://pubsub.googleapis.com/v1/projects/my-project-id/topics
 ```
+
+## Previous Version
+
+The previous version of `oauth2l` was written in Python and it is located
+at the [python](/python) directory. The Python version is deprecated because
+it depends on a legacy auth library and contains some features that are
+no longer best practice. Please switch to use the Go version instead.
