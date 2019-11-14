@@ -17,8 +17,8 @@ package credentials
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/net/context"
 	"github.com/google/oauth2l/sgauth/internal"
+	"golang.org/x/net/context"
 )
 
 // DefaultTokenURL is Google's OAuth 2.0 token URL to use with the service
@@ -33,16 +33,16 @@ const DefaultAuthURL = "https://accounts.google.com/o/oauth2/auth"
 const (
 	ServiceAccountKey  = "service_account"
 	UserCredentialsKey = "authorized_user"
-	OAuthClientKey = "oauth_client"
+	OAuthClientKey     = "oauth_client"
 )
 
 // Contains data for OAuthClient key.
 type OAuthClient struct {
-	ProjectID    string `json:"project_id"`
-	ClientSecret string `json:"client_secret"`
-	ClientID     string `json:"client_id"`
-	TokenURL     string `json:"token_uri"`
-	AuthURL      string `json:"auth_uri"`
+	ProjectID    string   `json:"project_id"`
+	ClientSecret string   `json:"client_secret"`
+	ClientID     string   `json:"client_id"`
+	TokenURL     string   `json:"token_uri"`
+	AuthURL      string   `json:"auth_uri"`
 	RedirectURL  []string `json:"redirect_uris"`
 }
 
@@ -85,7 +85,7 @@ func (f *File) CredentialsType() string {
 
 // Construct the corresponding token source based on the type of the file.
 func (f *File) TokenSource(ctx context.Context, scopes []string,
-	handler func(string)(string, error), state string) (internal.TokenSource, error) {
+	handler func(string) (string, error), state string) (internal.TokenSource, error) {
 	switch f.CredentialsType() {
 	case ServiceAccountKey:
 		cfg := JWTConfigFromFile(f, scopes)
@@ -104,8 +104,8 @@ func (f *File) TokenSource(ctx context.Context, scopes []string,
 			ClientID:     f.ClientID,
 			ClientSecret: f.ClientSecret,
 			Scopes:       scopes,
-			Endpoint:     internal.Endpoint{
-				AuthURL: authURL,
+			Endpoint: internal.Endpoint{
+				AuthURL:  authURL,
 				TokenURL: tokenURL,
 			},
 		}
@@ -113,7 +113,7 @@ func (f *File) TokenSource(ctx context.Context, scopes []string,
 		return cfg.TokenSource(ctx, tok), nil
 	case OAuthClientKey:
 		var oauth OAuthClient
-		if (f.Web.ProjectID != "") {
+		if f.Web.ProjectID != "" {
 			oauth = f.Web
 		} else {
 			oauth = f.Installed
@@ -132,12 +132,12 @@ func (f *File) TokenSource(ctx context.Context, scopes []string,
 			ClientID:     oauth.ClientID,
 			ClientSecret: oauth.ClientSecret,
 			Scopes:       scopes,
-			Endpoint:     internal.Endpoint{
-				AuthURL: oauth.AuthURL,
+			Endpoint: internal.Endpoint{
+				AuthURL:  oauth.AuthURL,
 				TokenURL: oauth.TokenURL,
 			},
 			FlowHandler: handler,
-			State: state,
+			State:       state,
 			RedirectURL: oauth.RedirectURL[0],
 		}
 		return cfg.TokenSource(ctx, nil), nil

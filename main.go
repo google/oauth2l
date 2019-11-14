@@ -18,8 +18,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"strings"
 	"regexp"
+	"strings"
+
 	"github.com/google/oauth2l/sgauth"
 	"github.com/google/oauth2l/util"
 	"github.com/jessevdk/go-flags"
@@ -43,12 +44,12 @@ var (
 
 // Top level command-line flags (first argument after program name).
 type commandOptions struct {
-	Fetch fetchOptions `command:"fetch" description:"Fetch an access token."`
+	Fetch  fetchOptions  `command:"fetch" description:"Fetch an access token."`
 	Header headerOptions `command:"header" description:"Fetch an access token and return it in header format."`
-	Curl curlOptions `command:"curl" description:"Fetch an access token and use it to make a curl request."`
-	Info infoOptions `command:"info" description:"Display info about an OAuth access token."`
-	Test infoOptions `command:"test" description:"Tests an OAuth access token. Returns 0 for valid token."`
-	Reset resetOptions `command:"reset" description:"Resets the cache."`
+	Curl   curlOptions   `command:"curl" description:"Fetch an access token and use it to make a curl request."`
+	Info   infoOptions   `command:"info" description:"Display info about an OAuth access token."`
+	Test   infoOptions   `command:"test" description:"Tests an OAuth access token. Returns 0 for valid token."`
+	Reset  resetOptions  `command:"reset" description:"Resets the cache."`
 }
 
 // Common options for "fetch", "header", and "curl" commands.
@@ -62,9 +63,9 @@ type commonFetchOptions struct {
 
 	// GUAC parameters
 	Credentials string `long:"credentials" description:"Credentials file containing OAuth Client Id or Service Account Key. Optional if environment variable GOOGLE_APPLICATION_CREDENTIALS is set."`
-	Scope string `long:"scope" description:"List of OAuth scopes requested. Required for oauth and sso authentication type. Comma delimited."`
-	Audience string `long:"audience" description:"Audience used for JWT self-signed token. Required for jwt authentication type."`
-	Email string `long:"email" description:"Email associated with SSO. Required for sso authentication type."`
+	Scope       string `long:"scope" description:"List of OAuth scopes requested. Required for oauth and sso authentication type. Comma delimited."`
+	Audience    string `long:"audience" description:"Audience used for JWT self-signed token. Required for jwt authentication type."`
+	Email       string `long:"email" description:"Email associated with SSO. Required for sso authentication type."`
 
 	// Client parameters
 	SsoCli string `long:"ssocli" description:"Path to SSO CLI. Optional."`
@@ -73,9 +74,9 @@ type commonFetchOptions struct {
 	Cache *string `long:"cache" description:"Path to the credential cache file. Disables caching if set to empty. Defaults to ~/.oauth2l."`
 
 	// Deprecated flags kept for backwards compatibility. Hidden from help page.
-	Json string `long:"json" description:"Deprecated. Same as --credentials." hidden:"true"`
-	Jwt bool `long:"jwt" description:"Deprecated. Same as --type jwt." hidden:"true"`
-	Sso bool `long:"sso" description:"Deprecated. Same as --type sso." hidden:"true"`
+	Json      string `long:"json" description:"Deprecated. Same as --credentials." hidden:"true"`
+	Jwt       bool   `long:"jwt" description:"Deprecated. Same as --type jwt." hidden:"true"`
+	Sso       bool   `long:"sso" description:"Deprecated. Same as --type sso." hidden:"true"`
 	OldFormat string `long:"credentials_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" description:"Deprecated. Same as --output_format" hidden:"true"`
 }
 
@@ -94,7 +95,7 @@ type headerOptions struct {
 type curlOptions struct {
 	commonFetchOptions
 	CurlCli string `long:"curlcli" description:"Path to Curl CLI. Optional."`
-	Url string `long:"url" description:"URL endpoint for the curl request." required:"true"`
+	Url     string `long:"url" description:"URL endpoint for the curl request." required:"true"`
 }
 
 // Options for "info" and "test" commands.
@@ -150,7 +151,7 @@ func setCacheLocation(cache *string) {
 }
 
 // Extracts the common fetch options based on chosen command.
-func getCommonFetchOptions (cmdOpts commandOptions, cmd string) commonFetchOptions {
+func getCommonFetchOptions(cmdOpts commandOptions, cmd string) commonFetchOptions {
 	var commonOpts commonFetchOptions
 	switch cmd {
 	case "fetch":
@@ -164,7 +165,7 @@ func getCommonFetchOptions (cmdOpts commandOptions, cmd string) commonFetchOptio
 }
 
 // Get the authentication type, with backward compatibility.
-func getAuthTypeWithFallback (commonOpts commonFetchOptions) string {
+func getAuthTypeWithFallback(commonOpts commonFetchOptions) string {
 	authType := commonOpts.AuthType
 	if commonOpts.Jwt {
 		authType = "jwt"
@@ -175,7 +176,7 @@ func getAuthTypeWithFallback (commonOpts commonFetchOptions) string {
 }
 
 // Get the credentials file, with backward compatibility.
-func getCredentialsWithFallback (commonOpts commonFetchOptions) string {
+func getCredentialsWithFallback(commonOpts commonFetchOptions) string {
 	credentials := commonOpts.Credentials
 	if commonOpts.Json != "" {
 		credentials = commonOpts.Json
@@ -184,7 +185,7 @@ func getCredentialsWithFallback (commonOpts commonFetchOptions) string {
 }
 
 // Get the fetch output format, with backward compatibility.
-func getOutputFormatWithFallback (fetchOpts fetchOptions) string {
+func getOutputFormatWithFallback(fetchOpts fetchOptions) string {
 	format := fetchOpts.Format
 	if fetchOpts.OldFormat != "" {
 		format = fetchOpts.OldFormat
@@ -193,7 +194,7 @@ func getOutputFormatWithFallback (fetchOpts fetchOptions) string {
 }
 
 // Converts scope argument to string slice, with backward compatibility.
-func getScopesWithFallback (scope string, remainingArgs ...string) []string {
+func getScopesWithFallback(scope string, remainingArgs ...string) []string {
 	var scopes []string
 	// Fallback to reading scope from remaining args
 	if scope == "" {
@@ -217,7 +218,7 @@ func getTaskArgs(cmd, curlcli, url, format string, remainingArgs ...string) []st
 }
 
 // Extracts the info options based on chosen command.
-func getInfoOptions (cmdOpts commandOptions, cmd string) infoOptions {
+func getInfoOptions(cmdOpts commandOptions, cmd string) infoOptions {
 	var infoOpts infoOptions
 	switch cmd {
 	case "info":
@@ -245,7 +246,7 @@ func main() {
 	fetchTasks := map[string]func(*sgauth.Settings, ...string){
 		"fetch":  util.Fetch,
 		"header": util.Header,
-		"curl": util.Curl,
+		"curl":   util.Curl,
 	}
 
 	// Tasks that verify the existing token.
@@ -267,7 +268,7 @@ func main() {
 		curlcli := opts.Curl.CurlCli
 		url := opts.Curl.Url
 
-		if authType == "jwt"{
+		if authType == "jwt" {
 			// JWT flow
 			json, err := readJSON(credentials)
 			if err != nil {

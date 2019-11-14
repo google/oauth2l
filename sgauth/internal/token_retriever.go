@@ -31,7 +31,6 @@ import (
 	"golang.org/x/net/context/ctxhttp"
 )
 
-
 // tokenJSON is the struct representing the HTTP response from OAuth2
 // providers returning a token in JSON form.
 type tokenJSON struct {
@@ -219,7 +218,7 @@ func retrieveToken(ctx context.Context, clientID, clientSecret, tokenURL string,
 			Expiry:       tj.expiry(),
 			Raw:          make(map[string]interface{}),
 		}
-		json.Unmarshal(body, &token.Raw) // no error checks for optional fields
+		json.Unmarshal(body, &token.Raw) // nolint:errcheck
 	}
 	// Don't overwrite `RefreshToken` with an empty value
 	// if this was a token refreshing request.

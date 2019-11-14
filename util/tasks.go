@@ -15,14 +15,14 @@
 package util
 
 import (
-	"fmt"
-	"net/http"
-	"io/ioutil"
-	"errors"
-	"github.com/google/oauth2l/sgauth"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"github.com/google/oauth2l/sgauth"
+	"io/ioutil"
 	"log"
+	"net/http"
 )
 
 const (
@@ -48,7 +48,7 @@ func Fetch(settings *sgauth.Settings, args ...string) {
 
 // Fetches and prints the token in header format with the given settings
 // using Google Authenticator.
-func Header(settings *sgauth.Settings, args ... string) {
+func Header(settings *sgauth.Settings, args ...string) {
 	Fetch(settings, formatHeader)
 }
 
@@ -111,7 +111,7 @@ func getTokenInfo(token string) (string, error) {
 	return string(data), err
 }
 
-func fetchToken(settings *sgauth.Settings) (*sgauth.Token) {
+func fetchToken(settings *sgauth.Settings) *sgauth.Token {
 	token, _ := LookupCache(settings)
 	if token != nil {
 		return token
@@ -129,7 +129,7 @@ func fetchToken(settings *sgauth.Settings) (*sgauth.Token) {
 	return token
 }
 
-func getCredentialType(settings *sgauth.Settings) (string) {
+func getCredentialType(settings *sgauth.Settings) string {
 	cred, err := sgauth.FindJSONCredentials(context.Background(), settings)
 	if err != nil {
 		return ""

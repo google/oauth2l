@@ -15,11 +15,11 @@
 package internal
 
 import (
-	"net/url"
-	"golang.org/x/net/context"
-	"sync"
 	"bytes"
+	"golang.org/x/net/context"
+	"net/url"
 	"strings"
+	"sync"
 )
 
 type Config struct {
@@ -43,7 +43,7 @@ type Config struct {
 	Scopes []string
 
 	FlowHandler func(string) (string, error)
-	State string
+	State       string
 }
 
 // A TokenSource is anything that can return a token.
@@ -102,8 +102,8 @@ var (
 	k3LO = "3LO"
 )
 
-func (c *Config) getOAuthType() (string) {
-	if (c.RedirectURL != "") {
+func (c *Config) getOAuthType() string {
+	if c.RedirectURL != "" {
 		return k3LO
 	} else {
 		return k2LO
