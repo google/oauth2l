@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-NAME = oauth2l
-GOOSES = darwin linux windows
-GOARCHES = amd64
+NAME ?= oauth2l
+GOOSES ?= darwin linux windows
+GOARCHES ?= amd64
 
+export CGO_ENABLED = 0
 export GO111MODULE = on
 export GOFLAGS = -mod=vendor
 
