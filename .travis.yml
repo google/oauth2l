@@ -18,6 +18,10 @@ cache:
   directories:
   - $HOME/.cache/go-build
   - $HOME/gopath/pkg/mod
+# Only build the master branch.
+branches:
+  only:
+  - master
 
 # Skip the install step.
 install: true
