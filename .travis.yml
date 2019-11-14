@@ -26,5 +26,4 @@ install: true
 notifications:
   email: false
 
-script:
-  - go test integration/cli_test.go
+script: make test
