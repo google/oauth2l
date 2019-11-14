@@ -15,17 +15,17 @@
 package main
 
 import (
-	"os"
-	"fmt"
 	"errors"
+	"fmt"
+	"os"
 )
 
 var (
-	kScope = "scope"
-	kAud = "aud"
-	kHost = "host"
+	kScope   = "scope"
+	kAud     = "aud"
+	kHost    = "host"
 	kApiName = "api_name"
-	kApiKey = "api_key"
+	kApiKey  = "api_key"
 )
 
 func contains(arr []string, str string) bool {
@@ -40,17 +40,16 @@ func contains(arr []string, str string) bool {
 func getFlagValue(flag string) string {
 	for i := 0; i < len(os.Args); i++ {
 		if os.Args[i] == flag {
-			if len(os.Args) < i + 2 {
+			if len(os.Args) < i+2 {
 				printUsage()
 				return ""
 			}
-			return os.Args[i + 1]
+			return os.Args[i+1]
 		}
 	}
 	printUsage()
 	return ""
 }
-
 
 func printUsage() {
 	fmt.Println("Usage: cmd [grpc|protorpc] --[aud|scope] [--host] [--api_name]")
@@ -84,12 +83,12 @@ func parseArguments() (map[string]string, error) {
 
 	if contains(os.Args, "--api_name") {
 		args[kApiName] = getFlagValue("--api_name")
-	} else if (os.Args[1] == "protorpc") {
+	} else if os.Args[1] == "protorpc" {
 		return nil, errors.New("Invalid argument: --api_name is required for ProtoRPC mode")
 	}
 
 	if args[kApiKey] == "" && args[kScope] == "" && args[kAud] == "" {
-		if (args[kApiName] != "") {
+		if args[kApiName] != "" {
 			args[kAud] = fmt.Sprintf("https://%s/%s", args[kHost], args[kApiName])
 		} else {
 			return nil, errors.New("Invalid argument: scope and aud cannot be both empty.")

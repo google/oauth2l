@@ -15,9 +15,9 @@
 package util
 
 import (
-	"os/exec"
 	"bytes"
 	"fmt"
+	"os/exec"
 	"strings"
 )
 

@@ -15,19 +15,19 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"testing"
 	"reflect"
-	"net/http"
-	"encoding/base64"
-	"encoding/json"
+	"runtime"
 	"strings"
+	"testing"
 )
 
 // Use this flag to update golden files with test outputs from current run.
@@ -109,7 +109,7 @@ func runTestScenariosWithInput(t *testing.T, tests []testCase, input *os.File) {
 }
 
 // Used for processing test output before comparing to golden files.
-type processOutput func (string) string
+type processOutput func(string) string
 
 // Runs test cases where stdin input is needed and output needs to be processed before comparing to golden files.
 func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase, input *os.File, processOutput processOutput) {
@@ -146,7 +146,7 @@ func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase,
 
 // Test base-case scenarios
 func TestCLI(t *testing.T) {
-	tests := []testCase {
+	tests := []testCase{
 		{
 			"no command",
 			[]string{},
@@ -159,7 +159,7 @@ func TestCLI(t *testing.T) {
 			"no-scope.golden",
 			false,
 		},
-	    {
+		{
 			"fetch; jwt; no audience",
 			[]string{"fetch", "--type", "jwt"},
 			"no-audience.golden",
@@ -185,7 +185,7 @@ func TestCLI(t *testing.T) {
 		},
 		{
 			"curl; no scope",
-			[]string{"curl","--url","https://test.com"},
+			[]string{"curl", "--url", "https://test.com"},
 			"no-scope.golden",
 			false,
 		},
@@ -197,13 +197,13 @@ func TestCLI(t *testing.T) {
 		},
 		{
 			"info; invalid token",
-			[]string{"info","--token","invalid-token"},
+			[]string{"info", "--token", "invalid-token"},
 			"info-invalid-token.golden",
 			false,
 		},
 		{
 			"test; invalid token",
-			[]string{"test","--token","invalid-token"},
+			[]string{"test", "--token", "invalid-token"},
 			"test-invalid-token.golden",
 			false,
 		},
@@ -219,7 +219,7 @@ func TestCLI(t *testing.T) {
 
 // Test OAuth 3LO flow with fake client secrets. Fake verification code is injected to stdin to advance the flow.
 func Test3LOFlow(t *testing.T) {
-	tests := []testCase {
+	tests := []testCase{
 		{
 			"fetch; 3lo",
 			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets.json", "--cache", ""},
@@ -257,12 +257,12 @@ func Test3LOFlow(t *testing.T) {
 			false,
 		},
 	}
-    runTestScenariosWithInput(t, tests, newFixture(t,"fake-verification-code.fixture").asFile())
+	runTestScenariosWithInput(t, tests, newFixture(t, "fake-verification-code.fixture").asFile())
 }
 
 // Test OAuth 2LO Flow with fake service account.
 func Test2LOFlow(t *testing.T) {
-	tests := []testCase {
+	tests := []testCase{
 		{
 			"fetch; 2lo",
 			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-service-account.json", "--cache", ""},
@@ -293,7 +293,7 @@ func Test2LOFlow(t *testing.T) {
 
 // Test JWT Flow.
 func TestJWTFlow(t *testing.T) {
-	tests := []testCase {
+	tests := []testCase{
 		{
 			"fetch; jwt",
 			[]string{"fetch", "--type", "jwt", "--audience", "https://pubsub.googleapis.com/", "--credentials", "integration/fixtures/fake-service-account.json"},
@@ -312,8 +312,8 @@ func TestJWTFlow(t *testing.T) {
 		//JWT is signed with a timestamp that differs in every execution, so we will strip out "exp" and "iat" fields
 		encodedPayload := strings.Split(jwt, ".")[1]
 		decodedPayload, _ := base64.RawStdEncoding.DecodeString(encodedPayload)
-        var jsonData map[string]interface{}
-		json.Unmarshal(decodedPayload, &jsonData)
+		var jsonData map[string]interface{}
+		json.Unmarshal(decodedPayload, &jsonData) // nolint:errcheck
 		delete(jsonData, "exp")
 		delete(jsonData, "iat")
 		jsonString, _ := json.Marshal(jsonData)
@@ -324,7 +324,7 @@ func TestJWTFlow(t *testing.T) {
 
 // Test SSO Flow. Uses "echo" as a fake ssocli to return the calling parameters instead of an actual token.
 func TestSSOFlow(t *testing.T) {
-	tests := []testCase {
+	tests := []testCase{
 		{
 			"fetch; sso",
 			[]string{"fetch", "--type", "sso", "--email", "example@example.com", "--scope", "pubsub", "--ssocli", "echo"},
@@ -351,7 +351,7 @@ func readFile(path string) string {
 
 func MockTokenApi(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	response := readFile ("integration/fixtures/mock-token-response.json")
+	response := readFile("integration/fixtures/mock-token-response.json")
 	fmt.Fprint(w, response)
 }
 
@@ -385,14 +385,14 @@ func TestMain(m *testing.M) {
 	}
 
 	// Start mock server
-    go func() {
-	    mux := http.NewServeMux()
-	    server := http.Server{Addr: ":8080", Handler: mux}
-	    mux.HandleFunc("/token", MockTokenApi)
-	    mux.HandleFunc("/curl", MockCurlApi)
-	    if err := server.ListenAndServe(); err != nil {
-	        fmt.Printf("could not listen on port 8080 %v", err)
-	    }
+	go func() {
+		mux := http.NewServeMux()
+		server := http.Server{Addr: ":8080", Handler: mux}
+		mux.HandleFunc("/token", MockTokenApi)
+		mux.HandleFunc("/curl", MockCurlApi)
+		if err := server.ListenAndServe(); err != nil {
+			fmt.Printf("could not listen on port 8080 %v", err)
+		}
 	}()
 
 	status := m.Run()

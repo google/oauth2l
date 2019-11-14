@@ -19,12 +19,12 @@ import (
 	"fmt"
 	"time"
 
-	"golang.org/x/oauth2/jws"
-	"encoding/json"
-	"github.com/google/oauth2l/sgauth/internal"
-	"encoding/pem"
 	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"github.com/google/oauth2l/sgauth/internal"
+	"golang.org/x/oauth2/jws"
 )
 
 // JWTConfigFromJSON uses a Google Developers service account JSON key file to read
@@ -102,7 +102,6 @@ func (ts *jwtAccessTokenSource) Token() (*internal.Token, error) {
 	return &internal.Token{AccessToken: msg, TokenType: "Bearer", Expiry: exp}, nil
 }
 
-
 // ParseKey converts the binary contents of a private key file
 // to an *rsa.PrivateKey. It detects whether the private key is in a
 // PEM container or not. If so, it extracts the the private key
@@ -126,4 +125,3 @@ func parseKey(key []byte) (*rsa.PrivateKey, error) {
 	}
 	return parsed, nil
 }
-

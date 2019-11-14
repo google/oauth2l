@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/context"
 	"errors"
+	"golang.org/x/net/context"
 )
 
 // Token represents the credentials used to authorize
@@ -57,7 +57,6 @@ type Token struct {
 	// when updating a token.
 	Raw interface{}
 }
-
 
 // expiryDelta determines how earlier a token should be considered
 // expired than its actual expiration time. It is used to avoid late
