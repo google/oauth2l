@@ -15,7 +15,12 @@
 package credentials
 
 import (
+	"context"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -23,13 +28,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"golang.org/x/oauth2/jws"
-	"crypto/rsa"
-	"encoding/pem"
-	"crypto/x509"
-	"errors"
-	"context"
+
 	"github.com/google/oauth2l/sgauth/internal"
+	"golang.org/x/oauth2/jws"
 )
 
 var (
@@ -159,7 +160,7 @@ func (js jwtSource) Token() (*internal.Token, error) {
 		TokenType:   tokenRes.TokenType,
 	}
 	raw := make(map[string]interface{})
-	json.Unmarshal(body, &raw) // no error checks for optional fields
+	json.Unmarshal(body, &raw) // nolint:errcheck
 	token = token.WithExtra(raw)
 
 	if secs := tokenRes.ExpiresIn; secs > 0 {

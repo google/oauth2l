@@ -15,15 +15,15 @@
 package main
 
 import (
-	"github.com/wora/protorpc/client"
 	"fmt"
-	"google.golang.org/genproto/googleapis/example/library/v1"
-	"github.com/google/oauth2l/sgauth"
 	"github.com/golang/protobuf/proto"
+	"github.com/google/oauth2l/sgauth"
+	"github.com/wora/protorpc/client"
 	"golang.org/x/net/context"
+	"google.golang.org/genproto/googleapis/example/library/v1"
 )
 
-func createSettings(args map[string]string) (*sgauth.Settings) {
+func createSettings(args map[string]string) *sgauth.Settings {
 	if args[kApiKey] != "" {
 		return &sgauth.Settings{
 			APIKey: args[kApiKey],
@@ -48,9 +48,9 @@ func newHTTPClient(ctx context.Context, args map[string]string) (
 		return nil, err
 	}
 	return &client.Client{
-		HTTP:        http,
-		BaseURL:     baseUrl,
-		UserAgent:   "protorpc/0.1",
+		HTTP:      http,
+		BaseURL:   baseUrl,
+		UserAgent: "protorpc/0.1",
 	}, nil
 }
 

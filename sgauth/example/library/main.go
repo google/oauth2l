@@ -14,14 +14,11 @@
 // limitations under the License.
 package main
 
-import "fmt"
-import "context"
-
 import (
+	"context"
+	"fmt"
 	"os"
 )
-
-var defaultScopes = "https://www.googleapis.com/auth/xapi.zoo"
 
 func main() {
 	args, err := parseArguments()

@@ -16,12 +16,12 @@ package sgauth
 
 import (
 	"cloud.google.com/go/compute/metadata"
-	"errors"
 	"encoding/json"
-	"strings"
+	"errors"
 	"fmt"
-	"time"
 	"github.com/google/oauth2l/sgauth/internal"
+	"strings"
+	"time"
 )
 
 // ComputeTokenSource returns a token source that fetches access tokens

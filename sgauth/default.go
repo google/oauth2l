@@ -15,25 +15,25 @@
 package sgauth
 
 import (
-	"context"
-	"os"
-	"fmt"
-	"io/ioutil"
-	"encoding/json"
-	"strings"
 	"cloud.google.com/go/compute/metadata"
-	"runtime"
-	"path/filepath"
-	"os/user"
-	"github.com/google/oauth2l/sgauth/internal"
+	"context"
+	"encoding/json"
+	"fmt"
 	"github.com/google/oauth2l/sgauth/credentials"
+	"github.com/google/oauth2l/sgauth/internal"
+	"io/ioutil"
+	"os"
+	"os/user"
+	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 // DefaultTokenSource returns the token source for
 // "Application Default Credentials".
 // It is a shortcut for FindDefaultCredentials(ctx, scope).TokenSource.
 func DefaultTokenSource(ctx context.Context, scope string) (internal.TokenSource, error) {
-	creds, err := applicationDefaultCredentials(ctx, &Settings{Scope: scope,})
+	creds, err := applicationDefaultCredentials(ctx, &Settings{Scope: scope})
 	if err != nil {
 		return nil, err
 	}
