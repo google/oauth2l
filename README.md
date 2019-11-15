@@ -37,11 +37,58 @@ accounts and service accounts in different environments:
 
 ## Quickstart
 
+### Pre-compiled binaries
+
+Pre-built binaries are available for Darwin (Mac OS X), Linux, and Windows. You
+can download a build for any tag, for example:
+
+| OS     | Link
+| ------ | ---
+| Darwin | https://storage.googleapis.com/oauth2l/1.2.3/darwin_amd64.tgz
+| Linux | https://storage.googleapis.com/oauth2l/1.2.3/linux_amd64.tgz
+| Windows | https://storage.googleapis.com/oauth2l/1.2.3/windows_amd64.tgz
+
+Substitute "1.2.3" for any tag version you'd like, removing any leading "v"
+prefix. You can also download binaries that are complied against master on each
+new push by using "master" as the tag.
+
+### Homebrew (Mac OS X)
+
 On Mac OS X, you can install `oauth2l` via [Homebrew](https://brew.sh):
 
 ```bash
 $ brew install oauth2l
 ```
+
+Note that new releases may not be immediately available via homebrew because
+updating is a manual process.
+
+### Docker
+
+An official Docker image is available at:
+
+```text
+gcr.io/oauth2l/oauth2l
+```
+
+You can run this directly:
+
+```sh
+$ docker run -it gcr.io/oauth2l/oauth2l header cloud-platform
+```
+
+Or use it to inject into an existing container:
+
+```dockerfile
+FROM my-awesome-container
+COPY --from gcr.io/oauth2l/oauth2l /bin/oauth2l /bin/oauth2l
+```
+
+Like the binary releases, the container images are tagged to match the
+repository tags (without the leading "v"). For master builds, use the "latest"
+tag.
+
+### Everywhere else
 
 On other systems, you need to meet the following requirements to use this tool:
 
@@ -56,10 +103,11 @@ https://github.com/golang/go/wiki/GOPATH))
 
 ```bash
 # Get the package from Github
-$ go get -u github.com/google/oauth2l
+$ git clone https://github.com/google/oauth2l
+$ cd oauth2l
 
 # Install the package into your $GOPATH/bin/
-$ go install github.com/google/oauth2l
+$ make dev
 
 # Fetch the access token from your credentials with cloud-platform scope
 $ ~/go/bin/oauth2l fetch --credentials ~/your_credentials.json --scope cloud-platform
