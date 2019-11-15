@@ -13,11 +13,10 @@ git:
   quiet: true
   depth: 1
 
-# Cache module downloads
-cache:
-  directories:
-  - $HOME/.cache/go-build
-  - $HOME/gopath/pkg/mod
+# Only build the master branch.
+branches:
+  only:
+  - master
 
 # Skip the install step.
 install: true

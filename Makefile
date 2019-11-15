@@ -12,23 +12,42 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+NAME ?= oauth2l
+GOOSES ?= darwin linux windows
+GOARCHES ?= amd64
+
+export CGO_ENABLED = 0
 export GO111MODULE = on
 export GOFLAGS = -mod=vendor
 
-# build
+# build compiles the binaries for all the target os/arch combinations
 build:
-	@GOOS=linux GOARCH=amd64 go build \
-	  -a \
-		-ldflags "-s -w -extldflags 'static'"  \
-		-installsuffix cgo \
-		-tags netgo \
-		-o build/oauth2l \
-		./...
+	@rm -rf build/
+	@for GOOS in ${GOOSES}; do \
+		for GOARCH in ${GOARCHES}; do \
+			echo "Building $${GOOS}/$${GOARCH}" ; \
+			GOOS=$${GOOS} GOARCH=$${GOARCH} go build \
+				-a \
+				-ldflags "-s -w -extldflags 'static'" \
+				-installsuffix cgo \
+				-tags netgo \
+				-o build/$${GOOS}_$${GOARCH}/${NAME} \
+				. ; \
+		done ; \
+	done
 .PHONY: build
+
+# compress packages everything in build/ into a tgz
+compress:
+	@for dir in $$(find build/* -type d); do \
+		f=$$(basename $$dir) ; \
+		tar -C build -czf build/$$f.tgz $$f ; \
+	done
+.PHONY: compress
 
 # deps updates all dependencies to their latest version and vendors the changes
 deps:
-	@go get -u -mod="" ./...
+	@go get -u -t -mod="" ./...
 	@go mod tidy
 	@go mod vendor
 .PHONY: deps
