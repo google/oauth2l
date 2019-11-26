@@ -36,7 +36,8 @@ steps:
   args:
   - -c
   - |
-    REF="${TAG_NAME//v}"
+    TAG="${TAG_NAME}"
+    REF="${TAG//v}"
     [[ -z "$${REF}" && "${BRANCH_NAME}" == "master" ]] && REF="latest"
     [[ -z "$${REF}" ]] && echo "not a tag or master branch" && exit 0
     gsutil cp build/*.tgz gs://oauth2l/$${REF}/
@@ -48,7 +49,8 @@ steps:
   args:
   - -c
   - |
-    REF="${TAG_NAME//v}"
+    TAG="${TAG_NAME}"
+    REF="${TAG//v}"
     [[ -z "$${REF}" && "${BRANCH_NAME}" == "master" ]] && REF="latest"
     [[ -z "$${REF}" ]] && echo "not a tag or master branch" && exit 0
     docker build -t gcr.io/${PROJECT_ID}/oauth2l:$${REF} . && \
