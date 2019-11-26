@@ -44,13 +44,12 @@ can download a build for any tag, for example:
 
 | OS     | Link
 | ------ | ---
-| Darwin | https://storage.googleapis.com/oauth2l/1.2.3/darwin_amd64.tgz
-| Linux | https://storage.googleapis.com/oauth2l/1.2.3/linux_amd64.tgz
-| Windows | https://storage.googleapis.com/oauth2l/1.2.3/windows_amd64.tgz
+| Darwin | https://storage.googleapis.com/oauth2l/latest/darwin_amd64.tgz
+| Linux | https://storage.googleapis.com/oauth2l/latest/linux_amd64.tgz
+| Windows | https://storage.googleapis.com/oauth2l/latest/windows_amd64.tgz
 
-Substitute "1.2.3" for any tag version you'd like, removing any leading "v"
-prefix. You can also download binaries that are complied against master on each
-new push by using "master" as the tag.
+Substitute "latest" for any tag version you'd like, removing any leading "v"
+prefix.
 
 ### Homebrew (Mac OS X)
 
