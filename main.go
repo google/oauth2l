@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -119,6 +120,19 @@ func readJSON(file string) (string, error) {
 		return string(secretBytes), nil
 	}
 	return "", nil
+}
+
+// Attempts to read JSON credentials from default locations if unset.
+// This is redundant as sgauth performs this resolution automatically, but
+// necessary for proper caching in case the default location changes.
+func resolveDefaultJSON(settings *sgauth.Settings) {
+	if settings.CredentialsJSON != "" {
+		return
+	}
+	credentials, err := sgauth.FindJSONCredentials(context.Background(), settings)
+	if err == nil {
+		settings.CredentialsJSON = string(credentials.JSON)
+	}
 }
 
 // Default 3LO authorization handler. Prints the authorization URL on stdout
@@ -291,6 +305,7 @@ func main() {
 				CredentialsJSON: json,
 				Audience:        audience,
 			}
+			resolveDefaultJSON(settings)
 
 			taskArgs := getTaskArgs(cmd, curlcli, url, format, remainingArgs...)
 			task(settings, taskArgs...)
@@ -353,6 +368,7 @@ func main() {
 				OAuthFlowHandler: defaultAuthorizeFlowHandler,
 				State:            "state",
 			}
+			resolveDefaultJSON(settings)
 
 			taskArgs := getTaskArgs(cmd, curlcli, url, format, remainingArgs...)
 			task(settings, taskArgs...)
