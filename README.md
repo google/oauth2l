@@ -177,13 +177,15 @@ $ oauth2l info --token $(oauth2l fetch --scope pubsub)
 ### test
 
 Test a token. This sets an exit code of 0 for a valid token and 1 otherwise,
-which can be useful in shell pipelines.
+which can be useful in shell pipelines. It also prints the exit code.
 
 ```bash
 $ oauth2l test --token ya29.zyxwvutsrqpnmolkjihgfedcba
+0
 $ echo $?
 0
 $ oauth2l test --token ya29.justkiddingmadethisoneup
+1
 $ echo $?
 1
 ```

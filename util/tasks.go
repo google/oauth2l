@@ -65,23 +65,26 @@ func Curl(settings *sgauth.Settings, args ...string) {
 }
 
 // Fetches the information of the given token.
-func Info(token string) {
+func Info(token string) int {
 	info, err := getTokenInfo(token)
 	if err != nil {
 		fmt.Print(err)
 	} else {
 		fmt.Println(info)
 	}
+	return 0
 }
 
 // Tests the given token. Returns 0 for valid tokens.
 // Otherwise returns 1.
-func Test(token string) {
+func Test(token string) int {
 	_, err := getTokenInfo(token)
 	if err != nil {
 		fmt.Println(1)
+		return 1
 	} else {
 		fmt.Println(0)
+		return 0
 	}
 }
 

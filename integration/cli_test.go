@@ -205,7 +205,7 @@ func TestCLI(t *testing.T) {
 			"test; invalid token",
 			[]string{"test", "--token", "invalid-token"},
 			"test-invalid-token.golden",
-			false,
+			true,
 		},
 		{
 			"reset",
