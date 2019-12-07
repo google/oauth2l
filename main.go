@@ -250,7 +250,7 @@ func main() {
 	}
 
 	// Tasks that verify the existing token.
-	infoTasks := map[string]func(string){
+	infoTasks := map[string](func(string) int){
 		"info": util.Info,
 		"test": util.Test,
 	}
@@ -371,7 +371,7 @@ func main() {
 			}
 		}
 
-		task(token)
+		os.Exit(task(token))
 	} else if cmd == "reset" {
 		setCacheLocation(opts.Reset.Cache)
 		util.Reset()
