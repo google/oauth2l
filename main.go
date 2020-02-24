@@ -39,7 +39,7 @@ var (
 	scopeDelimiter = regexp.MustCompile("[, ] *")
 
 	// OpenId scopes should not be prefixed with scopePrefix.
-	openIdScopes = regexp.MustCompile("openid|profile|email")
+	openIdScopes = regexp.MustCompile("^(openid|profile|email)$")
 )
 
 // Top level command-line flags (first argument after program name).

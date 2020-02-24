@@ -239,6 +239,12 @@ func Test3LOFlow(t *testing.T) {
 			false,
 		},
 		{
+			"fetch; 3lo; userinfo scopes",
+			[]string{"fetch", "--scope", "userinfo.profile,userinfo.email", "--credentials", "integration/fixtures/fake-client-secrets.json", "--cache", ""},
+			"fetch-3lo-userinfo.golden",
+			false,
+		},
+		{
 			"header; 3lo",
 			[]string{"header", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets.json", "--cache", ""},
 			"header-3lo.golden",
