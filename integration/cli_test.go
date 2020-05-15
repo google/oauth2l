@@ -328,23 +328,51 @@ func TestJWTFlow(t *testing.T) {
 	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processJwtOutput)
 }
 
-// Test SSO Flow. Uses "echo" as a fake ssocli to return the calling parameters instead of an actual token.
+// Test SSO Flow. Uses "sh" to invoke fake ssocli to return a mock access token.
 func TestSSOFlow(t *testing.T) {
 	tests := []testCase{
 		{
 			"fetch; sso",
-			[]string{"fetch", "--type", "sso", "--email", "example@example.com", "--scope", "pubsub", "--ssocli", "echo"},
+			[]string{"fetch", "--type", "sso", "--email", "integration/fixtures/fake-ssocli.sh", "--scope", "pubsub", "--ssocli", "sh"},
 			"fetch-sso.golden",
 			false,
 		},
 		{
 			"fetch; sso; old interface",
-			[]string{"fetch", "--sso", "--ssocli", "echo", "example@example.com", "pubsub"},
+			[]string{"fetch", "--sso", "--ssocli", "sh", "integration/fixtures/fake-ssocli.sh", "pubsub"},
 			"fetch-sso.golden",
 			false,
 		},
 	}
 	runTestScenarios(t, tests)
+}
+
+// Test UAT Flow.
+func TestUatFlow(t *testing.T) {
+	tests := []testCase{
+		{
+			"fetch; 2lo; uat",
+			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-service-account.json", "--uat", "--audience", "http://test.com", "--user_project", "TestUserProject", "--output_format", "json"},
+			"fetch-uat.golden",
+			false,
+		},
+		{
+			"fetch; sso; uat",
+			[]string{"fetch", "--type", "sso", "--email", "integration/fixtures/fake-ssocli.sh", "--scope", "pubsub", "--ssocli", "sh", "--uat", "--audience", "http://test.com", "--user_project", "TestUserProject", "--output_format", "json"},
+			"fetch-uat.golden",
+			false,
+		},
+	}
+
+	processUatOutput := func(uat string) string {
+		//UAT differs in every execution even for the same subject token, so we will strip out "access_token" field.
+		var jsonData map[string]interface{}
+		json.Unmarshal([]byte(uat), &jsonData) // nolint:errcheck
+		delete(jsonData, "access_token")
+		jsonString, _ := json.Marshal(jsonData)
+		return string(jsonString)
+	}
+	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processUatOutput)
 }
 
 func readFile(path string) string {

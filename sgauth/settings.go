@@ -30,16 +30,19 @@ type Settings struct {
 	// The Google API key
 	APIKey string
 	// This is only used for domain-wide delegation.
-	// UNIMPLEMENTED
+	// DEPRECATED
 	User string
+	// The email used for SSO and domain-wide delegation.
+	Email string
 	// The identifier to the user that the per-user quota will be charged
 	// against. If not specified, the identifier to the authenticated account
 	// is used. If there is no authenticated account too, the caller's network
 	// IP address will be used.
-	// UNIMPLEMENTED
+	// DEPRECATED
 	QuotaUser string
 	// A user specified project that is responsible for the request quota and
 	// billing charges.
+	// DEPRECATED
 	QuotaProject string
 	// End-user OAuth Flow handler that redirects the user to the given URL
 	// and returns the token.
@@ -47,6 +50,11 @@ type Settings struct {
 	// The state string used for 3LO session verification.
 	// UNIMPLEMENTED
 	State string
+	// A user specified project that is responsible for the request quota and
+	// billing charges.
+	UserProject string
+	// Indicates that UAT token exchange should be performed.
+	Uat bool
 }
 
 func (s Settings) AuthMethod() string {

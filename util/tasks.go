@@ -19,10 +19,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/oauth2l/sgauth"
 	"io/ioutil"
 	"log"
 	"net/http"
+
+	"github.com/google/oauth2l/sgauth"
 )
 
 const (
@@ -39,28 +40,47 @@ const (
 	formatBare        = "bare"
 )
 
+// An extensible structure that holds the settings
+// used by different oauth2l tasks.
+// These settings are used by oauth2l only
+// and are not part of GUAC settings.
+type TaskSettings struct {
+	// Ouput format for Fetch task
+	Format string
+	// CurlCli override for Curl task
+	CurlCli string
+	// Url endpoint for Curl task
+	Url string
+	// Extra args for Curl task
+	ExtraArgs []string
+	// SsoCli override for Sso task
+	SsoCli string
+}
+
 // Fetches and prints the token in plain text with the given settings
 // using Google Authenticator.
-func Fetch(settings *sgauth.Settings, args ...string) {
-	format := args[0]
-	printToken(fetchToken(settings), format, getCredentialType(settings))
+func Fetch(settings *sgauth.Settings, taskSettings *TaskSettings) {
+	token := fetchToken(settings, taskSettings)
+	printToken(token, taskSettings.Format, getCredentialType(settings))
 }
 
 // Fetches and prints the token in header format with the given settings
 // using Google Authenticator.
-func Header(settings *sgauth.Settings, args ...string) {
-	Fetch(settings, formatHeader)
+func Header(settings *sgauth.Settings, taskSettings *TaskSettings) {
+	taskSettings.Format = formatHeader
+	Fetch(settings, taskSettings)
 }
 
 // Fetches token with the given settings using Google Authenticator
 // and use the token as header to make curl request.
-func Curl(settings *sgauth.Settings, args ...string) {
-	token := fetchToken(settings)
+func Curl(settings *sgauth.Settings, taskSettings *TaskSettings) {
+	token := fetchToken(settings, taskSettings)
 	if token != nil {
 		header := BuildHeader(token.TokenType, token.AccessToken)
-		curlcli := args[0]
-		url := args[1]
-		CurlCommand(curlcli, header, url, args[2:]...)
+		curlcli := taskSettings.CurlCli
+		url := taskSettings.Url
+		extraArgs := taskSettings.ExtraArgs
+		CurlCommand(curlcli, header, url, extraArgs...)
 	}
 }
 
@@ -114,20 +134,41 @@ func getTokenInfo(token string) (string, error) {
 	return string(data), err
 }
 
-func fetchToken(settings *sgauth.Settings) *sgauth.Token {
-	token, _ := LookupCache(settings)
-	if token != nil {
-		return token
-	}
-	token, err := sgauth.FetchToken(context.Background(), settings)
-	if err != nil {
-		fmt.Println(err)
-		return nil
-	}
-	err = InsertCache(settings, token)
-	if err != nil {
-		fmt.Println(err)
-		return nil
+// fetchToken attempts to fetch and cache an access token.
+//
+// If CredentialsJSON is not provided, but email is provided,
+// attempt to obtain token via SSO instead of sgauth.
+//
+// If UAT is requested, we will perform an UAT exchange after
+// the original access token has been fetched.
+func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.Token {
+	token, err := LookupCache(settings)
+	if token == nil {
+		if settings.CredentialsJSON == "" && settings.Email != "" {
+			token, err = SSOFetch(taskSettings.SsoCli, settings.Email, settings.Scope)
+			if err != nil {
+				fmt.Println(err)
+				return nil
+			}
+		} else {
+			token, err = sgauth.FetchToken(context.Background(), settings)
+			if err != nil {
+				fmt.Println(err)
+				return nil
+			}
+		}
+		if settings.Uat {
+			token, err = UatExchange(token.AccessToken, EncodeClaims(settings))
+			if err != nil {
+				fmt.Println(err)
+				return nil
+			}
+		}
+		err = InsertCache(settings, token)
+		if err != nil {
+			fmt.Println(err)
+			return nil
+		}
 	}
 	return token
 }

@@ -16,9 +16,10 @@ package util
 
 import (
 	"bytes"
-	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/google/oauth2l/sgauth"
 )
 
 const (
@@ -26,7 +27,7 @@ const (
 )
 
 // Fetches and returns OAuth access token using SSO CLI.
-func SSOFetch(email string, cli string, task string, scope string) (string, error) {
+func SSOFetch(cli string, email string, scope string) (*sgauth.Token, error) {
 	if cli == "" {
 		cli = defaultCli
 	}
@@ -36,9 +37,11 @@ func SSOFetch(email string, cli string, task string, scope string) (string, erro
 	cmd.Stdout = &out
 	err := cmd.Run()
 	if err != nil {
-		fmt.Println(err)
-		return "", err
-	} else {
-		return out.String(), nil
+		return nil, err
 	}
+	accessToken := out.String()
+	token := sgauth.Token{}
+	token.AccessToken = accessToken
+	token.TokenType = "Bearer"
+	return &token, nil
 }

@@ -64,8 +64,10 @@ type commonFetchOptions struct {
 	// GUAC parameters
 	Credentials string `long:"credentials" description:"Credentials file containing OAuth Client Id or Service Account Key. Optional if environment variable GOOGLE_APPLICATION_CREDENTIALS is set."`
 	Scope       string `long:"scope" description:"List of OAuth scopes requested. Required for oauth and sso authentication type. Comma delimited."`
-	Audience    string `long:"audience" description:"Audience used for JWT self-signed token. Required for jwt authentication type."`
+	Audience    string `long:"audience" description:"Audience used for JWT self-signed token and UAT. Required for jwt authentication type."`
 	Email       string `long:"email" description:"Email associated with SSO. Required for sso authentication type."`
+	UserProject string `long:"user_project" description:"Project override for quota and billing. Used for UAT."`
+	Uat         bool   `long:"uat" description:"Perform UAT exchange."`
 
 	// Client parameters
 	SsoCli string `long:"ssocli" description:"Path to SSO CLI. Optional."`
@@ -205,18 +207,6 @@ func getScopesWithFallback(scope string, remainingArgs ...string) []string {
 	return scopes
 }
 
-// Construct taskArgs based on chosen command.
-func getTaskArgs(cmd, curlcli, url, format string, remainingArgs ...string) []string {
-	var taskArgs []string
-	switch cmd {
-	case "curl":
-		taskArgs = append([]string{curlcli, url}, remainingArgs...)
-	case "fetch":
-		taskArgs = []string{format}
-	}
-	return taskArgs
-}
-
 // Extracts the info options based on chosen command.
 func getInfoOptions(cmdOpts commandOptions, cmd string) infoOptions {
 	var infoOpts infoOptions
@@ -243,7 +233,7 @@ func main() {
 	cmd := parser.Active.Name
 
 	// Tasks that fetch the access token.
-	fetchTasks := map[string]func(*sgauth.Settings, ...string){
+	fetchTasks := map[string]func(*sgauth.Settings, *util.TaskSettings){
 		"fetch":  util.Fetch,
 		"header": util.Header,
 		"curl":   util.Curl,
@@ -261,6 +251,8 @@ func main() {
 		credentials := getCredentialsWithFallback(commonOpts)
 		scope := commonOpts.Scope
 		audience := commonOpts.Audience
+		userProject := commonOpts.UserProject
+		uat := commonOpts.Uat
 		email := commonOpts.Email
 		ssocli := commonOpts.SsoCli
 		setCacheLocation(commonOpts.Cache)
@@ -268,8 +260,17 @@ func main() {
 		curlcli := opts.Curl.CurlCli
 		url := opts.Curl.Url
 
+		taskSettings := &util.TaskSettings{
+			Format:    format,
+			CurlCli:   curlcli,
+			Url:       url,
+			ExtraArgs: remainingArgs,
+			SsoCli:    ssocli,
+		}
+
+		// Configure GUAC settings based on authType.
+		var settings *sgauth.Settings
 		if authType == "jwt" {
-			// JWT flow
 			json, err := readJSON(credentials)
 			if err != nil {
 				fmt.Println("Failed to open file: " + credentials)
@@ -287,13 +288,12 @@ func main() {
 				}
 			}
 
-			settings := &sgauth.Settings{
+			// JWT flow requires empty Scope.
+			// Also, JWT currently does not work with UAT.
+			settings = &sgauth.Settings{
 				CredentialsJSON: json,
 				Audience:        audience,
 			}
-
-			taskArgs := getTaskArgs(cmd, curlcli, url, format, remainingArgs...)
-			task(settings, taskArgs...)
 		} else if authType == "sso" {
 			// Fallback to reading email from first remaining arg
 			argProcessedIndex := 0
@@ -313,22 +313,13 @@ func main() {
 				return
 			}
 
-			// SSO flow
-			token, err := util.SSOFetch(email, ssocli, cmd,
-				parseScopes(scopes))
-			if err != nil {
-				fmt.Println("Failed to fetch SSO token")
-				return
-			}
-			header := util.BuildHeader("Bearer", token)
-
-			switch cmd {
-			case "curl":
-				util.CurlCommand(curlcli, header, url, remainingArgs...)
-			case "header":
-				fmt.Println(header)
-			default:
-				fmt.Println(token)
+			// SSO flow requires empty CredentialsJSON
+			settings = &sgauth.Settings{
+				Email:       email,
+				Scope:       parseScopes(scopes),
+				Audience:    audience,
+				UserProject: userProject,
+				Uat:         uat,
 			}
 		} else {
 			// OAuth flow
@@ -347,16 +338,18 @@ func main() {
 
 			// 3LO or 2LO depending on the credential type.
 			// For 2LO flow OAuthFlowHandler and State are not needed.
-			settings := &sgauth.Settings{
+			settings = &sgauth.Settings{
 				CredentialsJSON:  json,
 				Scope:            parseScopes(scopes),
 				OAuthFlowHandler: defaultAuthorizeFlowHandler,
 				State:            "state",
+				Audience:         audience,
+				UserProject:      userProject,
+				Uat:              uat,
 			}
-
-			taskArgs := getTaskArgs(cmd, curlcli, url, format, remainingArgs...)
-			task(settings, taskArgs...)
 		}
+
+		task(settings, taskSettings)
 	} else if task, ok := infoTasks[cmd]; ok {
 		infoOpts := getInfoOptions(opts, cmd)
 		token := infoOpts.Token
