@@ -4,6 +4,7 @@ go 1.13
 
 require (
 	cloud.google.com/go v0.48.0
+	github.com/auth0/go-jwt-middleware v0.0.0-20200507191422-d30d7b9ece63 // indirect
 	github.com/golang/protobuf v1.3.2
 	github.com/jessevdk/go-flags v1.4.0
 	github.com/wora/protorpc v0.0.0-20180730014223-ae9256a051d8
