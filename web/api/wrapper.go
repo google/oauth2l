@@ -8,8 +8,10 @@ import (
 // WrapperCommand represents components necessary for OAuth2l request
 type WrapperCommand struct {
 	RequestType string
-	Args map[string]interface{}  // Type used to unmarshal JSON
+	Args
 }
+
+type Args map[string]interface{}  // Type used to unmarshal JSON
 
 // Execute will capture output of OAuth2l CLI using command args
 func (wc WrapperCommand) Execute() (output []byte, err error) {
