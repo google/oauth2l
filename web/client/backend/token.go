@@ -5,8 +5,9 @@ import (
     "log"
     "net/http"
 	"time"
-	"encoding/json"
-
+	"os"
+	"fmt"
+	// "encoding/json"
     "github.com/auth0/go-jwt-middleware"
     "github.com/dgrijalva/jwt-go"
 )
@@ -17,10 +18,11 @@ const (
 )
 
 
-//Credentials Object for credential testing
-type Credentials struct
+//Claims Object for credential testing
+type Claims struct
 {
-	JSONstring string `json:"string"`
+	JSONfile *os.File
+	jwt.StandardClaims
 }
 
 // TokenHandler is our handler to take a credential string and
@@ -29,28 +31,40 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add("Content-Type", "application/json")
 	
-	var creds Credentials
-	// Get the JSON body and decode into credentials
-	err := json.NewDecoder(r.Body).Decode(&creds)
-	if err != nil {
-		// If the structure of the body is wrong, return an HTTP error
+	// opening the JSON file with the credentials
+
+	jsonFile, err := os.Open("/usr/local/google/home/melyxlin/Downloads/shinfan-test-89c218991319.json")
+    // if we os.Open returns an error then handle it
+    if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, `{"error":"token_generation_failed"}`)
 		return
+    }
+    fmt.Println("Successfully Opened jsonFile")
+    // defer the closing of our jsonFile so that we can parse it later on
+    // defer jsonFile.Close()
+
+	// Building a token with an expiry of 5 minutes.
+	expirationTime := time.Now().Add(5 * time.Minute)
+	
+	// Create the JWT claims, which includes the username and expiry time
+	claims := &Claims{
+		JSONfile: jsonFile,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expirationTime.Unix(),
+		},
 	}
 
-    // Building a token with an expiry of 1 hour.
-    token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-        "cred": creds.JSONstring,
-        "exp":  time.Now().Add(time.Hour * time.Duration(1)).Unix(),
-        "iat":  time.Now().Unix(),
-    })
+    token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
     tokenString, err := token.SignedString([]byte(appKey))
     if err != nil {
         w.WriteHeader(http.StatusInternalServerError)
         io.WriteString(w, `{"error":"token_generation_failed"}`)
         return
-    }
+	}
+	
+	fmt.Println("Sucessfully created token")
+
     io.WriteString(w, `{"token":"`+tokenString+`"}`)
     return
 }
@@ -72,6 +86,7 @@ func AuthHandler(next http.Handler) http.Handler {
 
 //OkHandler function to test is token in valid
 func OkHandler(w http.ResponseWriter, r *http.Request) {
-    w.Header().Add("Content-Type", "application/json")
-    io.WriteString(w, `{"status":"ok"}`)
+    // w.Header().Add("Content-Type", "application/json")
+	// io.WriteString(w, `{"status":"ok"}`)
+	fmt.Println("auth-ok")
 }
