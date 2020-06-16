@@ -40,10 +40,10 @@ type CacheKey struct {
 	Email string
 	// The Google API key
 	APIKey string
-	// The UserProject field for UAT
-	UserProject string
-	// If specified, performs UAT exchange on top of base OAuth
-	Uat bool
+	// The QuotaProject field for STS
+	QuotaProject string
+	// If specified, performs STS exchange on top of base OAuth
+	Sts bool
 }
 
 func LookupCache(settings *sgauth.Settings) (*sgauth.Token, error) {
@@ -135,7 +135,7 @@ func createKey(settings *sgauth.Settings) CacheKey {
 		Audience:        settings.Audience,
 		Email:           settings.Email,
 		APIKey:          settings.APIKey,
-		UserProject:     settings.UserProject,
-		Uat:             settings.Uat,
+		QuotaProject:    settings.QuotaProject,
+		Sts:             settings.Sts,
 	}
 }

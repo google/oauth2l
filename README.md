@@ -285,17 +285,17 @@ Note: The custom SSO CLI should have the following interface:
 $ /usr/bin/sso me@example.com scope1 scope2
 ```
 
-### --uat
+### --sts
 
-If true, exchanges the fetched OAuth access token with an UAT token using
-Google's Secure Token Service. You may optionally specify claims to be embedded
-into the UAT token. The currently supported UAT claims are "audience" and "user_project".
+If true, exchanges the fetched access token with an STS token using Google's
+Secure Token Service. You may optionally specify claims to be embedded into
+the STS token. The currently supported STS claims are "audience" and "quota_project".
 
 This option is compatible with oauth and sso authentication types,
 but is currently incompatible with jwt.
 
 ```bash
-$ oauth2l fetch --uat --audience https://pubsub.googleapis.com/ --user_project userprojectid
+$ oauth2l fetch --sts --audience https://pubsub.googleapis.com/ --quota_project quotaprojectid
 ```
 
 ### --scope
@@ -312,18 +312,18 @@ $ oauth2l fetch --scope cloud-platform,pubsub
 ### --audience
 
 The single audience to include in the signed JWT token. Required for jwt
-authentication type. Can also be used for UAT.
+authentication type. Can also be used for STS.
 
 ```bash
 $ oauth2l fetch --type jwt --audience https://pubsub.googleapis.com/
 ```
 
-### --user_project
+### --quota_project
 
-The user project to include in the UAT claim. Used for quota and billing override.
+The quota project to include in the STS claim. Used for quota and billing override.
 
 ```bash
-$ oauth2l fetch --uat --user_project userprojectid
+$ oauth2l fetch --sts --quota_project quotaprojectid
 ```
 
 ### --email

@@ -62,12 +62,12 @@ type commonFetchOptions struct {
 	AuthType string `long:"type" choice:"oauth" choice:"jwt" choice:"sso" description:"The authentication type." default:"oauth"`
 
 	// GUAC parameters
-	Credentials string `long:"credentials" description:"Credentials file containing OAuth Client Id or Service Account Key. Optional if environment variable GOOGLE_APPLICATION_CREDENTIALS is set."`
-	Scope       string `long:"scope" description:"List of OAuth scopes requested. Required for oauth and sso authentication type. Comma delimited."`
-	Audience    string `long:"audience" description:"Audience used for JWT self-signed token and UAT. Required for jwt authentication type."`
-	Email       string `long:"email" description:"Email associated with SSO. Required for sso authentication type."`
-	UserProject string `long:"user_project" description:"Project override for quota and billing. Used for UAT."`
-	Uat         bool   `long:"uat" description:"Perform UAT exchange."`
+	Credentials  string `long:"credentials" description:"Credentials file containing OAuth Client Id or Service Account Key. Optional if environment variable GOOGLE_APPLICATION_CREDENTIALS is set."`
+	Scope        string `long:"scope" description:"List of OAuth scopes requested. Required for oauth and sso authentication type. Comma delimited."`
+	Audience     string `long:"audience" description:"Audience used for JWT self-signed token and STS. Required for jwt authentication type."`
+	Email        string `long:"email" description:"Email associated with SSO. Required for sso authentication type."`
+	QuotaProject string `long:"quota_project" description:"Project override for quota and billing. Used for STS."`
+	Sts          bool   `long:"sts" description:"Perform STS token exchange."`
 
 	// Client parameters
 	SsoCli string `long:"ssocli" description:"Path to SSO CLI. Optional."`
@@ -251,8 +251,8 @@ func main() {
 		credentials := getCredentialsWithFallback(commonOpts)
 		scope := commonOpts.Scope
 		audience := commonOpts.Audience
-		userProject := commonOpts.UserProject
-		uat := commonOpts.Uat
+		quotaProject := commonOpts.QuotaProject
+		sts := commonOpts.Sts
 		email := commonOpts.Email
 		ssocli := commonOpts.SsoCli
 		setCacheLocation(commonOpts.Cache)
@@ -289,7 +289,7 @@ func main() {
 			}
 
 			// JWT flow requires empty Scope.
-			// Also, JWT currently does not work with UAT.
+			// Also, JWT currently does not work with STS.
 			settings = &sgauth.Settings{
 				CredentialsJSON: json,
 				Audience:        audience,
@@ -315,11 +315,11 @@ func main() {
 
 			// SSO flow requires empty CredentialsJSON
 			settings = &sgauth.Settings{
-				Email:       email,
-				Scope:       parseScopes(scopes),
-				Audience:    audience,
-				UserProject: userProject,
-				Uat:         uat,
+				Email:        email,
+				Scope:        parseScopes(scopes),
+				Audience:     audience,
+				QuotaProject: quotaProject,
+				Sts:          sts,
 			}
 		} else {
 			// OAuth flow
@@ -344,8 +344,8 @@ func main() {
 				OAuthFlowHandler: defaultAuthorizeFlowHandler,
 				State:            "state",
 				Audience:         audience,
-				UserProject:      userProject,
-				Uat:              uat,
+				QuotaProject:     quotaProject,
+				Sts:              sts,
 			}
 		}
 

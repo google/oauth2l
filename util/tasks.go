@@ -139,8 +139,8 @@ func getTokenInfo(token string) (string, error) {
 // If CredentialsJSON is not provided, but email is provided,
 // attempt to obtain token via SSO instead of sgauth.
 //
-// If UAT is requested, we will perform an UAT exchange after
-// the original access token has been fetched.
+// If STS is requested, we will perform an STS exchange
+// after the original access token has been fetched.
 func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.Token {
 	token, err := LookupCache(settings)
 	if token == nil {
@@ -157,8 +157,8 @@ func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.T
 				return nil
 			}
 		}
-		if settings.Uat {
-			token, err = UatExchange(token.AccessToken, EncodeClaims(settings))
+		if settings.Sts {
+			token, err = StsExchange(token.AccessToken, EncodeClaims(settings))
 			if err != nil {
 				fmt.Println(err)
 				return nil

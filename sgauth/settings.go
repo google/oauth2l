@@ -42,7 +42,6 @@ type Settings struct {
 	QuotaUser string
 	// A user specified project that is responsible for the request quota and
 	// billing charges.
-	// DEPRECATED
 	QuotaProject string
 	// End-user OAuth Flow handler that redirects the user to the given URL
 	// and returns the token.
@@ -50,11 +49,8 @@ type Settings struct {
 	// The state string used for 3LO session verification.
 	// UNIMPLEMENTED
 	State string
-	// A user specified project that is responsible for the request quota and
-	// billing charges.
-	UserProject string
-	// Indicates that UAT token exchange should be performed.
-	Uat bool
+	// Indicates that STS token exchange should be performed.
+	Sts bool
 }
 
 func (s Settings) AuthMethod() string {

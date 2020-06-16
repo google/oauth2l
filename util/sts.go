@@ -28,8 +28,7 @@ import (
 	"github.com/google/oauth2l/sgauth"
 )
 
-// StsURL is Google's Secure Token Service endpoint used for obtaining identity
-// tokens such as UAT.
+// StsURL is Google's Secure Token Service endpoint used for obtaining STS token.
 // TODO (andyzhao): Replace with https://sts.googleapis.com/v1/token when ready.
 const StsURL = "https://securetoken.googleapis.com/v1alpha2/identitybindingtoken"
 
@@ -39,8 +38,8 @@ type tokenJSON struct {
 	TokenType   string `json:"token_type"`
 }
 
-// Exchanges an OAuth Access Token to an UAT token with base64 encoded claims
-func UatExchange(accessToken string, encodedClaims string) (*sgauth.Token, error) {
+// Exchanges an OAuth Access Token to an Sts token with base64 encoded claims
+func StsExchange(accessToken string, encodedClaims string) (*sgauth.Token, error) {
 	v := url.Values{
 		"grant_type":           {"urn:ietf:params:oauth:grant-type:token-exchange"},
 		"subject_token_type":   {"urn:ietf:params:oauth:token-type:access_token"},
@@ -62,7 +61,7 @@ func UatExchange(accessToken string, encodedClaims string) (*sgauth.Token, error
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return nil, fmt.Errorf("oauth2l: UAT exchange failed: %v", err)
+		return nil, fmt.Errorf("oauth2l: STS exchange failed: %v", err)
 	}
 	if code := resp.StatusCode; code < 200 || code > 299 {
 		return nil, errors.New(string(body))
@@ -79,15 +78,16 @@ func UatExchange(accessToken string, encodedClaims string) (*sgauth.Token, error
 	return &token, nil
 }
 
-// claimsJSON is the struct representing supported UAT claims
+// claimsJSON is the struct representing supported STS claims
 type claimsJSON struct {
-	Audience    string `json:"audience,omitempty"`
-	UserProject string `json:"user_project,omitempty"`
+	Audience     string `json:"audience,omitempty"`
+	// QuotaProject is the public name. Sts uses the name "user_project" internally.
+	QuotaProject string `json:"user_project,omitempty"`
 }
 
-// EncodeClaims base64 encodes supported UAT claims in settings
+// EncodeClaims base64 encodes supported STS claims in settings
 func EncodeClaims(settings *sgauth.Settings) string {
-	cj := claimsJSON{Audience: settings.Audience, UserProject: settings.UserProject}
+	cj := claimsJSON{Audience: settings.Audience, QuotaProject: settings.QuotaProject}
 	claims, _ := json.Marshal(cj)
 	return base64.StdEncoding.EncodeToString(claims)
 }
