@@ -34,10 +34,16 @@ type CacheKey struct {
 	CredentialsJSON string
 	// If specified, use OAuth. Otherwise, JWT.
 	Scope string
-	// The audience field for JWT auth
+	// The audience field for JWT auth and UAT
 	Audience string
+	// The email used for SSO and domain-wide delegation.
+	Email string
 	// The Google API key
 	APIKey string
+	// The QuotaProject field for STS
+	QuotaProject string
+	// If specified, performs STS exchange on top of base OAuth
+	Sts bool
 }
 
 func LookupCache(settings *sgauth.Settings) (*sgauth.Token, error) {
@@ -127,6 +133,9 @@ func createKey(settings *sgauth.Settings) CacheKey {
 		CredentialsJSON: settings.CredentialsJSON,
 		Scope:           settings.Scope,
 		Audience:        settings.Audience,
+		Email:           settings.Email,
 		APIKey:          settings.APIKey,
+		QuotaProject:    settings.QuotaProject,
+		Sts:             settings.Sts,
 	}
 }

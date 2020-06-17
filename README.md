@@ -285,6 +285,19 @@ Note: The custom SSO CLI should have the following interface:
 $ /usr/bin/sso me@example.com scope1 scope2
 ```
 
+### --sts
+
+If true, exchanges the fetched access token with an STS token using Google's
+Secure Token Service. You may optionally specify claims to be embedded into
+the STS token. The currently supported STS claims are "audience" and "quota_project".
+
+This option is compatible with oauth and sso authentication types,
+but is currently incompatible with jwt.
+
+```bash
+$ oauth2l fetch --sts --audience https://pubsub.googleapis.com/ --quota_project quotaprojectid
+```
+
 ### --scope
 
 The scope(s) that will be authorized by the OAuth access token. Required for
@@ -299,10 +312,18 @@ $ oauth2l fetch --scope cloud-platform,pubsub
 ### --audience
 
 The single audience to include in the signed JWT token. Required for jwt
-authentication type.
+authentication type. Can also be used for STS.
 
 ```bash
 $ oauth2l fetch --type jwt --audience https://pubsub.googleapis.com/
+```
+
+### --quota_project
+
+The quota project to include in the STS claim. Used for quota and billing override.
+
+```bash
+$ oauth2l fetch --sts --quota_project quotaprojectid
 ```
 
 ### --email
