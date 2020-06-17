@@ -11,7 +11,7 @@ type WrapperCommand struct {
 	Args
 }
 
-// Args type used for unmarshaled JSON
+// Args type used for unmarshalled JSON
 type Args map[string]interface{}
 
 // Execute will capture output of OAuth2l CLI using command args
