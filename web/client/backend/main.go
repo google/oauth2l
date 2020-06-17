@@ -10,6 +10,7 @@ import (
 
 	jwtmiddleware "github.com/auth0/go-jwt-middleware"
 	"github.com/dgrijalva/jwt-go"
+	"github.com/google/oauth2l/web/api"
 )
 
 // Credentials object read body from the request body
@@ -78,7 +79,16 @@ func AuthHandler(next http.Handler) http.Handler {
 //OkHandler function to test is token in valid
 func OkHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/json")
-	io.WriteString(w, `{"status":"ok"}`)
+	// io.WriteString(w, `{"status":"ok"}`)
+	newWrapperCommand := &api.WrapperCommand{
+		RequestType: creds.RequestType,
+		Args:        creds.Args,
+	}
+	response, err := newWrapperCommand.Execute()
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+	}
+	io.WriteString(w, `{"response":"`+response+`"}`)
 
 }
 
