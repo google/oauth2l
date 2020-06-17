@@ -11,25 +11,32 @@ type WrapperCommand struct {
 	Args
 }
 
-type Args map[string]interface{}  // Type used to unmarshal JSON
+// Args type used for unmarshaled JSON
+type Args map[string]interface{}
 
 // Execute will capture output of OAuth2l CLI using command args
-func (wc WrapperCommand) Execute() (output []byte, err error) {
+func (wc WrapperCommand) Execute() (output string, err error) {
 	// combinedArgs used to represent command arguments in an array
 	args, ok := combinedArgs(wc)
 
 	if !ok {
-		return nil, fmt.Errorf("invalid type found in args")
+		return "", fmt.Errorf("invalid type found in args")
 	}
 
 	// Execute command and capture output
 	command := exec.Command("oauth2l", args...)
-	output, err = command.Output()
+	byteBuffer, err := command.Output()
+
+	// Convert byteBuffer to string for output
+	output = string(byteBuffer)
+
 	return
 }
 
-// Returns proper args in order based on command type
+// Returns args in flattened array
 func combinedArgs(wc WrapperCommand) (combinedArgs []string, ok bool) {
+	combinedArgs = append(combinedArgs, wc.RequestType)
+
 	for flag, value := range wc.Args {
 		combinedArgs = append(combinedArgs, flag)
 		
