@@ -12,12 +12,6 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
-//WrapperCommand object
-type WrapperCommand struct {
-	RequestType string
-	Args        map[string]interface{}
-}
-
 // Credentials object read body from the request body
 type Credentials struct {
 	RequestType string
@@ -86,10 +80,6 @@ func OkHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/json")
 	io.WriteString(w, `{"status":"ok"}`)
 
-	// newWrapperCommand := &WrapperCommand{
-	// 	RequestType: creds.RequestType,
-	// 	Args:        creds.Args,
-	// }
 }
 
 func main() {
