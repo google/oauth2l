@@ -20,3 +20,16 @@ reduced.pylintrc
 
 # GoLand
 .idea/
+
+# Web
+node_modules
+*.DS_Store
+*.log
+*.env
+npm-debug.log*
+TODOS.txt
+
+# api
+./web/api/.env
+
+.now

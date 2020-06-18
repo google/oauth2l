@@ -1,0 +1,18 @@
+{
+  "extends": [
+    "eslint:recommended",
+    "google",
+    "plugin:react/recommended",
+    "jest-enzyme",
+    "prettier"
+  ],
+  "env": {
+    "browser": true,
+    "jest": true
+  },
+  "rules": {
+    "jsx-a11y/anchor-is-valid": "off",
+    "no-console": "error"
+  },
+  "parser": "babel-eslint"
+}

@@ -1,0 +1,49 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@testing-library/react": "^9.5.0",
+    "@testing-library/user-event": "^7.2.1",
+    "eslint-config-jest-enzyme": "^7.1.2",
+    "mdbreact": "^4.27.0",
+    "react": "^16.13.1",
+    "react-dom": "^16.13.1",
+    "react-router-dom": "^5.2.0",
+    "react-scripts": "^3.4.1"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "format": "prettier --write \"./**/*.{js,jsx,json,md,css}\"",
+    "format:check": "prettier --check \"./**/*.{js,jsx,json,md,css}\"",
+    "lint": "eslint \"./**/*.{js,jsx}\"",
+    "lint:fix": "eslint --fix \"./**/*.{js,jsx}\"",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": "react-app"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^5.10.1",
+    "enzyme": "^3.11.0",
+    "enzyme-adapter-react-16": "^1.15.2",
+    "eslint-config-google": "^0.14.0",
+    "eslint-config-prettier": "^6.11.0",
+    "prettier-eslint": "^11.0.0",
+    "typescript": "^3.9.5"
+  }
+}

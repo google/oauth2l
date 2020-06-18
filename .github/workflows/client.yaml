@@ -1,0 +1,43 @@
+name: client
+
+on: push
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12
+      - name: npm run format
+        working-directory: ./web/client
+        run: |
+          npm install
+          npm run format:check
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12
+      - name: npm run lint
+        working-directory: ./web/client
+        run: |
+          npm install
+          npm run lint
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12
+      - name: npm run build
+        working-directory: ./web/client
+        run: |
+          npm install
+          npm run build
