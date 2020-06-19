@@ -6,16 +6,18 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"time"
+
 	jwtmiddleware "github.com/auth0/go-jwt-middleware"
 	"github.com/dgrijalva/jwt-go"
 )
 
 // Credentials object read body from the request body
 type Credentials struct {
-	RequestType string
-	Args        map[string]interface{}
-	UploadCredentials        map[string]interface{}
+	RequestType       string
+	Args              map[string]interface{}
+	UploadCredentials map[string]interface{}
 }
 
 // Claims object that will be encoded to a JWT.
@@ -25,7 +27,7 @@ type Claims struct {
 	jwt.StandardClaims
 }
 
-var jwtKey = []byte("my_secret_key")
+var jwtKey = []byte(os.Getenv("SECRET_KEY"))
 var creds Credentials
 
 // TokenHandler to create the Token
@@ -71,7 +73,6 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // AuthHandler checks if token is valid. Returning a 401 status to the client if it is not valid.
-
 func AuthHandler(next http.Handler) http.Handler {
 	jwtMiddleware := jwtmiddleware.New(jwtmiddleware.Options{
 		ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {

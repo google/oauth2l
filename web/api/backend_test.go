@@ -4,17 +4,17 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"testing"
 )
-
 
 func TestAuthHandlerValid(t *testing.T) {
 	req, err := http.NewRequest("GET", "/auth", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJCb2R5Ijp7ImNsaWVudF9pZCI6Ijc2NDA4NjA1MTg1MC02cXI0cDZncGk2aG41MDZwdDhlanVxODNkaTM0MWh1ci5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbSIsImNsaWVudF9zZWNyZXQiOiJkLUZMOTVRMTlxN01RbUZwZDdoSEQwVHkiLCJxdW90YV9wcm9qZWN0X2lkIjoiZGVsYXlzLW9yLXRyYWZmaS0xNTY5MTMxMTUzNzA0IiwicmVmcmVzaF90b2tlbiI6IjEvLzBkRlN4eGk0Tk9UbDJDZ1lJQVJBQUdBMFNOd0YtTDlJcmE1WVRubkZlcjFHQ1pCVG9Ha3dtVk1Bb3VuR2FpX3g0Q2dId01BRmdGTkJzUFNLNWhCd3hmcEduODh1M3JvUHJSY1EiLCJ0eXBlIjoiYXV0aG9yaXplZF91c2VyIn19.OSNSv1HGq1C9sbtS7lSU4zRiMURNsbV9QuMOKj2sK6s")
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("VALID_TOKEN"))
 	rr := httptest.NewRecorder()
 	handler := (AuthHandler(http.HandlerFunc(OkHandler)))
 
@@ -105,7 +105,6 @@ func TestAuthHandlerInvalid2(t *testing.T) {
 	}
 }
 
-
 func TestTokenHandlerNoBody1(t *testing.T) {
 
 	jsonStr := []byte(`{
@@ -172,7 +171,6 @@ func TestTokenHandlerNoBody2(t *testing.T) {
 
 }
 
-
 func TestTokenHandlerNoCreation(t *testing.T) {
 
 	jsonStr := []byte(`{
@@ -207,10 +205,7 @@ func TestTokenHandlerValidWithCreation(t *testing.T) {
         "args":{
             "--scope":["cloud-platform","userinfo.email"]
 		},
-		"needToken":"true",
         "uploadcredentials": {
-      "client_id": "764086051850-6qr4p6gpi6hn506pt8ejuq83di341hur.apps.googleusercontent.com",
-      "client_secret": "d-FL95Q19q7MQmFpd7hHD0Ty",
       "quota_project_id": "delays-or-traffi-1569131153704",
       "refresh_token": "1//0dFSxxi4NOTl2CgYIARAAGA0SNwF-L9Ira5YTnnFer1GCZBToGkwmVMAounGai_x4CgHwMAFgFNBsPSK5hBwxfpGn88u3roPrRcQ",
       "type": "authorized_user"
