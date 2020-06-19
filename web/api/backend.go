@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"time"
-
 	jwtmiddleware "github.com/auth0/go-jwt-middleware"
 	"github.com/dgrijalva/jwt-go"
 )
@@ -16,13 +15,13 @@ import (
 type Credentials struct {
 	RequestType string
 	Args        map[string]interface{}
-	Body        map[string]interface{}
+	UploadCredentials        map[string]interface{}
 }
 
 // Claims object that will be encoded to a JWT.
 // We add jwt.StandardClaims as an embedded type, to provide fields like expiry time
 type Claims struct {
-	Body map[string]interface{}
+	UploadCredentials map[string]interface{}
 	jwt.StandardClaims
 }
 
@@ -39,7 +38,7 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(creds.Body) == 0 {
+	if len(creds.UploadCredentials) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, `{"error":"cannot make token without credentials"}`)
 		return
@@ -47,10 +46,11 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Declare the expiration time of the token
 	// here, we have kept it as 5 minutes
-	expirationTime := time.Now().Add(5 * time.Minute)
+	expirationTime := time.Now().Add(1440 * time.Minute)
 	// Create the JWT claims, which includes the username and expiry time
 	claims := &Claims{
-		Body: creds.Body,
+		UploadCredentials: creds.UploadCredentials,
+
 		StandardClaims: jwt.StandardClaims{
 			// In JWT, the expiry time is expressed as unix milliseconds
 			ExpiresAt: expirationTime.Unix(),
@@ -67,10 +67,11 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	io.WriteString(w, `{"token":"`+tokenString+`"}`)
+
 }
 
-// AuthHandler checks if token is valid. Returning
-// a 401 status to the client if it is not valid.
+// AuthHandler checks if token is valid. Returning a 401 status to the client if it is not valid.
+
 func AuthHandler(next http.Handler) http.Handler {
 	jwtMiddleware := jwtmiddleware.New(jwtmiddleware.Options{
 		ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
@@ -81,21 +82,42 @@ func AuthHandler(next http.Handler) http.Handler {
 	return jwtMiddleware.Handler(next)
 }
 
+//NoTokenHandler for the case when a cached token is not used
+func NoTokenHandler(w http.ResponseWriter, r *http.Request) {
+	var cacheCreds Credentials
+	err := json.NewDecoder(r.Body).Decode(&cacheCreds)
+	if err != nil {
+		// If the structure of the body is wrong, return an HTTP error
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	creds = cacheCreds
+	OkHandler(w, r)
+
+}
+
 //OkHandler function to test is token in valid
 func OkHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Content-Type", "application/json")
-	io.WriteString(w, `{"status":"ok"}`)
-
+	newWrapperCommand := &WrapperCommand{
+		RequestType: creds.RequestType,
+		Args:        creds.Args,
+	}
+	response, err := newWrapperCommand.Execute()
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+	}
+	io.WriteString(w, `{"response":"`+response+`"}`)
 }
 
 func main() {
 	fmt.Println("Authorization Playground")
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello World")
-	})
 	http.HandleFunc("/token", TokenHandler)
+
 	http.Handle("/auth", AuthHandler(http.HandlerFunc(OkHandler)))
+
+	http.HandleFunc("/notoken", NoTokenHandler)
 
 	if err := http.ListenAndServe(":8081", nil); err != nil {
 		log.Fatal(err)
