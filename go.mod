@@ -15,4 +15,5 @@ require (
 	google.golang.org/genproto v0.0.0-20191114150713-6bbd007550de
 	google.golang.org/grpc v1.25.1
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
+	github.com/gorilla/mux v1.7.4
 )
