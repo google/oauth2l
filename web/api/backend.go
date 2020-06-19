@@ -11,6 +11,8 @@ import (
 
 	jwtmiddleware "github.com/auth0/go-jwt-middleware"
 	"github.com/dgrijalva/jwt-go"
+
+	"github.com/gorilla/mux"
 )
 
 // Credentials object read body from the request body
@@ -123,15 +125,21 @@ func setupResponse(w *http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
+	router := mux.NewRouter()
 	fmt.Println("Authorization Playground")
 
-	http.HandleFunc("/token", TokenHandler)
+	router.HandleFunc("/token", TokenHandler)
 
-	http.Handle("/auth", AuthHandler(http.HandlerFunc(OkHandler)))
+	router.Handle("/auth", AuthHandler(http.HandlerFunc(OkHandler)))
 
-	http.HandleFunc("/notoken", NoTokenHandler)
+	router.HandleFunc("/notoken", NoTokenHandler)
 
-	if err := http.ListenAndServe(":8081", nil); err != nil {
-		log.Fatal(err)
+	srv := &http.Server{
+		Handler:      router,
+		Addr:         "127.0.0.1:8081",
+		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  15 * time.Second,
 	}
+
+	log.Fatal(srv.ListenAndServe())
 }
