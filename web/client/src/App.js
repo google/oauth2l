@@ -41,9 +41,9 @@ function App() {
           type: "use",
         },
       });
-      console.log(sampleBody);
+
       const resp = await getCacheToken(sampleBody);
-      console.log(resp);
+      console.log(resp); // eslint-disable-line
     };
 
     loadSampleResponse();
