@@ -6,7 +6,7 @@
     }
 }]*/
 
-import React from "react";
+import React, { useEffect } from "react";
 import "./App.css";
 import Credentials from "./components/Credentials";
 import {
@@ -19,11 +19,36 @@ import {
 import { Route, NavLink, HashRouter } from "react-router-dom";
 import Scopes from "./Scopes";
 import Button from "./components/Button";
+import { getCacheToken } from "./util/apiWrapper";
 
 /**
  * @return {HashRouter} returns webapp as a whole
  */
 function App() {
+  useEffect(() => {
+    const loadSampleResponse = async () => {
+      const sampleBody = JSON.stringify({
+        requesttype: "fetch",
+        args: {
+          "--scope": ["cloud-platform", "userinfo.email"],
+        },
+        needToken: "true",
+        uploadcredentials: {
+          client_id: "random",
+          client_secret: "mock",
+          quota_project_id: "data",
+          refresh_token: "to",
+          type: "use",
+        },
+      });
+
+      const resp = await getCacheToken(sampleBody);
+      console.log(resp); // eslint-disable-line
+    };
+
+    loadSampleResponse();
+  }, []);
+
   return (
     <HashRouter>
       {" "}
