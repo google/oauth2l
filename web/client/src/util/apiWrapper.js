@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const BASE_URL = process.env.BACKEND_URL ?? "http://localhost:8081";
+const BASE_URL = "http://localhost:8081";
 
 export const getCacheToken = (credentials) => {
   const requestString = `${BASE_URL}/token`;
