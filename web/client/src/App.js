@@ -27,7 +27,7 @@ import { getCacheToken } from "./util/apiWrapper";
 function App() {
   useEffect(() => {
     const loadSampleResponse = async () => {
-      const sampleBody = {
+      const sampleBody = JSON.stringify({
         requesttype: "fetch",
         args: {
           "--scope": ["cloud-platform", "userinfo.email"],
@@ -40,8 +40,8 @@ function App() {
           refresh_token: "to",
           type: "use",
         },
-      };
-
+      });
+      console.log(sampleBody);
       const resp = await getCacheToken(sampleBody);
       console.log(resp);
     };
