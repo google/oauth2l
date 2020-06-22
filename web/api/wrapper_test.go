@@ -15,6 +15,7 @@ func TestWrapperCommandStructSingleArg(t *testing.T) {
 	wrapper := WrapperCommand{
 		expectedRequest,
 		expectedArgs,
+		Credential{},
 	}
 
 	if wrapper.RequestType != expectedRequest {
@@ -33,6 +34,7 @@ func TestWrapperCommandStructManyArgs(t *testing.T) {
 	wrapper := WrapperCommand{
 		expectedRequest,
 		expectedArgs,
+		Credential{},
 	}
 
 	if wrapper.RequestType != expectedRequest {
@@ -51,6 +53,7 @@ func TestInvalidTypeInArgs(t *testing.T) {
 	wrapper := WrapperCommand{
 		expectedRequest,
 		expectedArgs,
+		Credential{},
 	}
 
 	_, err := wrapper.Execute()
@@ -67,6 +70,7 @@ func TestValidTypeInArgs(t *testing.T) {
 	wrapper := WrapperCommand{
 		expectedRequest,
 		expectedArgs,
+		Credential{},
 	}
 
 	_, err := wrapper.Execute()
@@ -143,6 +147,7 @@ func TestDummyOauth2lCommand(t *testing.T) {
 	wrapper := WrapperCommand{
 		expectedRequest,
 		expectedArgs,
+		Credential{},
 	}
 
 	output, err := wrapper.Execute()
