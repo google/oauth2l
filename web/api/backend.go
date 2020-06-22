@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	// "fmt"
 	"io"
-	"log"
+	// "log"
 	"net/http"
 	"os"
 	"time"
@@ -15,13 +15,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Credentials object read body from the request body
-type Credentials struct {
-	RequestType       string
-	Args              map[string]interface{}
-	UploadCredentials map[string]interface{}
-}
-
 // Claims object that will be encoded to a JWT.
 // We add jwt.StandardClaims as an embedded type, to provide fields like expiry time
 type Claims struct {
@@ -30,7 +23,7 @@ type Claims struct {
 }
 
 var jwtKey = []byte(os.Getenv("SECRET_KEY"))
-var creds Credentials
+var creds WrapperCommand
 
 // TokenHandler to create the Token
 func TokenHandler(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +40,7 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(creds.UploadCredentials) == 0 {
+	if len(creds.Credential) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, `{"error":"cannot make token without credentials"}`)
 		return
@@ -58,7 +51,7 @@ func TokenHandler(w http.ResponseWriter, r *http.Request) {
 	expirationTime := time.Now().Add(1440 * time.Minute)
 	// Create the JWT claims, which includes the username and expiry time
 	claims := &Claims{
-		UploadCredentials: creds.UploadCredentials,
+		UploadCredentials: creds.Credential,
 
 		StandardClaims: jwt.StandardClaims{
 			// In JWT, the expiry time is expressed as unix milliseconds
@@ -92,7 +85,7 @@ func AuthHandler(next http.Handler) http.Handler {
 
 //NoTokenHandler for the case when a cached token is not used
 func NoTokenHandler(w http.ResponseWriter, r *http.Request) {
-	var cacheCreds Credentials
+	var cacheCreds WrapperCommand
 	err := json.NewDecoder(r.Body).Decode(&cacheCreds)
 	if err != nil {
 		// If the structure of the body is wrong, return an HTTP error
@@ -118,6 +111,7 @@ func OkHandler(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, `{"response":"`+response+`"}`)
 }
 
+<<<<<<< Updated upstream
 func setupResponse(w *http.ResponseWriter, req *http.Request) {
 	(*w).Header().Set("Access-Control-Allow-Origin", "*")
     (*w).Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
@@ -143,3 +137,18 @@ func main() {
 
 	log.Fatal(srv.ListenAndServe())
 }
+=======
+// func main() {
+// 	fmt.Println("Authorization Playground")
+
+// 	http.HandleFunc("/token", TokenHandler)
+
+// 	http.Handle("/auth", AuthHandler(http.HandlerFunc(OkHandler)))
+
+// 	http.HandleFunc("/notoken", NoTokenHandler)
+
+// 	if err := http.ListenAndServe(":8081", nil); err != nil {
+// 		log.Fatal(err)
+// 	}
+// }
+>>>>>>> Stashed changes
