@@ -110,7 +110,7 @@ func TestTokenHandlerNoBody1(t *testing.T) {
 	jsonStr := []byte(`{
         "requesttype":"fetch",
         "args":{
-            "--scope":["cloud-platform","userinfo.email"]
+            "scope":["cloud-platform","userinfo.email"]
 		}
     }`)
 
@@ -141,7 +141,7 @@ func TestTokenHandlerNoBody2(t *testing.T) {
 	jsonStr := []byte(`{
         "requesttype":"fetch",
         "args":{
-            "--scope":["cloud-platform","userinfo.email"]
+            "scope":["cloud-platform","userinfo.email"]
 
 		},
 		"uploadcredentials":{}
@@ -172,11 +172,10 @@ func TestTokenHandlerNoBody2(t *testing.T) {
 }
 
 func TestTokenHandlerNoCreation(t *testing.T) {
-
 	jsonStr := []byte(`{
         "requesttype":"fetch",
         "args":{
-            "--scope":["cloud-platform","userinfo.email"]
+            "scope":["cloud-platform","userinfo.email"]
 		}
     }`)
 
@@ -203,7 +202,7 @@ func TestTokenHandlerValidWithCreation(t *testing.T) {
 	jsonStr := []byte(`{
         "requesttype":"fetch",
         "args":{
-            "--scope":["cloud-platform","userinfo.email"]
+            "scope":["cloud-platform","userinfo.email"]
 		},
         "uploadcredentials": {
       "quota_project_id": "delays-or-traffi-1569131153704",
