@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"reflect"
 	"testing"
 )
@@ -53,7 +52,7 @@ func TestInvalidTypeInArgs(t *testing.T) {
 	wrapper := WrapperCommand{
 		expectedRequest,
 		expectedArgs,
-		Credential{},
+		nil,
 	}
 
 	_, err := wrapper.Execute()
@@ -70,12 +69,12 @@ func TestValidTypeInArgs(t *testing.T) {
 	wrapper := WrapperCommand{
 		expectedRequest,
 		expectedArgs,
-		Credential{},
+		nil,
 	}
 
-	_, err := wrapper.Execute()
+	_, ok := combinedArgs(wrapper)
 
-	if err != nil {
+	if !ok {
 		t.Errorf("valid types not detected")
 	}
 }
@@ -150,9 +149,8 @@ func TestDummyOauth2lCommand(t *testing.T) {
 		nil,
 	}
 
-	output, err := wrapper.Execute()
-	fmt.Printf("%v", []byte(output))
-	if output != "1" || err != nil {
-		t.Errorf("error running basic command")
+	output, _ := wrapper.Execute()
+	if output != "1" {
+		t.Errorf("error running dummy command")
 	}
 }
