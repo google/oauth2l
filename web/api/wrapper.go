@@ -26,13 +26,16 @@ func (wc WrapperCommand) Execute() (output string, err error) {
 	// combinedArgs used to represent command arguments in an array
 	args, ok := combinedArgs(wc)
 
+	// Check if credential is provided to include in oauth2l command
 	if wc.Credential != nil {
+		// Gets a file descriptor for a memory allocated credential file
 		descriptor, err := allocateMemFile(wc.Credential)
 
 		if err != nil {
 			return "", err
 		}
 
+		// Symlink path to memory file
 		path := getCredentialPath(descriptor)
 
 		args = append(args, "--credentials", path)
@@ -53,6 +56,7 @@ func (wc WrapperCommand) Execute() (output string, err error) {
 }
 
 func allocateMemFile(credential Credential) (descriptor int, err error) {
+	// Init cred with credential body
 	cred := credential["credential"]
 
 	if err != nil {
@@ -61,29 +65,35 @@ func allocateMemFile(credential Credential) (descriptor int, err error) {
 
 	byteArray := []byte(cred.(string))
 
+	// Create an anonymous file on the RAM, once all references to descriptor are dropped, file is released
 	descriptor, err = unix.MemfdCreate("credential", 0)
 
 	if err != nil {
 		return 0, err
 	}
 
+	// Truncate file size to match size of our credential body
 	err = unix.Ftruncate(descriptor, int64(len(byteArray)))
 	if err != nil {
 		return 0, err
 	}
 
+	// Map file to memory and assign virtual address
 	data, err := unix.Mmap(descriptor, 0, len(byteArray), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
 	if err != nil {
 		return 0, err
 	}
 
+	// Copy credential body into allocated memory
 	copy(data, byteArray)
 
+	// Delete data memory mapping as body is now written to memory
 	err = unix.Munmap(data)
 	if err != nil {
 		return 0, err
 	}
 
+	// Returns file descriptor
 	return descriptor, nil
 }
 
