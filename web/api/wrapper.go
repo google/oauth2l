@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -54,13 +53,13 @@ func (wc WrapperCommand) Execute() (output string, err error) {
 }
 
 func allocateMemFile(credential Credential) (descriptor int, err error) {
-	credStr, err := json.Marshal(credential)
+	cred := credential["credential"]
 
 	if err != nil {
 		return 0, err
 	}
 
-	byteArray := []byte(credStr)
+	byteArray := []byte(cred.(string))
 
 	descriptor, err = unix.MemfdCreate("credential", 0)
 
