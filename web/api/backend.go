@@ -2,9 +2,9 @@ package main
 
 import (
 	"encoding/json"
-	// "fmt"
+	"fmt"
 	"io"
-	// "log"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -111,7 +111,6 @@ func OkHandler(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, `{"response":"`+response+`"}`)
 }
 
-<<<<<<< Updated upstream
 func setupResponse(w *http.ResponseWriter, req *http.Request) {
 	(*w).Header().Set("Access-Control-Allow-Origin", "*")
     (*w).Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
@@ -130,25 +129,10 @@ func main() {
 
 	srv := &http.Server{
 		Handler:      router,
-		Addr:         "127.0.0.1:8081",
+		Addr:         "127.0.0.1:8080",
 		WriteTimeout: 15 * time.Second,
 		ReadTimeout:  15 * time.Second,
 	}
 
 	log.Fatal(srv.ListenAndServe())
 }
-=======
-// func main() {
-// 	fmt.Println("Authorization Playground")
-
-// 	http.HandleFunc("/token", TokenHandler)
-
-// 	http.Handle("/auth", AuthHandler(http.HandlerFunc(OkHandler)))
-
-// 	http.HandleFunc("/notoken", NoTokenHandler)
-
-// 	if err := http.ListenAndServe(":8081", nil); err != nil {
-// 		log.Fatal(err)
-// 	}
-// }
->>>>>>> Stashed changes

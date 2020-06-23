@@ -147,7 +147,7 @@ func TestDummyOauth2lCommand(t *testing.T) {
 	wrapper := WrapperCommand{
 		expectedRequest,
 		expectedArgs,
-		Credential{},
+		nil,
 	}
 
 	output, err := wrapper.Execute()
