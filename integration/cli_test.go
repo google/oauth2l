@@ -262,6 +262,24 @@ func Test3LOFlow(t *testing.T) {
 			"fetch-3lo-cached.golden",
 			false,
 		},
+		{
+			"fetch; 3lo insert expired token into cache",
+			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token.json"},
+			"fetch-3lo.golden",
+			false,
+		},
+		{
+			"fetch; 3lo cached; token expired",
+			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token.json"},
+			"fetch-3lo.golden",
+			false,
+		},
+		{
+			"fetch; 3lo cached; refresh expired token",
+			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token.json", "--refresh"},
+			"fetch-3lo-cached.golden",
+			false,
+		},
 	}
 	runTestScenariosWithInput(t, tests, newFixture(t, "fake-verification-code.fixture").asFile())
 }
@@ -389,6 +407,12 @@ func MockTokenApi(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, response)
 }
 
+func MockExpiredTokenApi(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	response := readFile("integration/fixtures/mock-expired-token-response.json")
+	fmt.Fprint(w, response)
+}
+
 func MockCurlApi(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	response := "{}"
@@ -423,6 +447,7 @@ func TestMain(m *testing.M) {
 		mux := http.NewServeMux()
 		server := http.Server{Addr: ":8080", Handler: mux}
 		mux.HandleFunc("/token", MockTokenApi)
+		mux.HandleFunc("/expiredtoken", MockExpiredTokenApi)
 		mux.HandleFunc("/curl", MockCurlApi)
 		if err := server.ListenAndServe(); err != nil {
 			fmt.Printf("could not listen on port 8080 %v", err)
