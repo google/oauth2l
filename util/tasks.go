@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/google/oauth2l/sgauth"
 )
@@ -55,6 +56,8 @@ type TaskSettings struct {
 	ExtraArgs []string
 	// SsoCli override for Sso task
 	SsoCli string
+	// Refresh expired access token in cache
+	Refresh bool
 }
 
 // Fetches and prints the token in plain text with the given settings
@@ -139,11 +142,16 @@ func getTokenInfo(token string) (string, error) {
 // If CredentialsJSON is not provided, but email is provided,
 // attempt to obtain token via SSO instead of sgauth.
 //
+// If cached token is expired and refresh is requested,
+// attempt to obtain new token via RefreshToken instead
+// of default OAuth flow.
+//
 // If STS is requested, we will perform an STS exchange
 // after the original access token has been fetched.
 func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.Token {
 	token, err := LookupCache(settings)
-	if token == nil {
+	tokenExpired := isTokenExpired(token)
+	if token == nil || tokenExpired {
 		if settings.CredentialsJSON == "" && settings.Email != "" {
 			token, err = SSOFetch(taskSettings.SsoCli, settings.Email, settings.Scope)
 			if err != nil {
@@ -151,7 +159,16 @@ func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.T
 				return nil
 			}
 		} else {
-			token, err = sgauth.FetchToken(context.Background(), settings)
+			fetchSettings := settings
+			if tokenExpired && taskSettings.Refresh {
+				refreshCredentialsJSON := BuildRefreshCredentialsJSON(token.RefreshToken, settings.CredentialsJSON)
+				if refreshCredentialsJSON != "" {
+					refreshSettings := *settings // Make a shallow copy
+					refreshSettings.CredentialsJSON = refreshCredentialsJSON
+					fetchSettings = &refreshSettings
+				}
+			}
+			token, err = sgauth.FetchToken(context.Background(), fetchSettings)
 			if err != nil {
 				fmt.Println(err)
 				return nil
@@ -171,6 +188,11 @@ func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.T
 		}
 	}
 	return token
+}
+
+func isTokenExpired(token *sgauth.Token) bool {
+	// SSO and STS tokens currently do not have expiration, as indicated by empty Expiry.
+	return token != nil && !token.Expiry.IsZero() && time.Now().After(token.Expiry)
 }
 
 func getCredentialType(settings *sgauth.Settings) string {

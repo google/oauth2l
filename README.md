@@ -350,6 +350,14 @@ Path to token cache file. Disables caching if set to empty (""). Defaults to ~/.
 $ oauth2l fetch --cache ~/different_path/.oauth2l --scope cloud-platform
 ```
 
+### --refresh
+
+If true, attempt to refresh expired access token (from the cache) using refresh token instead of re-authorizing.
+
+```bash
+$ oauth2l fetch --credentials ~/client_credentials.json --scope cloud-platform --refresh
+```
+
 ### fetch --output_format
 
 Token's output format for "fetch" command. One of bare, header, json, json_compact, pretty. Default is bare.

@@ -75,6 +75,9 @@ type commonFetchOptions struct {
 	// Cache is declared as a pointer type and can be one of nil, empty (""), or a custom file path.
 	Cache *string `long:"cache" description:"Path to the credential cache file. Disables caching if set to empty. Defaults to ~/.oauth2l."`
 
+	// Refresh is used for 3LO flow. When used in conjunction with caching, the user can avoid re-authorizing.
+	Refresh bool `long:"refresh" description:"If the cached access token is expired, attempt to refresh it using refreshToken."`
+
 	// Deprecated flags kept for backwards compatibility. Hidden from help page.
 	Json      string `long:"json" description:"Deprecated. Same as --credentials." hidden:"true"`
 	Jwt       bool   `long:"jwt" description:"Deprecated. Same as --type jwt." hidden:"true"`
@@ -256,6 +259,7 @@ func main() {
 		email := commonOpts.Email
 		ssocli := commonOpts.SsoCli
 		setCacheLocation(commonOpts.Cache)
+		refresh := commonOpts.Refresh
 		format := getOutputFormatWithFallback(opts.Fetch)
 		curlcli := opts.Curl.CurlCli
 		url := opts.Curl.Url
@@ -266,6 +270,7 @@ func main() {
 			Url:       url,
 			ExtraArgs: remainingArgs,
 			SsoCli:    ssocli,
+			Refresh:   refresh,
 		}
 
 		// Configure GUAC settings based on authType.
