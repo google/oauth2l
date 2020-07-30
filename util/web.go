@@ -28,16 +28,16 @@ const (
 
 //Runs the frontend/backend for OAuth2l Playground
 func Web() {
-	_, err := os.Stat("./oauth2l-web")
+	_, err := os.Stat("/oauth2l-web")
 	if os.IsNotExist(err) {
 		fmt.Println("This feature is not currently installed.")
 		fmt.Println("Installing...")
-		cmd := exec.Command("git", "clone", "https://github.com/googleinterns/oauth2l-web.git")
+		cmd := exec.Command("git", "clone", "https://github.com/googleinterns/oauth2l-web.git", "oauth2-web")
 		cmd.Run()
 		fmt.Println("Web feature installed")
 	}
 	cmd := exec.Command("docker-compose", "up", "-d", "--build")
-	cmd.Dir = "web"
+	cmd.Dir = "oauth2l-web"
 
 	dockErr := cmd.Run()
 
@@ -71,10 +71,10 @@ func openWeb() error {
 //closes the containers and removes stopped containers
 func WebStop() {
 	cmd := exec.Command("docker-compose", "stop")
-	cmd.Dir = "web"
+	cmd.Dir = "oauth2l-web"
 	cmd.Run()
 	remContainer := exec.Command("docker-compose", "rm", "-f")
-	remContainer.Dir = "web"
+	remContainer.Dir = "oauth2l-web"
 	remContainer.Run()
 	fmt.Println("OAuth2l Playground was stopped.")
 }
