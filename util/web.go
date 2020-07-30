@@ -30,9 +30,8 @@ const (
 func Web() {
 	_, err := os.Stat("/oauth2l-web")
 	if os.IsNotExist(err) {
-		fmt.Println("This feature is not currently installed.")
-		fmt.Println("Installing...")
-		cmd := exec.Command("git", "clone", "https://github.com/googleinterns/oauth2l-web.git", "oauth2-web")
+		fmt.Println("This feature is not currently installed. Installing...")
+		cmd := exec.Command("git", "clone", "https://github.com/googleinterns/oauth2l-web.git", "oauth2l-web")
 		cmd.Run()
 		fmt.Println("Web feature installed")
 	}
