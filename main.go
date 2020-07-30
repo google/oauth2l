@@ -50,6 +50,7 @@ type commandOptions struct {
 	Info   infoOptions   `command:"info" description:"Display info about an OAuth access token."`
 	Test   infoOptions   `command:"test" description:"Tests an OAuth access token. Returns 0 for valid token."`
 	Reset  resetOptions  `command:"reset" description:"Resets the cache."`
+	Web    webOptions    `command:"web"   description:"Launches a local instance of the OAuth2l Playground web app. This feature is experimental."`
 }
 
 // Common options for "fetch", "header", and "curl" commands.
@@ -62,21 +63,16 @@ type commonFetchOptions struct {
 	AuthType string `long:"type" choice:"oauth" choice:"jwt" choice:"sso" description:"The authentication type." default:"oauth"`
 
 	// GUAC parameters
-	Credentials  string `long:"credentials" description:"Credentials file containing OAuth Client Id or Service Account Key. Optional if environment variable GOOGLE_APPLICATION_CREDENTIALS is set."`
-	Scope        string `long:"scope" description:"List of OAuth scopes requested. Required for oauth and sso authentication type. Comma delimited."`
-	Audience     string `long:"audience" description:"Audience used for JWT self-signed token and STS. Required for jwt authentication type."`
-	Email        string `long:"email" description:"Email associated with SSO. Required for sso authentication type."`
-	QuotaProject string `long:"quota_project" description:"Project override for quota and billing. Used for STS."`
-	Sts          bool   `long:"sts" description:"Perform STS token exchange."`
+	Credentials string `long:"credentials" description:"Credentials file containing OAuth Client Id or Service Account Key. Optional if environment variable GOOGLE_APPLICATION_CREDENTIALS is set."`
+	Scope       string `long:"scope" description:"List of OAuth scopes requested. Required for oauth and sso authentication type. Comma delimited."`
+	Audience    string `long:"audience" description:"Audience used for JWT self-signed token. Required for jwt authentication type."`
+	Email       string `long:"email" description:"Email associated with SSO. Required for sso authentication type."`
 
 	// Client parameters
 	SsoCli string `long:"ssocli" description:"Path to SSO CLI. Optional."`
 
 	// Cache is declared as a pointer type and can be one of nil, empty (""), or a custom file path.
 	Cache *string `long:"cache" description:"Path to the credential cache file. Disables caching if set to empty. Defaults to ~/.oauth2l."`
-
-	// Refresh is used for 3LO flow. When used in conjunction with caching, the user can avoid re-authorizing.
-	Refresh bool `long:"refresh" description:"If the cached access token is expired, attempt to refresh it using refreshToken."`
 
 	// Deprecated flags kept for backwards compatibility. Hidden from help page.
 	Json      string `long:"json" description:"Deprecated. Same as --credentials." hidden:"true"`
@@ -112,6 +108,10 @@ type infoOptions struct {
 type resetOptions struct {
 	// Cache is declared as a pointer type and can be one of nil or a custom file path.
 	Cache *string `long:"cache" description:"Path to the credential cache file to remove. Defaults to ~/.oauth2l."`
+}
+
+type webOptions struct {
+	Stop string `long:"stop" description:"Stops the OAuth2l Playground."`
 }
 
 // Reads and returns content of JSON file.
@@ -210,6 +210,18 @@ func getScopesWithFallback(scope string, remainingArgs ...string) []string {
 	return scopes
 }
 
+// Construct taskArgs based on chosen command.
+func getTaskArgs(cmd, curlcli, url, format string, remainingArgs ...string) []string {
+	var taskArgs []string
+	switch cmd {
+	case "curl":
+		taskArgs = append([]string{curlcli, url}, remainingArgs...)
+	case "fetch":
+		taskArgs = []string{format}
+	}
+	return taskArgs
+}
+
 // Extracts the info options based on chosen command.
 func getInfoOptions(cmdOpts commandOptions, cmd string) infoOptions {
 	var infoOpts infoOptions
@@ -236,7 +248,7 @@ func main() {
 	cmd := parser.Active.Name
 
 	// Tasks that fetch the access token.
-	fetchTasks := map[string]func(*sgauth.Settings, *util.TaskSettings){
+	fetchTasks := map[string]func(*sgauth.Settings, ...string){
 		"fetch":  util.Fetch,
 		"header": util.Header,
 		"curl":   util.Curl,
@@ -254,28 +266,15 @@ func main() {
 		credentials := getCredentialsWithFallback(commonOpts)
 		scope := commonOpts.Scope
 		audience := commonOpts.Audience
-		quotaProject := commonOpts.QuotaProject
-		sts := commonOpts.Sts
 		email := commonOpts.Email
 		ssocli := commonOpts.SsoCli
 		setCacheLocation(commonOpts.Cache)
-		refresh := commonOpts.Refresh
 		format := getOutputFormatWithFallback(opts.Fetch)
 		curlcli := opts.Curl.CurlCli
 		url := opts.Curl.Url
 
-		taskSettings := &util.TaskSettings{
-			Format:    format,
-			CurlCli:   curlcli,
-			Url:       url,
-			ExtraArgs: remainingArgs,
-			SsoCli:    ssocli,
-			Refresh:   refresh,
-		}
-
-		// Configure GUAC settings based on authType.
-		var settings *sgauth.Settings
 		if authType == "jwt" {
+			// JWT flow
 			json, err := readJSON(credentials)
 			if err != nil {
 				fmt.Println("Failed to open file: " + credentials)
@@ -293,12 +292,13 @@ func main() {
 				}
 			}
 
-			// JWT flow requires empty Scope.
-			// Also, JWT currently does not work with STS.
-			settings = &sgauth.Settings{
+			settings := &sgauth.Settings{
 				CredentialsJSON: json,
 				Audience:        audience,
 			}
+
+			taskArgs := getTaskArgs(cmd, curlcli, url, format, remainingArgs...)
+			task(settings, taskArgs...)
 		} else if authType == "sso" {
 			// Fallback to reading email from first remaining arg
 			argProcessedIndex := 0
@@ -318,13 +318,22 @@ func main() {
 				return
 			}
 
-			// SSO flow requires empty CredentialsJSON
-			settings = &sgauth.Settings{
-				Email:        email,
-				Scope:        parseScopes(scopes),
-				Audience:     audience,
-				QuotaProject: quotaProject,
-				Sts:          sts,
+			// SSO flow
+			token, err := util.SSOFetch(email, ssocli, cmd,
+				parseScopes(scopes))
+			if err != nil {
+				fmt.Println("Failed to fetch SSO token")
+				return
+			}
+			header := util.BuildHeader("Bearer", token)
+
+			switch cmd {
+			case "curl":
+				util.CurlCommand(curlcli, header, url, remainingArgs...)
+			case "header":
+				fmt.Println(header)
+			default:
+				fmt.Println(token)
 			}
 		} else {
 			// OAuth flow
@@ -343,18 +352,16 @@ func main() {
 
 			// 3LO or 2LO depending on the credential type.
 			// For 2LO flow OAuthFlowHandler and State are not needed.
-			settings = &sgauth.Settings{
+			settings := &sgauth.Settings{
 				CredentialsJSON:  json,
 				Scope:            parseScopes(scopes),
 				OAuthFlowHandler: defaultAuthorizeFlowHandler,
 				State:            "state",
-				Audience:         audience,
-				QuotaProject:     quotaProject,
-				Sts:              sts,
 			}
-		}
 
-		task(settings, taskSettings)
+			taskArgs := getTaskArgs(cmd, curlcli, url, format, remainingArgs...)
+			task(settings, taskArgs...)
+		}
 	} else if task, ok := infoTasks[cmd]; ok {
 		infoOpts := getInfoOptions(opts, cmd)
 		token := infoOpts.Token
@@ -370,6 +377,17 @@ func main() {
 		}
 
 		os.Exit(task(token))
+	} else if cmd == "web" {
+		if len(remainingArgs) > 0 {
+			stop := remainingArgs[0]
+			if stop == "stop" {
+				util.WebStop()
+			} else {
+				fmt.Println("Missing flag to run command")
+			}
+		} else {
+			util.Web()
+		}
 	} else if cmd == "reset" {
 		setCacheLocation(opts.Reset.Cache)
 		util.Reset()
