@@ -115,10 +115,10 @@ type resetOptions struct {
 	Cache *string `long:"cache" description:"Path to the credential cache file to remove. Defaults to ~/.oauth2l."`
 }
 
-//Options for "web" command
+// Options for "web" command
 type webOptions struct {
-	//Stop the web app
-	Stop string `long:"stop" description:"Stops the OAuth2l Playground."`
+	// Stop the web app
+	Stop bool `long:"stop" description:"Stops the OAuth2l Playground."`
 }
 
 // Reads and returns content of JSON file.
@@ -378,16 +378,12 @@ func main() {
 
 		os.Exit(task(token))
 	} else if cmd == "web" {
-		if len(remainingArgs) > 0 {
-			stop := remainingArgs[0]
-			if stop == "stop" {
-				util.WebStop()
-			} else {
-				fmt.Println("Missing proper to run command")
-			}
+		if opts.Web.Stop {
+			util.WebStop()
 		} else {
 			util.Web()
 		}
+
 	} else if cmd == "reset" {
 		setCacheLocation(opts.Reset.Cache)
 		util.Reset()
