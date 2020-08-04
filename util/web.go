@@ -65,7 +65,6 @@ func readDir() (string, error) {
 // updates the current config file
 func setDir(location string) {
 	viper.Set("directory", location)
-	fmt.Println(viper.GetString("directory"))
 	viper.WriteConfig()
 }
 
