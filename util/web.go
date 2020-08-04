@@ -21,42 +21,89 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/spf13/viper"
 )
 
 const (
 	defaultServer = "http://localhost:3000/"
 )
 
-var location string = "~/.oauth2l-web"
+// create config file wherever the oauth2l binary is stored
+func writeFile() {
+	file, err := os.Create("config.yaml")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	defer file.Close()
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(".")
+	viper.SetDefault("directory", "~/.oauth2l-web")
+	viper.WriteConfig()
+}
 
-// Runs the frontend/backend for OAuth2l Playground
+//  obtain the information from the config file
+func runViper() error {
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(".")
+	err := viper.ReadInConfig()
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	return err
+}
+
+// return the string that holds the current directory being worked on
+func readDir() (string, error) {
+	err := runViper()
+	return viper.GetString("directory"), err
+
+}
+
+// updates the current config file
+func setDir(location string) {
+	viper.Set("directory", location)
+	viper.WriteConfig()
+}
+
+// Web runs the frontend/backend for OAuth2l Playground
 func Web() {
-	_, err := os.Stat("~/.oauth2l-web")
+	writeFile()
+	directory, _ := readDir()
+
+	_, err := os.Stat(directory)
 	if os.IsNotExist(err) {
 		var decision string
-		fmt.Println("The Web feature will be installed in ~/.oauth2l-web. Would you like to change the directory? (y/n)")
+		var location string
+		fmt.Println("The Web feature will be installed in " + directory + ". Would you like to change the directory? (y/n)")
 		fmt.Scanln(&decision)
 		decision = strings.ToLower(decision)
 		if decision == "y" || decision == "yes" {
 			fmt.Println("Enter new directory location")
 			fmt.Scanln(&location)
+
+			directory = location
+			setDir(location)
 		}
 		fmt.Println("Installing...")
-		cmd := exec.Command("git", "clone", "https://github.com/googleinterns/oauth2l-web.git", location)
+		cmd := exec.Command("git", "clone", "https://github.com/googleinterns/oauth2l-web.git", directory)
 		clonErr := cmd.Run()
 		if clonErr != nil {
+			fmt.Println("Please enter a valid directory")
 			log.Fatal(clonErr.Error())
 		} else {
 			fmt.Println("Web feature installed")
 		}
 	}
 	cmd := exec.Command("docker-compose", "up", "-d", "--build")
-	cmd.Dir = location
+	cmd.Dir = directory
 
 	dockErr := cmd.Run()
 
 	if dockErr != nil {
-		fmt.Println("Check to see if Docker is running!")
+		fmt.Println("Please ensure Docker is installed and running")
 		log.Fatal(dockErr.Error())
 
 	} else {
@@ -82,17 +129,18 @@ func openWeb() error {
 	return exec.Command(cmd, defaultServer).Start()
 }
 
-// closes the containers and removes stopped containers
+// WebStop closes the containers and removes stopped containers
 func WebStop() {
+	directory, _ := readDir()
 	cmd := exec.Command("docker-compose", "stop")
-	cmd.Dir = location
+	cmd.Dir = directory
 	err := cmd.Run()
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
 	remContainer := exec.Command("docker-compose", "rm", "-f")
-	remContainer.Dir = location
+	remContainer.Dir = directory
 	remErr := remContainer.Run()
 	if remErr != nil {
 		log.Fatal(err.Error())
