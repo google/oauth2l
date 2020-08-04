@@ -65,12 +65,16 @@ func readDir() (string, error) {
 // updates the current config file
 func setDir(location string) {
 	viper.Set("directory", location)
+	fmt.Println(viper.GetString("directory"))
 	viper.WriteConfig()
 }
 
 // Web runs the frontend/backend for OAuth2l Playground
 func Web() {
-	writeFile()
+	_, checkFile := os.Stat("config.yaml")
+	if os.IsNotExist(checkFile) {
+		writeFile()
+	}
 	directory, _ := readDir()
 
 	_, err := os.Stat(directory)
