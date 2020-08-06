@@ -117,8 +117,8 @@ type resetOptions struct {
 
 // Options for "web" command
 type webOptions struct {
-	Stop      bool   `long:"stop" description:"Stops the OAuth2l Playground."`
-	Directory string `long:"directory" description:"Sets the directory of where OAuth2l-web located. Defaults to ~/.oauth2l-web." `
+	Stop      bool   `long:"stop" description:"Stops the OAuth2l Playground where OAuth2l-web s."`
+	Directory string `long:"directory" description:"Sets the directory of where OAuth2l-web should be located. Defaults to ~/.oauth2l-web." `
 }
 
 // Reads and returns content of JSON file.
@@ -378,19 +378,21 @@ func main() {
 
 		os.Exit(task(token))
 	} else if cmd == "web" {
-		var directory string = "~/.oauth2l"
-		if opts.Web.Stop {
-			if len(opts.Web.Directory) > 0 {
-				util.WebStop(opts.Web.Directory)
-			} else {
+		var directory string = "~/.oauth2l-web"
+		if len(opts.Web.Directory) > 0 {
+			directory = opts.Web.Directory
+			if opts.Web.Stop {
 				util.WebStop(directory)
+			} else {
+				util.Web(directory)
 			}
-		} else if len(opts.Web.Directory) > 0 {
-			util.Web(opts.Web.Directory)
 		} else {
-			util.Web(directory)
+			if opts.Web.Stop {
+				util.WebStop(directory)
+			} else {
+				util.Web(directory)
+			}
 		}
-
 	} else if cmd == "reset" {
 		setCacheLocation(opts.Reset.Cache)
 		util.Reset()

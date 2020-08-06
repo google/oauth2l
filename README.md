@@ -198,6 +198,30 @@ file `~/.oauth2l` by default.
 $ oauth2l reset
 ```
 
+### web
+
+Runs the web application and opens a new window to show it. If the web application is not installed it is installed in `~/.oauth2l-web` by default.
+
+```bash
+$ oauth2l web
+```
+
+## web --stop
+
+Stops the OAuth2l Playground.
+
+```bash
+$ oauth2l web --stop
+```
+
+## web --directory
+
+Downloads OAuth2l-web in a specfic directory.
+
+```
+$ oauth2l web --directory your/new/directory
+```
+
 ## Command Options
 
 ### --help
@@ -379,22 +403,6 @@ Path to Curl CLI. For optional use with "curl" command.
 
 ```bash
 $ oauth2l curl --curlcli /usr/bin/curl --type sso --email me@google.com --scope cloud-platform --url https://pubsub.googleapis.com/v1/projects/my-project-id/topics
-```
-
-## web --stop
-
-Stops the OAuth2l Playground.
-
-```bash
-$ oauth2l web --stop
-```
-
-## web --directory
-
-Downloads OAuth2l-web in a specfic directory.
-
-```
-$ oauth2l web --directory your/new/directory
 ```
 
 ## Previous Version

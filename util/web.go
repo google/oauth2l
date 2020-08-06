@@ -20,15 +20,11 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strings"
-
-
 )
 
 const (
 	defaultServer = "http://localhost:3000/"
 )
-
 
 // Runs the frontend/backend for OAuth2l Playground
 func Web(directory string) {
@@ -73,7 +69,6 @@ func openWeb() error {
 
 	return exec.Command(cmd, defaultServer).Start()
 }
-
 
 // closes the containers and removes stopped containers
 func WebStop(directory string) {

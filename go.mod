@@ -6,7 +6,6 @@ require (
 	cloud.google.com/go v0.48.0
 	github.com/golang/protobuf v1.3.2
 	github.com/jessevdk/go-flags v1.4.0
-	github.com/spf13/viper v1.7.1 // indirect
 	github.com/wora/protorpc v0.0.0-20180730014223-ae9256a051d8
 	golang.org/x/net v0.0.0-20191112182307-2180aed22343
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
