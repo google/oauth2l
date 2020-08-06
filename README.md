@@ -1,5 +1,4 @@
-oauth2l
--------
+## oauth2l
 
 `oauth2l` (pronounced "oauth tool") is a simple command-line tool for
 working with
@@ -12,28 +11,28 @@ tokens, which can be used with other command-line tools and shell scripts.
 `oauth2l` supports all Google OAuth 2.0 authentication flows for both user
 accounts and service accounts in different environments:
 
-*   When running inside Google Compute Engine (GCE) and Google Container
-    Engine (GKE), it uses the credentials of the current service account
-    if it is available.
+- When running inside Google Compute Engine (GCE) and Google Container
+  Engine (GKE), it uses the credentials of the current service account
+  if it is available.
 
-*   When running inside user context that has an active Google Cloud SDK
-    (gcloud) session, it uses the current gcloud credentials.
+- When running inside user context that has an active Google Cloud SDK
+  (gcloud) session, it uses the current gcloud credentials.
 
-*   When running with command option `--credentials xxx`, where `xxx` points to
-    a JSON credential file downloaded from
-    [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
-    `oauth2l` uses the file to start an OAuth session. The file can be
-    either a service account key or an OAuth client ID.
+- When running with command option `--credentials xxx`, where `xxx` points to
+  a JSON credential file downloaded from
+  [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
+  `oauth2l` uses the file to start an OAuth session. The file can be
+  either a service account key or an OAuth client ID.
 
-*   When running with command option `--type jwt --audience xxx` and a service
-    account key, a JWT token signed by the service account key will be generated.
+- When running with command option `--type jwt --audience xxx` and a service
+  account key, a JWT token signed by the service account key will be generated.
 
-*   When running with command option `--type sso --email xxx`, `oauth2l` invokes
-    an external `sso` command to retrieve Single Sign-on (SSO) access token.
+- When running with command option `--type sso --email xxx`, `oauth2l` invokes
+  an external `sso` command to retrieve Single Sign-on (SSO) access token.
 
-*   By default, retrieved tokens will be cached and stored in "~/.oauth2l".
-    The cache location can be overridden via `--cache xxx`. To disable
-    caching, set cache location to empty ("").
+- By default, retrieved tokens will be cached and stored in "~/.oauth2l".
+  The cache location can be overridden via `--cache xxx`. To disable
+  caching, set cache location to empty ("").
 
 ## Quickstart
 
@@ -42,11 +41,11 @@ accounts and service accounts in different environments:
 Pre-built binaries are available for Darwin (Mac OS X), Linux, and Windows. You
 can download a build for any tag, for example:
 
-| OS     | Link
-| ------ | ---
-| Darwin | https://storage.googleapis.com/oauth2l/latest/darwin_amd64.tgz
-| Linux | https://storage.googleapis.com/oauth2l/latest/linux_amd64.tgz
-| Windows | https://storage.googleapis.com/oauth2l/latest/windows_amd64.tgz
+| OS      | Link                                                            |
+| ------- | --------------------------------------------------------------- |
+| Darwin  | https://storage.googleapis.com/oauth2l/latest/darwin_amd64.tgz  |
+| Linux   | https://storage.googleapis.com/oauth2l/latest/linux_amd64.tgz   |
+| Windows | https://storage.googleapis.com/oauth2l/latest/windows_amd64.tgz |
 
 Substitute "latest" for any tag version you'd like, removing any leading "v"
 prefix.
@@ -91,14 +90,14 @@ tag.
 
 On other systems, you need to meet the following requirements to use this tool:
 
-__Minimum requirements:__
+**Minimum requirements:**
+
 - The tool is only available for _Linux_ or _Mac_
 - _Go 1.10.3_ or higher
 
-__Nice to have:__
-- Add your _$GOPATH/bin_ into your _$PATH_ ([instructions](
-https://github.com/golang/go/wiki/GOPATH))
+**Nice to have:**
 
+- Add your _\$GOPATH/bin_ into your _\$PATH_ ([instructions](https://github.com/golang/go/wiki/GOPATH))
 
 ```bash
 # Get the package from Github
@@ -122,8 +121,8 @@ $ oauth2l fetch --credentials ~/your_credentials.json --scope cloud-platform
 Fetch and print an access token for the specified OAuth scopes. For example,
 the following command prints access token for the following OAuth2 scopes:
 
-*   https://www.googleapis.com/auth/userinfo.email
-*   https://www.googleapis.com/auth/cloud-platform
+- https://www.googleapis.com/auth/userinfo.email
+- https://www.googleapis.com/auth/cloud-platform
 
 ```bash
 $ oauth2l fetch --scope userinfo.email,cloud-platform
@@ -380,6 +379,22 @@ Path to Curl CLI. For optional use with "curl" command.
 
 ```bash
 $ oauth2l curl --curlcli /usr/bin/curl --type sso --email me@google.com --scope cloud-platform --url https://pubsub.googleapis.com/v1/projects/my-project-id/topics
+```
+
+## web --stop
+
+Stops the OAuth2l Playground.
+
+```bash
+$ oauth2l web --stop
+```
+
+## web --directory
+
+Downloads OAuth2l-web in a specfic directory.
+
+```
+$ oauth2l web --directory your/new/directory
 ```
 
 ## Previous Version
