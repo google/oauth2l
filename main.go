@@ -118,7 +118,7 @@ type resetOptions struct {
 // Options for "web" command
 type webOptions struct {
 	Stop      bool   `long:"stop" description:"Stops the OAuth2l Playground."`
-	Directory string `long:"directory" description:"Sets the directory of where OAuth2l-web located. Defaults to ~/oauth2l-web" `
+	Directory string `long:"directory" description:"Sets the directory of where OAuth2l-web located. Defaults to ~/.oauth2l-web." `
 }
 
 // Reads and returns content of JSON file.
