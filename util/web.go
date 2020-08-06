@@ -20,29 +20,18 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strings"
 )
 
 const (
 	defaultServer = "http://localhost:3000/"
 )
 
-var location string = "~/.oauth2l-web"
-
 // Runs the frontend/backend for OAuth2l Playground
-func Web() {
-	_, err := os.Stat("~/.oauth2l-web")
+func Web(directory string) {
+	_, err := os.Stat(directory)
 	if os.IsNotExist(err) {
-		var decision string
-		fmt.Println("The Web feature will be installed in ~/.oauth2l-web. Would you like to change the directory? (y/n)")
-		fmt.Scanln(&decision)
-		decision = strings.ToLower(decision)
-		if decision == "y" || decision == "yes" {
-			fmt.Println("Enter new directory location")
-			fmt.Scanln(&location)
-		}
 		fmt.Println("Installing...")
-		cmd := exec.Command("git", "clone", "https://github.com/googleinterns/oauth2l-web.git", location)
+		cmd := exec.Command("git", "clone", "https://github.com/googleinterns/oauth2l-web.git", directory)
 		clonErr := cmd.Run()
 		if clonErr != nil {
 			log.Fatal(clonErr.Error())
@@ -51,12 +40,12 @@ func Web() {
 		}
 	}
 	cmd := exec.Command("docker-compose", "up", "-d", "--build")
-	cmd.Dir = location
-
+	cmd.Dir = directory
+	fmt.Println("barely running command")
 	dockErr := cmd.Run()
-
+	fmt.Println("ran command")
 	if dockErr != nil {
-		fmt.Println("Check to see if Docker is running!")
+		fmt.Println("Please ensure that Docker is installed.")
 		log.Fatal(dockErr.Error())
 
 	} else {
@@ -83,16 +72,16 @@ func openWeb() error {
 }
 
 // closes the containers and removes stopped containers
-func WebStop() {
+func WebStop(directory string) {
 	cmd := exec.Command("docker-compose", "stop")
-	cmd.Dir = location
+	cmd.Dir = directory
 	err := cmd.Run()
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
 	remContainer := exec.Command("docker-compose", "rm", "-f")
-	remContainer.Dir = location
+	remContainer.Dir = directory
 	remErr := remContainer.Run()
 	if remErr != nil {
 		log.Fatal(err.Error())
