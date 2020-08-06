@@ -20,11 +20,15 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
+
+
 )
 
 const (
 	defaultServer = "http://localhost:3000/"
 )
+
 
 // Runs the frontend/backend for OAuth2l Playground
 func Web(directory string) {
@@ -34,6 +38,7 @@ func Web(directory string) {
 		cmd := exec.Command("git", "clone", "https://github.com/googleinterns/oauth2l-web.git", directory)
 		clonErr := cmd.Run()
 		if clonErr != nil {
+			fmt.Println("Please enter a valid directory")
 			log.Fatal(clonErr.Error())
 		} else {
 			fmt.Println("Web feature installed")
@@ -41,9 +46,7 @@ func Web(directory string) {
 	}
 	cmd := exec.Command("docker-compose", "up", "-d", "--build")
 	cmd.Dir = directory
-	fmt.Println("barely running command")
 	dockErr := cmd.Run()
-	fmt.Println("ran command")
 	if dockErr != nil {
 		fmt.Println("Please ensure that Docker is installed.")
 		log.Fatal(dockErr.Error())
@@ -70,6 +73,7 @@ func openWeb() error {
 
 	return exec.Command(cmd, defaultServer).Start()
 }
+
 
 // closes the containers and removes stopped containers
 func WebStop(directory string) {
