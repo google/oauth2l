@@ -381,13 +381,13 @@ func main() {
 		var directory string = "~/.oauth2l-web"
 		if len(opts.Web.Directory) > 0 {
 			directory = opts.Web.Directory
-		} else {
-			if opts.Web.Stop {
-				util.WebStop(directory)
-			} else {
-				util.Web(directory)
-			}
 		}
+		if opts.Web.Stop {
+			util.WebStop(directory)
+		} else {
+			util.Web(directory)
+		}
+
 	} else if cmd == "reset" {
 		setCacheLocation(opts.Reset.Cache)
 		util.Reset()
