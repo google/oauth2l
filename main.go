@@ -117,8 +117,8 @@ type resetOptions struct {
 
 // Options for "web" command
 type webOptions struct {
-	// Stop the web app
-	Stop bool `long:"stop" description:"Stops the OAuth2l Playground."`
+	Stop      bool   `long:"stop" description:"Stops the OAuth2l Playground where OAuth2l-web should be located."`
+	Directory string `long:"directory" description:"Sets the directory of where OAuth2l-web should be located. Defaults to ~/.oauth2l-web." `
 }
 
 // Reads and returns content of JSON file.
@@ -378,10 +378,14 @@ func main() {
 
 		os.Exit(task(token))
 	} else if cmd == "web" {
+		var directory string = "~/.oauth2l-web"
+		if len(opts.Web.Directory) > 0 {
+			directory = opts.Web.Directory
+		}
 		if opts.Web.Stop {
-			util.WebStop()
+			util.WebStop(directory)
 		} else {
-			util.Web()
+			util.Web(directory)
 		}
 
 	} else if cmd == "reset" {
