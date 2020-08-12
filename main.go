@@ -162,6 +162,13 @@ func setCacheLocation(cache *string) {
 	}
 }
 
+// Overrides default web directory if configured.
+func setWebDirectory(directory string) {
+	if directory != "" {
+		util.WebDirectory = directory
+	}
+}
+
 // Extracts the common fetch options based on chosen command.
 func getCommonFetchOptions(cmdOpts commandOptions, cmd string) commonFetchOptions {
 	var commonOpts commonFetchOptions
@@ -378,14 +385,11 @@ func main() {
 
 		os.Exit(task(token))
 	} else if cmd == "web" {
-		var directory string = "~/.oauth2l-web"
-		if len(opts.Web.Directory) > 0 {
-			directory = opts.Web.Directory
-		}
+		setWebDirectory(opts.Web.Directory)
 		if opts.Web.Stop {
-			util.WebStop(directory)
+			util.WebStop()
 		} else {
-			util.Web(directory)
+			util.Web()
 		}
 
 	} else if cmd == "reset" {
