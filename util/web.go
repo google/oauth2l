@@ -1,5 +1,5 @@
 //
-// Copyright 2018 Google Inc.
+// Copyright 2020 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,44 +15,55 @@
 package util
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+
+	"github.com/google/oauth2l/sgauth"
 )
 
 const (
-	defaultServer = "http://localhost:3000/"
+	defaultServer         = "http://localhost:3000/"
+	defaultWebPackageName = ".oauth2l-web"
 )
 
+var WebDirectory string = filepath.Join(sgauth.GuessUnixHomeDir(), defaultWebPackageName)
+
 // Runs the frontend/backend for OAuth2l Playground
-func Web(directory string) {
-	_, err := os.Stat(directory)
+func Web() {
+	_, err := os.Stat(WebDirectory)
 	if os.IsNotExist(err) {
 		fmt.Println("Installing...")
-		cmd := exec.Command("git", "clone", "https://github.com/googleinterns/oauth2l-web.git", directory)
-		clonErr := cmd.Run()
-		if clonErr != nil {
-			fmt.Println("Please enter a valid directory")
-			log.Fatal(clonErr.Error())
+		cmd := exec.Command("git", "clone", "https://github.com/googleinterns/oauth2l-web.git", WebDirectory)
+		cmdErr := cmd.Run()
+		if cmdErr != nil {
+			fmt.Println("Failed to install web feature.")
+			log.Fatal(cmdErr.Error())
 		} else {
 			fmt.Println("Web feature installed")
 		}
 	}
 	cmd := exec.Command("docker-compose", "up", "-d", "--build")
-	cmd.Dir = directory
-	dockErr := cmd.Run()
-	if dockErr != nil {
-		fmt.Println("Please ensure that Docker is installed.")
-		log.Fatal(dockErr.Error())
+	cmd.Dir = WebDirectory
 
+	// Capture actual error message from docker command, if there is any
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	cmdErr := cmd.Run()
+	if cmdErr != nil {
+		fmt.Println(stderr.String())
+		log.Fatal(cmdErr.Error())
 	} else {
 		openWeb()
 	}
 }
 
-// opens the website on the default browser
+// Opens the website on the default browser
 func openWeb() error {
 	var cmd string
 
@@ -70,17 +81,17 @@ func openWeb() error {
 	return exec.Command(cmd, defaultServer).Start()
 }
 
-// closes the containers and removes stopped containers
-func WebStop(directory string) {
+// Closes the containers and removes stopped containers
+func WebStop() {
 	cmd := exec.Command("docker-compose", "stop")
-	cmd.Dir = directory
+	cmd.Dir = WebDirectory
 	err := cmd.Run()
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
 	remContainer := exec.Command("docker-compose", "rm", "-f")
-	remContainer.Dir = directory
+	remContainer.Dir = WebDirectory
 	remErr := remContainer.Run()
 	if remErr != nil {
 		log.Fatal(err.Error())
