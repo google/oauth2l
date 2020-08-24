@@ -46,7 +46,7 @@ const (
 // These settings are used by oauth2l only
 // and are not part of GUAC settings.
 type TaskSettings struct {
-	// Ouput format for Fetch task
+	// Output format for Fetch task
 	Format string
 	// CurlCli override for Curl task
 	CurlCli string
