@@ -51,6 +51,9 @@ type Settings struct {
 	State string
 	// Indicates that STS token exchange should be performed.
 	Sts bool
+	// Used for Service Account Impersonation.
+	// Exchange User access token for Service Account access token.
+	ServiceAccount string
 }
 
 func (s Settings) AuthMethod() string {

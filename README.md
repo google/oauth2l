@@ -294,6 +294,17 @@ Note: The custom SSO CLI should have the following interface:
 $ /usr/bin/sso me@example.com scope1 scope2
 ```
 
+### --scope
+
+The scope(s) that will be authorized by the OAuth access token. Required for
+oauth and sso authentication types. When using multiple scopes, provide the
+the parameter as a comma-delimited list and do not include spaces. (Alternatively,
+multiple scopes can be specified as a space-delimited string surrounded in quotes.)
+
+```bash
+$ oauth2l fetch --scope cloud-platform,pubsub
+```
+
 ### --sts
 
 If true, exchanges the fetched access token with an STS token using Google's
@@ -305,17 +316,6 @@ but is currently incompatible with jwt.
 
 ```bash
 $ oauth2l fetch --sts --audience https://pubsub.googleapis.com/ --quota_project quotaprojectid
-```
-
-### --scope
-
-The scope(s) that will be authorized by the OAuth access token. Required for
-oauth and sso authentication types. When using multiple scopes, provide the
-the parameter as a comma-delimited list and do not include spaces. (Alternatively,
-multiple scopes can be specified as a space-delimited string surrounded in quotes.)
-
-```bash
-$ oauth2l fetch --scope cloud-platform,pubsub
 ```
 
 ### --audience
@@ -365,6 +365,17 @@ If true, attempt to refresh expired access token (from the cache) using refresh 
 
 ```bash
 $ oauth2l fetch --credentials ~/client_credentials.json --scope cloud-platform --refresh
+```
+
+### --impersonate-service-account
+
+If specified, exchanges the fetched User access token with a Service Account access token using Google's
+IAM Service. The Service Account parameter can be specified as an ID or an email. Note that at least
+one of "cloud-platform" or "iam" must be included in the scope parameter. Learn more about Service Account
+Impersonation [here](https://cloud.google.com/iam/docs/impersonating-service-accounts).
+
+```bash
+$ oauth2l fetch --credentials ~/client_credentials.json --scope cloud-platform,pubsub --impersonate-service-account 113258942105700140798
 ```
 
 ### fetch --output_format
