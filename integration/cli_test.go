@@ -393,6 +393,20 @@ func TestStsFlow(t *testing.T) {
 	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processStsOutput)
 }
 
+// Test Service Account Impersonation Flow.
+// This currently sends request to the real IAM endpoint, which will return 401 for having invalid user access token, which is expected.
+func TestServiceAccountImpersonationFlow(t *testing.T) {
+	tests := []testCase{
+		{
+			"fetch; sso; impersonation",
+			[]string{"fetch", "--type", "sso", "--email", "integration/fixtures/fake-ssocli.sh", "--scope", "pubsub", "--ssocli", "sh", "--impersonate-service-account", "12345"},
+			"fetch-impersonation.golden",
+			false,
+		},
+	}
+	runTestScenarios(t, tests)
+}
+
 func readFile(path string) string {
 	content, err := ioutil.ReadFile(path)
 	if err != nil {
