@@ -251,9 +251,9 @@ func Test3LOFlow(t *testing.T) {
 			false,
 		},
 		{
-			"fetch; 3lo; refresh credentials output format",
-			[]string{"fetch", "--output_format", "refresh_credentials", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets.json", "--cache", ""},
-			"fetch-3lo-refresh-credentials.golden",
+			"fetch; 3lo; refresh token output format",
+			[]string{"fetch", "--output_format", "refresh_token", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets.json", "--cache", ""},
+			"fetch-3lo-refresh-token.golden",
 			false,
 		},
 		{
