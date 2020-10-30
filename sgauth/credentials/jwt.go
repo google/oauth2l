@@ -79,13 +79,14 @@ func (c *JWTConfig) TokenSource(ctx context.Context) internal.TokenSource {
 }
 
 // Returns the config used for JWT auth flow without OAuth
-func JWTConfigFromFile(f *File, scopes []string) *JWTConfig {
+func JWTConfigFromFile(f *File, scopes []string, email string) *JWTConfig {
 	cfg := &JWTConfig{
 		Email:        f.ClientEmail,
 		PrivateKey:   []byte(f.PrivateKey),
 		PrivateKeyID: f.PrivateKeyID,
 		Scopes:       scopes,
 		TokenURL:     f.TokenURL,
+		Subject:      email, // This is the user email to impersonate
 	}
 	if cfg.TokenURL == "" {
 		cfg.TokenURL = DefaultTokenURL

@@ -343,6 +343,13 @@ The email associated with SSO. Required for sso authentication type.
 $ oauth2l fetch --type sso --email me@google.com --scope cloud-platform
 ```
 
+The email parameter can be also used to specify a user email account for domain-wide
+delegation when authenticating with Service Account credentials.
+
+```bash
+$ oauth2l fetch --credentials ~/service_account.json --scope cloud-platform --email user@google.com
+```
+
 ### --ssocli
 
 Path to SSO CLI. For optional use with "sso" authentication type.
@@ -369,7 +376,7 @@ $ oauth2l fetch --credentials ~/client_credentials.json --scope cloud-platform -
 
 ### fetch --output_format
 
-Token's output format for "fetch" command. One of bare, header, json, json_compact, pretty. Default is bare.
+Token's output format for "fetch" command. One of bare, header, json, json_compact, pretty, or refresh_token. Default is bare.
 
 ```bash
 $ oauth2l fetch --output_format pretty --scope cloud-platform

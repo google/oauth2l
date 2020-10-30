@@ -84,11 +84,11 @@ func (f *File) CredentialsType() string {
 }
 
 // Construct the corresponding token source based on the type of the file.
-func (f *File) TokenSource(ctx context.Context, scopes []string,
+func (f *File) TokenSource(ctx context.Context, scopes []string, email string,
 	handler func(string) (string, error), state string) (internal.TokenSource, error) {
 	switch f.CredentialsType() {
 	case ServiceAccountKey:
-		cfg := JWTConfigFromFile(f, scopes)
+		cfg := JWTConfigFromFile(f, scopes, email)
 		return cfg.TokenSource(ctx), nil
 	case UserCredentialsKey:
 		authURL := f.AuthURL

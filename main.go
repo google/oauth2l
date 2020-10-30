@@ -89,7 +89,7 @@ type commonFetchOptions struct {
 // Additional options for "fetch" command.
 type fetchOptions struct {
 	commonFetchOptions
-	Format string `long:"output_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" description:"Token's output format." default:"bare"`
+	Format string `long:"output_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" choice:"refresh_token" description:"Token's output format." default:"bare"`
 }
 
 // Additional options for "header" command.
@@ -279,6 +279,7 @@ func main() {
 		url := opts.Curl.Url
 
 		taskSettings := &util.TaskSettings{
+			AuthType:  authType,
 			Format:    format,
 			CurlCli:   curlcli,
 			Url:       url,
@@ -332,7 +333,7 @@ func main() {
 				return
 			}
 
-			// SSO flow requires empty CredentialsJSON
+			// SSO flow does not use CredentialsJSON
 			settings = &sgauth.Settings{
 				Email:        email,
 				Scope:        parseScopes(scopes),
@@ -365,6 +366,7 @@ func main() {
 				Audience:         audience,
 				QuotaProject:     quotaProject,
 				Sts:              sts,
+				Email:            email,
 			}
 		}
 
