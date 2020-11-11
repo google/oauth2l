@@ -44,6 +44,8 @@ type CacheKey struct {
 	QuotaProject string
 	// If specified, performs STS exchange on top of base OAuth
 	Sts bool
+	// Exchange User access token for Service Account access token.
+	ServiceAccount string
 }
 
 func LookupCache(settings *sgauth.Settings) (*sgauth.Token, error) {
@@ -137,5 +139,6 @@ func createKey(settings *sgauth.Settings) CacheKey {
 		APIKey:          settings.APIKey,
 		QuotaProject:    settings.QuotaProject,
 		Sts:             settings.Sts,
+		ServiceAccount:  settings.ServiceAccount,
 	}
 }
