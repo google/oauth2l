@@ -177,6 +177,13 @@ func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.T
 				return nil
 			}
 		}
+		if settings.ServiceAccount != "" {
+			token, err = GenerateServiceAccountAccessToken(token.AccessToken, settings.ServiceAccount, settings.Scope)
+			if err != nil {
+				fmt.Println(err)
+				return nil
+			}
+		}
 		if settings.Sts {
 			token, err = StsExchange(token.AccessToken, EncodeClaims(settings))
 			if err != nil {

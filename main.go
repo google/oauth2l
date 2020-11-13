@@ -63,12 +63,13 @@ type commonFetchOptions struct {
 	AuthType string `long:"type" choice:"oauth" choice:"jwt" choice:"sso" description:"The authentication type." default:"oauth"`
 
 	// GUAC parameters
-	Credentials  string `long:"credentials" description:"Credentials file containing OAuth Client Id or Service Account Key. Optional if environment variable GOOGLE_APPLICATION_CREDENTIALS is set."`
-	Scope        string `long:"scope" description:"List of OAuth scopes requested. Required for oauth and sso authentication type. Comma delimited."`
-	Audience     string `long:"audience" description:"Audience used for JWT self-signed token and STS. Required for jwt authentication type."`
-	Email        string `long:"email" description:"Email associated with SSO. Required for sso authentication type."`
-	QuotaProject string `long:"quota_project" description:"Project override for quota and billing. Used for STS."`
-	Sts          bool   `long:"sts" description:"Perform STS token exchange."`
+	Credentials    string `long:"credentials" description:"Credentials file containing OAuth Client Id or Service Account Key. Optional if environment variable GOOGLE_APPLICATION_CREDENTIALS is set."`
+	Scope          string `long:"scope" description:"List of OAuth scopes requested. Required for oauth and sso authentication type. Comma delimited."`
+	Audience       string `long:"audience" description:"Audience used for JWT self-signed token and STS. Required for jwt authentication type."`
+	Email          string `long:"email" description:"Email associated with SSO. Required for sso authentication type."`
+	QuotaProject   string `long:"quota_project" description:"Project override for quota and billing. Used for STS."`
+	Sts            bool   `long:"sts" description:"Perform STS token exchange."`
+	ServiceAccount string `long:"impersonate-service-account" description:"Exchange User acccess token for Service Account access token."`
 
 	// Client parameters
 	SsoCli string `long:"ssocli" description:"Path to SSO CLI. Optional."`
@@ -270,6 +271,7 @@ func main() {
 		audience := commonOpts.Audience
 		quotaProject := commonOpts.QuotaProject
 		sts := commonOpts.Sts
+		serviceAccount := commonOpts.ServiceAccount
 		email := commonOpts.Email
 		ssocli := commonOpts.SsoCli
 		setCacheLocation(commonOpts.Cache)
@@ -335,11 +337,12 @@ func main() {
 
 			// SSO flow does not use CredentialsJSON
 			settings = &sgauth.Settings{
-				Email:        email,
-				Scope:        parseScopes(scopes),
-				Audience:     audience,
-				QuotaProject: quotaProject,
-				Sts:          sts,
+				Email:          email,
+				Scope:          parseScopes(scopes),
+				Audience:       audience,
+				QuotaProject:   quotaProject,
+				Sts:            sts,
+				ServiceAccount: serviceAccount,
 			}
 		} else {
 			// OAuth flow
@@ -366,7 +369,8 @@ func main() {
 				Audience:         audience,
 				QuotaProject:     quotaProject,
 				Sts:              sts,
-				Email:            email,
+				ServiceAccount:   serviceAccount,
+        Email:            email,
 			}
 		}
 
