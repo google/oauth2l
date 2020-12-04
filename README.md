@@ -11,7 +11,7 @@ tokens, which can be used with other command-line tools and shell scripts.
 `oauth2l` supports all Google OAuth 2.0 authentication flows for both user
 accounts and service accounts in different environments:
 
-- When running inside Google Compute Engine (GCE) and Google Container
+- When running inside Google Compute Engine (GCE) and Google Kubernetes
   Engine (GKE), it uses the credentials of the current service account
   if it is available.
 
@@ -58,7 +58,7 @@ On Mac OS X, you can install `oauth2l` via [Homebrew](https://brew.sh):
 $ brew install oauth2l
 ```
 
-Note that new releases may not be immediately available via homebrew because
+Note that new releases may not be immediately available via Homebrew because
 updating is a manual process.
 
 ### Docker
@@ -396,7 +396,7 @@ $ oauth2l curl --scope cloud-platform --url https://pubsub.googleapis.com/v1/pro
 
 ### curl --curlcli
 
-Path to Curl CLI. For optional use with "curl" command.
+Path to curl CLI. For optional use with "curl" command.
 
 ```bash
 $ oauth2l curl --curlcli /usr/bin/curl --type sso --email me@google.com --scope cloud-platform --url https://pubsub.googleapis.com/v1/projects/my-project-id/topics
