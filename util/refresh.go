@@ -29,25 +29,26 @@ type refreshCredentialsJSON struct {
 	Type         string `json:"type,omitempty"`
 }
 
-// BuildRefreshCredentialsJSON attempts to construct a refreshCredentialsJSON
-// using a refreshToken and an OAuth Client ID credentialsJSON.
+// BuildRefreshTokenJSON attempts to construct a gcloud refresh token JSON
+// using a refreshToken and an OAuth Client ID Credentials object.
 // Empty string is returned if this is not possible.
-func BuildRefreshCredentialsJSON(refreshToken string, credentialsJSON string) string {
+func BuildRefreshTokenJSON(refreshToken string, creds *credentials.Credentials) string {
 	if refreshToken == "" {
 		return ""
 	}
-	var creds credentials.File
-	if err := json.Unmarshal([]byte(credentialsJSON), &creds); err != nil {
+	if creds == nil || creds.Type != credentials.OAuthClientKey {
 		return ""
 	}
-	if creds.Type == credentials.ServiceAccountKey || creds.Type == credentials.UserCredentialsKey {
+
+	var credsFile credentials.File
+	if err := json.Unmarshal(creds.JSON, &credsFile); err != nil {
 		return ""
 	}
 	var oauth credentials.OAuthClient
-	if creds.Web.ProjectID != "" {
-		oauth = creds.Web
+	if credsFile.Web.ProjectID != "" {
+		oauth = credsFile.Web
 	} else {
-		oauth = creds.Installed
+		oauth = credsFile.Installed
 	}
 	if oauth.ClientID == "" || oauth.ClientSecret == "" {
 		return ""

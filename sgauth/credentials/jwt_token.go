@@ -31,7 +31,7 @@ import (
 // the credentials that authorize and authenticate the requests.
 // Create a service account on "Credentials" for your project at
 // https://console.developers.google.com to download a JSON key file.
-func JWTConfigFromJSON(jsonKey []byte, scope ...string) (*JWTConfig, error) {
+func JWTConfigFromJSON(jsonKey []byte, scope []string, email string) (*JWTConfig, error) {
 	var f File
 	if err := json.Unmarshal(jsonKey, &f); err != nil {
 		return nil, err
@@ -39,8 +39,7 @@ func JWTConfigFromJSON(jsonKey []byte, scope ...string) (*JWTConfig, error) {
 	if f.Type != ServiceAccountKey {
 		return nil, fmt.Errorf("google: read JWT from JSON credentials: 'type' field is %q (expected %q)", f.Type, ServiceAccountKey)
 	}
-	scope = append([]string(nil), scope...) // copy
-	return JWTConfigFromFile(&f, scope), nil
+	return JWTConfigFromFile(&f, scope, email), nil
 }
 
 // JWTAccessTokenSourceFromJSON uses a Google Developers service account JSON
@@ -53,7 +52,7 @@ func JWTConfigFromJSON(jsonKey []byte, scope ...string) (*JWTConfig, error) {
 // optimization supported by a few Google services.
 // Unless you know otherwise, you should use JWTConfigFromJSON instead.
 func JWTAccessTokenSourceFromJSON(jsonKey []byte, audience string) (internal.TokenSource, error) {
-	cfg, err := JWTConfigFromJSON(jsonKey)
+	cfg, err := JWTConfigFromJSON(jsonKey, []string{}, "")
 	if err != nil {
 		return nil, fmt.Errorf("google: could not parse JSON key: %v", err)
 	}

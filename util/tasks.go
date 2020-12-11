@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/google/oauth2l/sgauth"
+	"github.com/google/oauth2l/sgauth/credentials"
 )
 
 const (
@@ -34,11 +35,12 @@ const (
 
 // Supported output formats
 const (
-	formatJson        = "json"
-	formatJsonCompact = "json_compact"
-	formatPretty      = "pretty"
-	formatHeader      = "header"
-	formatBare        = "bare"
+	formatJson         = "json"
+	formatJsonCompact  = "json_compact"
+	formatPretty       = "pretty"
+	formatHeader       = "header"
+	formatBare         = "bare"
+	formatRefreshToken = "refresh_token"
 )
 
 // An extensible structure that holds the settings
@@ -46,6 +48,8 @@ const (
 // These settings are used by oauth2l only
 // and are not part of GUAC settings.
 type TaskSettings struct {
+	// AuthType determines which auth tool to use (sso vs sgauth)
+	AuthType string
 	// Output format for Fetch task
 	Format string
 	// CurlCli override for Curl task
@@ -64,7 +68,7 @@ type TaskSettings struct {
 // using Google Authenticator.
 func Fetch(settings *sgauth.Settings, taskSettings *TaskSettings) {
 	token := fetchToken(settings, taskSettings)
-	printToken(token, taskSettings.Format, getCredentialType(settings))
+	printToken(token, taskSettings.Format, settings)
 }
 
 // Fetches and prints the token in header format with the given settings
@@ -139,8 +143,7 @@ func getTokenInfo(token string) (string, error) {
 
 // fetchToken attempts to fetch and cache an access token.
 //
-// If CredentialsJSON is not provided, but email is provided,
-// attempt to obtain token via SSO instead of sgauth.
+// If SSO is specified, obtain token via SSO instead of sgauth.
 //
 // If cached token is expired and refresh is requested,
 // attempt to obtain new token via RefreshToken instead
@@ -152,7 +155,7 @@ func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.T
 	token, err := LookupCache(settings)
 	tokenExpired := isTokenExpired(token)
 	if token == nil || tokenExpired {
-		if settings.CredentialsJSON == "" && settings.Email != "" {
+		if taskSettings.AuthType == "sso" {
 			token, err = SSOFetch(taskSettings.SsoCli, settings.Email, settings.Scope)
 			if err != nil {
 				fmt.Println(err)
@@ -161,10 +164,14 @@ func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.T
 		} else {
 			fetchSettings := settings
 			if tokenExpired && taskSettings.Refresh {
-				refreshCredentialsJSON := BuildRefreshCredentialsJSON(token.RefreshToken, settings.CredentialsJSON)
-				if refreshCredentialsJSON != "" {
+				// If creds cannot be retrieved here, which is unexpected, we will ignore
+				// the error and let sgauth.FetchToken return a standardized error message
+				// in the subsequent step.
+				creds, _ := sgauth.FindJSONCredentials(context.Background(), settings)
+				refreshTokenJSON := BuildRefreshTokenJSON(token.RefreshToken, creds)
+				if refreshTokenJSON != "" {
 					refreshSettings := *settings // Make a shallow copy
-					refreshSettings.CredentialsJSON = refreshCredentialsJSON
+					refreshSettings.CredentialsJSON = refreshTokenJSON
 					fetchSettings = &refreshSettings
 				}
 			}
@@ -211,7 +218,7 @@ func getCredentialType(settings *sgauth.Settings) string {
 }
 
 // Prints the token with the specified format
-func printToken(token *sgauth.Token, format string, credType string) {
+func printToken(token *sgauth.Token, format string, settings *sgauth.Settings) {
 	if token != nil {
 		switch format {
 		case formatBare:
@@ -235,11 +242,21 @@ func printToken(token *sgauth.Token, format string, credType string) {
 		case formatPretty:
 			fmt.Printf("Fetched credentials of type:\n  %s\n"+
 				"Access Token:\n  %s\n",
-				credType, token.AccessToken)
+				getCredentialType(settings), token.AccessToken)
+		case formatRefreshToken:
+			creds, err := sgauth.FindJSONCredentials(context.Background(), settings)
+			if err != nil {
+				log.Fatal(err.Error())
+			}
+			if creds.Type == credentials.ServiceAccountKey {
+				log.Fatalf("Refresh token output format is not supported for Service Account credentials type")
+			}
+			if creds.Type == credentials.UserCredentialsKey {
+				fmt.Print(string(creds.JSON)) // The input credential is already in refresh token format.
+			}
+			fmt.Println(BuildRefreshTokenJSON(token.RefreshToken, creds))
 		default:
-			log.Fatalf("Invalid choice: '%s' "+
-				"(choose from 'bare', 'header', 'json', 'json_compact', 'pretty')",
-				format)
+			log.Fatalf("Invalid output_format: '%s'", format)
 		}
 	}
 }

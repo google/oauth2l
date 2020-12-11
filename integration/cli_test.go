@@ -251,6 +251,12 @@ func Test3LOFlow(t *testing.T) {
 			false,
 		},
 		{
+			"fetch; 3lo; refresh token output format",
+			[]string{"fetch", "--output_format", "refresh_token", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets.json", "--cache", ""},
+			"fetch-3lo-refresh-token.golden",
+			false,
+		},
+		{
 			"curl; 3lo",
 			[]string{"curl", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets.json", "--url", "http://localhost:8080/curl"},
 			"curl-3lo.golden",
@@ -296,6 +302,12 @@ func Test2LOFlow(t *testing.T) {
 		{
 			"fetch; 2lo; old interface",
 			[]string{"fetch", "--json", "integration/fixtures/fake-service-account.json", "--cache", "", "pubsub"},
+			"fetch-2lo.golden",
+			false,
+		},
+		{
+			"fetch; 2lo; domain-wide delegation",
+			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-service-account.json", "--email", "testuser@google.com", "--cache", ""},
 			"fetch-2lo.golden",
 			false,
 		},

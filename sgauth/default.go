@@ -61,7 +61,7 @@ func JWTTokenSource(ctx context.Context, settings *Settings) (internal.TokenSour
 func FindJSONCredentials(ctx context.Context, settings *Settings) (*credentials.Credentials, error) {
 	if settings.CredentialsJSON != "" {
 		return credentialsFromJSON(ctx, []byte(settings.CredentialsJSON),
-			strings.Split(settings.Scope, " "), settings.OAuthFlowHandler, settings.State)
+			strings.Split(settings.Scope, " "), settings.Email, settings.OAuthFlowHandler, settings.State)
 
 	} else {
 		return applicationDefaultCredentials(ctx, settings)
@@ -113,17 +113,17 @@ func readCredentialsFile(ctx context.Context, filename string, settings *Setting
 	if err != nil {
 		return nil, err
 	}
-	return credentialsFromJSON(ctx, b, strings.Split(settings.Scope, " "),
+	return credentialsFromJSON(ctx, b, strings.Split(settings.Scope, " "), settings.Email,
 		settings.OAuthFlowHandler, settings.State)
 }
 
-func credentialsFromJSON(ctx context.Context, jsonData []byte, scopes []string,
+func credentialsFromJSON(ctx context.Context, jsonData []byte, scopes []string, email string,
 	handler func(string) (string, error), state string) (*credentials.Credentials, error) {
 	var f credentials.File
 	if err := json.Unmarshal(jsonData, &f); err != nil {
 		return nil, err
 	}
-	ts, err := f.TokenSource(ctx, scopes, handler, state)
+	ts, err := f.TokenSource(ctx, scopes, email, handler, state)
 	if err != nil {
 		return nil, err
 	}
