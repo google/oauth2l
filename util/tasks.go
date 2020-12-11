@@ -164,10 +164,14 @@ func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.T
 		} else {
 			fetchSettings := settings
 			if tokenExpired && taskSettings.Refresh {
-				refreshCredentialsJSON := BuildRefreshTokenJSON(token.RefreshToken, LoadCredentials(settings))
-				if refreshCredentialsJSON != "" {
+				// If creds cannot be retrieved here, which is unexpected, we will ignore
+				// the error and let sgauth.FetchToken return a standardized error message
+				// in the subsequent step.
+				creds, _ := sgauth.FindJSONCredentials(context.Background(), settings)
+				refreshTokenJSON := BuildRefreshTokenJSON(token.RefreshToken, creds)
+				if refreshTokenJSON != "" {
 					refreshSettings := *settings // Make a shallow copy
-					refreshSettings.CredentialsJSON = refreshCredentialsJSON
+					refreshSettings.CredentialsJSON = refreshTokenJSON
 					fetchSettings = &refreshSettings
 				}
 			}
@@ -240,9 +244,9 @@ func printToken(token *sgauth.Token, format string, settings *sgauth.Settings) {
 				"Access Token:\n  %s\n",
 				getCredentialType(settings), token.AccessToken)
 		case formatRefreshToken:
-			creds := LoadCredentials(settings)
-			if creds == nil {
-				log.Fatalf("Unable to load credentials")
+			creds, err := sgauth.FindJSONCredentials(context.Background(), settings)
+			if err != nil {
+				log.Fatal(err.Error())
 			}
 			if creds.Type == credentials.ServiceAccountKey {
 				log.Fatalf("Refresh token output format is not supported for Service Account credentials type")

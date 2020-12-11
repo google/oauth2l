@@ -15,10 +15,8 @@
 package util
 
 import (
-	"context"
 	"encoding/json"
 
-	"github.com/google/oauth2l/sgauth"
 	"github.com/google/oauth2l/sgauth/credentials"
 )
 
@@ -64,15 +62,4 @@ func BuildRefreshTokenJSON(refreshToken string, creds *credentials.Credentials) 
 	refreshCredentials.Type = credentials.UserCredentialsKey
 	refreshCredentialsJSON, _ := json.Marshal(refreshCredentials)
 	return string(refreshCredentialsJSON)
-}
-
-// LoadCredentials returns the user specified credentials as a Credentials object.
-// If credentials are not specified by the user, attempt to use application default
-// credentials instead. Returns nil if no credentials can be loaded.
-func LoadCredentials(settings *sgauth.Settings) *credentials.Credentials {
-	creds, err := sgauth.FindJSONCredentials(context.Background(), settings)
-	if err != nil {
-		return nil
-	}
-	return creds
 }
