@@ -31,6 +31,7 @@ RUN make build
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates && \
   update-ca-certificates
+RUN apk --no-cache add curl
 
 COPY --from=builder /src/build/linux_amd64/oauth2l /bin/oauth2l
 ENTRYPOINT ["/bin/oauth2l"]
