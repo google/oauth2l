@@ -1,5 +1,5 @@
 //
-// Copyright 2018 Google Inc.
+// Copyright 2021 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,11 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package sgauth
+package util
+
+import (
+	"golang.org/x/oauth2/authhandler"
+)
 
 var MethodOAuth = "oauth"
 var MethodJWT = "jwt"
@@ -34,20 +38,12 @@ type Settings struct {
 	User string
 	// The email used for SSO and domain-wide delegation.
 	Email string
-	// The identifier to the user that the per-user quota will be charged
-	// against. If not specified, the identifier to the authenticated account
-	// is used. If there is no authenticated account too, the caller's network
-	// IP address will be used.
-	// DEPRECATED
-	QuotaUser string
 	// A user specified project that is responsible for the request quota and
 	// billing charges.
 	QuotaProject string
-	// End-user OAuth Flow handler that redirects the user to the given URL
-	// and returns the token.
-	OAuthFlowHandler func(url string) (token string, err error)
-	// The state string used for 3LO session verification.
-	// UNIMPLEMENTED
+	// AuthHandler is the AuthorizationHandler used for 3-legged OAuth flow.
+	AuthHandler authhandler.AuthorizationHandler
+	// State is a unique string used with AuthHandler.
 	State string
 	// Indicates that STS token exchange should be performed.
 	Sts bool

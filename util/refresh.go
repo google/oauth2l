@@ -17,7 +17,7 @@ package util
 import (
 	"encoding/json"
 
-	"github.com/google/oauth2l/sgauth/credentials"
+	"golang.org/x/oauth2/google"
 )
 
 type refreshCredentialsJSON struct {
@@ -32,34 +32,21 @@ type refreshCredentialsJSON struct {
 // BuildRefreshTokenJSON attempts to construct a gcloud refresh token JSON
 // using a refreshToken and an OAuth Client ID Credentials object.
 // Empty string is returned if this is not possible.
-func BuildRefreshTokenJSON(refreshToken string, creds *credentials.Credentials) string {
+func BuildRefreshTokenJSON(refreshToken string, creds *google.Credentials) string {
 	if refreshToken == "" {
 		return ""
 	}
-	if creds == nil || creds.Type != credentials.OAuthClientKey {
-		return ""
-	}
-
-	var credsFile credentials.File
-	if err := json.Unmarshal(creds.JSON, &credsFile); err != nil {
-		return ""
-	}
-	var oauth credentials.OAuthClient
-	if credsFile.Web.ProjectID != "" {
-		oauth = credsFile.Web
-	} else {
-		oauth = credsFile.Installed
-	}
-	if oauth.ClientID == "" || oauth.ClientSecret == "" {
+	oauth2Config, err := google.ConfigFromJSON(creds.JSON)
+	if err != nil {
 		return ""
 	}
 	var refreshCredentials refreshCredentialsJSON
-	refreshCredentials.ClientID = oauth.ClientID
-	refreshCredentials.ClientSecret = oauth.ClientSecret
-	refreshCredentials.TokenURL = oauth.TokenURL
-	refreshCredentials.AuthURL = oauth.AuthURL
+	refreshCredentials.ClientID = oauth2Config.ClientID
+	refreshCredentials.ClientSecret = oauth2Config.ClientSecret
+	refreshCredentials.TokenURL = oauth2Config.Endpoint.TokenURL
+	refreshCredentials.AuthURL = oauth2Config.Endpoint.AuthURL
 	refreshCredentials.RefreshToken = refreshToken
-	refreshCredentials.Type = credentials.UserCredentialsKey
+	refreshCredentials.Type = "authorized_user"
 	refreshCredentialsJSON, _ := json.Marshal(refreshCredentials)
 	return string(refreshCredentialsJSON)
 }

@@ -19,14 +19,15 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/user"
 	"path/filepath"
 
-	"github.com/google/oauth2l/sgauth"
+	"golang.org/x/oauth2"
 )
 
 const CacheFileName = ".oauth2l"
 
-var CacheLocation string = filepath.Join(sgauth.GuessUnixHomeDir(), CacheFileName)
+var CacheLocation string = filepath.Join(GuessUnixHomeDir(), CacheFileName)
 
 // The key struct that used to identify an auth token fetch operation.
 type CacheKey struct {
@@ -48,11 +49,11 @@ type CacheKey struct {
 	ServiceAccount string
 }
 
-func LookupCache(settings *sgauth.Settings) (*sgauth.Token, error) {
+func LookupCache(settings *Settings) (*oauth2.Token, error) {
 	if CacheLocation == "" {
 		return nil, nil
 	}
-	var token sgauth.Token
+	var token oauth2.Token
 	var cache, err = loadCache()
 	if err != nil {
 		return nil, err
@@ -69,7 +70,7 @@ func LookupCache(settings *sgauth.Settings) (*sgauth.Token, error) {
 	return &token, nil
 }
 
-func InsertCache(settings *sgauth.Settings, token *sgauth.Token) error {
+func InsertCache(settings *Settings, token *oauth2.Token) error {
 	if CacheLocation == "" {
 		return nil
 	}
@@ -130,7 +131,7 @@ func loadCache() (map[string][]byte, error) {
 	return m, nil
 }
 
-func createKey(settings *sgauth.Settings) CacheKey {
+func createKey(settings *Settings) CacheKey {
 	return CacheKey{
 		CredentialsJSON: settings.CredentialsJSON,
 		Scope:           settings.Scope,
@@ -141,4 +142,16 @@ func createKey(settings *sgauth.Settings) CacheKey {
 		Sts:             settings.Sts,
 		ServiceAccount:  settings.ServiceAccount,
 	}
+}
+
+func GuessUnixHomeDir() string {
+	// Prefer $HOME over user.Current due to glibc bug: golang.org/issue/13470
+	if v := os.Getenv("HOME"); v != "" {
+		return v
+	}
+	// Else, fall back to user.Current:
+	if u, err := user.Current(); err == nil {
+		return u.HomeDir
+	}
+	return ""
 }
