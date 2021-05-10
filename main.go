@@ -21,14 +21,18 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/google/oauth2l/sgauth"
 	"github.com/google/oauth2l/util"
 	"github.com/jessevdk/go-flags"
+
+	"golang.org/x/oauth2/authhandler"
 )
 
 const (
 	// Common prefix for google oauth scope
 	scopePrefix = "https://www.googleapis.com/auth/"
+
+	// Default state parameter used for 3LO flow
+	defaultState = "state"
 )
 
 var (
@@ -135,14 +139,19 @@ func readJSON(file string) (string, error) {
 }
 
 // Default 3LO authorization handler. Prints the authorization URL on stdout
-// and reads the verification code from stdin.
-func defaultAuthorizeFlowHandler(authorizeUrl string) (string, error) {
-	// Print the url on console, let user authorize and paste the token back.
-	fmt.Printf("Go to the following link in your browser:\n\n   %s\n\n", authorizeUrl)
-	fmt.Println("Enter verification code: ")
-	var code string
-	fmt.Scanln(&code)
-	return code, nil
+// and reads the authorization code from stdin.
+//
+// Note that the "state" parameter is used to prevent CSRF attacks.
+// For convenience, CmdAuthorizationHandler returns a pre-configured state
+// instead of requiring the user to copy it from the browser.
+func cmdAuthorizationHandler(state string) authhandler.AuthorizationHandler {
+	return func(authCodeURL string) (string, string, error) {
+		fmt.Printf("Go to the following link in your browser:\n\n   %s\n\n", authCodeURL)
+		fmt.Println("Enter authorization code:")
+		var code string
+		fmt.Scanln(&code)
+		return code, state, nil
+	}
 }
 
 // Append Google OAuth scope prefix if not provided and joins
@@ -251,7 +260,7 @@ func main() {
 	cmd := parser.Active.Name
 
 	// Tasks that fetch the access token.
-	fetchTasks := map[string]func(*sgauth.Settings, *util.TaskSettings){
+	fetchTasks := map[string]func(*util.Settings, *util.TaskSettings){
 		"fetch":  util.Fetch,
 		"header": util.Header,
 		"curl":   util.Curl,
@@ -291,7 +300,7 @@ func main() {
 		}
 
 		// Configure GUAC settings based on authType.
-		var settings *sgauth.Settings
+		var settings *util.Settings
 		if authType == "jwt" {
 			json, err := readJSON(credentials)
 			if err != nil {
@@ -312,7 +321,7 @@ func main() {
 
 			// JWT flow requires empty Scope.
 			// Also, JWT currently does not work with STS.
-			settings = &sgauth.Settings{
+			settings = &util.Settings{
 				CredentialsJSON: json,
 				Audience:        audience,
 			}
@@ -336,7 +345,7 @@ func main() {
 			}
 
 			// SSO flow does not use CredentialsJSON
-			settings = &sgauth.Settings{
+			settings = &util.Settings{
 				Email:          email,
 				Scope:          parseScopes(scopes),
 				Audience:       audience,
@@ -360,17 +369,17 @@ func main() {
 			}
 
 			// 3LO or 2LO depending on the credential type.
-			// For 2LO flow OAuthFlowHandler and State are not needed.
-			settings = &sgauth.Settings{
-				CredentialsJSON:  json,
-				Scope:            parseScopes(scopes),
-				OAuthFlowHandler: defaultAuthorizeFlowHandler,
-				State:            "state",
-				Audience:         audience,
-				QuotaProject:     quotaProject,
-				Sts:              sts,
-				ServiceAccount:   serviceAccount,
-        Email:            email,
+			// For 2LO flow AuthHandler and State are not needed.
+			settings = &util.Settings{
+				CredentialsJSON: json,
+				Scope:           parseScopes(scopes),
+				AuthHandler:     cmdAuthorizationHandler(defaultState),
+				State:           defaultState,
+				Audience:        audience,
+				QuotaProject:    quotaProject,
+				Sts:             sts,
+				ServiceAccount:  serviceAccount,
+				Email:           email,
 			}
 		}
 

@@ -22,8 +22,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-
-	"github.com/google/oauth2l/sgauth"
 )
 
 const (
@@ -31,7 +29,7 @@ const (
 	defaultWebPackageName = ".oauth2l-web"
 )
 
-var WebDirectory string = filepath.Join(sgauth.GuessUnixHomeDir(), defaultWebPackageName)
+var WebDirectory string = filepath.Join(GuessUnixHomeDir(), defaultWebPackageName)
 
 // Runs the frontend/backend for OAuth2l Playground
 func Web() {

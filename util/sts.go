@@ -25,7 +25,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/google/oauth2l/sgauth"
+	"golang.org/x/oauth2"
 )
 
 // StsURL is Google's Secure Token Service endpoint used for obtaining STS token.
@@ -39,7 +39,7 @@ type tokenJSON struct {
 }
 
 // Exchanges an OAuth Access Token to an Sts token with base64 encoded claims
-func StsExchange(accessToken string, encodedClaims string) (*sgauth.Token, error) {
+func StsExchange(accessToken string, encodedClaims string) (*oauth2.Token, error) {
 	v := url.Values{
 		"grant_type":           {"urn:ietf:params:oauth:grant-type:token-exchange"},
 		"subject_token_type":   {"urn:ietf:params:oauth:token-type:access_token"},
@@ -71,22 +71,23 @@ func StsExchange(accessToken string, encodedClaims string) (*sgauth.Token, error
 	if err = json.Unmarshal(body, &tj); err != nil {
 		return nil, err
 	}
-	token := sgauth.Token{}
+	token := oauth2.Token{}
 	token.AccessToken = tj.AccessToken
 	token.TokenType = tj.TokenType
-	json.Unmarshal(body, &token.Raw)
-	return &token, nil
+	var raw map[string]interface{}
+	json.Unmarshal(body, &raw)
+	return token.WithExtra(raw), nil
 }
 
 // claimsJSON is the struct representing supported STS claims
 type claimsJSON struct {
-	Audience     string `json:"audience,omitempty"`
+	Audience string `json:"audience,omitempty"`
 	// QuotaProject is the public name. Sts uses the name "user_project" internally.
 	QuotaProject string `json:"user_project,omitempty"`
 }
 
 // EncodeClaims base64 encodes supported STS claims in settings
-func EncodeClaims(settings *sgauth.Settings) string {
+func EncodeClaims(settings *Settings) string {
 	cj := claimsJSON{Audience: settings.Audience, QuotaProject: settings.QuotaProject}
 	claims, _ := json.Marshal(cj)
 	return base64.StdEncoding.EncodeToString(claims)

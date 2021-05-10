@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/oauth2l/sgauth"
+	"golang.org/x/oauth2"
 )
 
 // IamServiceAccountAccessTokenURL is used for generating accesss token for a Service Account.
@@ -41,7 +41,7 @@ type iamTokenJSON struct {
 // token approved for at least one of the following scopes:
 // * https://www.googleapis.com/auth/iam
 // * https://www.googleapis.com/auth/cloud-platform
-func GenerateServiceAccountAccessToken(accessToken string, serviceAccount string, scope string) (*sgauth.Token, error) {
+func GenerateServiceAccountAccessToken(accessToken string, serviceAccount string, scope string) (*oauth2.Token, error) {
 	form := url.Values{}
 	for _, s := range strings.Split(scope, " ") {
 		form.Add("scope", s)
@@ -70,9 +70,10 @@ func GenerateServiceAccountAccessToken(accessToken string, serviceAccount string
 	if err = json.Unmarshal(body, &itj); err != nil {
 		return nil, err
 	}
-	token := sgauth.Token{}
+	token := oauth2.Token{}
 	token.AccessToken = itj.AccessToken
 	token.Expiry, _ = time.Parse(time.RFC3339, itj.ExpireTime)
-	json.Unmarshal(body, &token.Raw)
-	return &token, nil
+	var raw map[string]interface{}
+	json.Unmarshal(body, &raw)
+	return token.WithExtra(raw), nil
 }

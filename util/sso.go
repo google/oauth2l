@@ -19,7 +19,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/google/oauth2l/sgauth"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -27,7 +27,7 @@ const (
 )
 
 // Fetches and returns OAuth access token using SSO CLI.
-func SSOFetch(cli string, email string, scope string) (*sgauth.Token, error) {
+func SSOFetch(cli string, email string, scope string) (*oauth2.Token, error) {
 	if cli == "" {
 		cli = defaultCli
 	}
@@ -40,7 +40,7 @@ func SSOFetch(cli string, email string, scope string) (*sgauth.Token, error) {
 		return nil, err
 	}
 	accessToken := out.String()
-	token := sgauth.Token{}
+	token := oauth2.Token{}
 	token.AccessToken = accessToken
 	token.TokenType = "Bearer"
 	return &token, nil

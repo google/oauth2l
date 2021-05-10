@@ -24,8 +24,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/google/oauth2l/sgauth"
-	"github.com/google/oauth2l/sgauth/credentials"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 )
 
 const (
@@ -41,6 +41,15 @@ const (
 	formatHeader       = "header"
 	formatBare         = "bare"
 	formatRefreshToken = "refresh_token"
+)
+
+// Credentials file types.
+// If type is not one of the below, it means the file is a
+// Google Client ID JSON.
+const (
+	serviceAccountKey  = "service_account"
+	userCredentialsKey = "authorized_user"
+	externalAccountKey = "external_account"
 )
 
 // An extensible structure that holds the settings
@@ -66,21 +75,21 @@ type TaskSettings struct {
 
 // Fetches and prints the token in plain text with the given settings
 // using Google Authenticator.
-func Fetch(settings *sgauth.Settings, taskSettings *TaskSettings) {
+func Fetch(settings *Settings, taskSettings *TaskSettings) {
 	token := fetchToken(settings, taskSettings)
 	printToken(token, taskSettings.Format, settings)
 }
 
 // Fetches and prints the token in header format with the given settings
 // using Google Authenticator.
-func Header(settings *sgauth.Settings, taskSettings *TaskSettings) {
+func Header(settings *Settings, taskSettings *TaskSettings) {
 	taskSettings.Format = formatHeader
 	Fetch(settings, taskSettings)
 }
 
 // Fetches token with the given settings using Google Authenticator
 // and use the token as header to make curl request.
-func Curl(settings *sgauth.Settings, taskSettings *TaskSettings) {
+func Curl(settings *Settings, taskSettings *TaskSettings) {
 	token := fetchToken(settings, taskSettings)
 	if token != nil {
 		header := BuildHeader(token.TokenType, token.AccessToken)
@@ -143,7 +152,7 @@ func getTokenInfo(token string) (string, error) {
 
 // fetchToken attempts to fetch and cache an access token.
 //
-// If SSO is specified, obtain token via SSO instead of sgauth.
+// If SSO is specified, obtain token via SSOFetch instead of FetchToken.
 //
 // If cached token is expired and refresh is requested,
 // attempt to obtain new token via RefreshToken instead
@@ -151,7 +160,7 @@ func getTokenInfo(token string) (string, error) {
 //
 // If STS is requested, we will perform an STS exchange
 // after the original access token has been fetched.
-func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.Token {
+func fetchToken(settings *Settings, taskSettings *TaskSettings) *oauth2.Token {
 	token, err := LookupCache(settings)
 	tokenExpired := isTokenExpired(token)
 	if token == nil || tokenExpired {
@@ -165,9 +174,9 @@ func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.T
 			fetchSettings := settings
 			if tokenExpired && taskSettings.Refresh {
 				// If creds cannot be retrieved here, which is unexpected, we will ignore
-				// the error and let sgauth.FetchToken return a standardized error message
+				// the error and let FetchToken return a standardized error message
 				// in the subsequent step.
-				creds, _ := sgauth.FindJSONCredentials(context.Background(), settings)
+				creds, _ := FindJSONCredentials(context.Background(), settings)
 				refreshTokenJSON := BuildRefreshTokenJSON(token.RefreshToken, creds)
 				if refreshTokenJSON != "" {
 					refreshSettings := *settings // Make a shallow copy
@@ -175,7 +184,7 @@ func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.T
 					fetchSettings = &refreshSettings
 				}
 			}
-			token, err = sgauth.FetchToken(context.Background(), fetchSettings)
+			token, err = FetchToken(context.Background(), fetchSettings)
 			if err != nil {
 				fmt.Println(err)
 				return nil
@@ -204,21 +213,40 @@ func fetchToken(settings *sgauth.Settings, taskSettings *TaskSettings) *sgauth.T
 	return token
 }
 
-func isTokenExpired(token *sgauth.Token) bool {
+func isTokenExpired(token *oauth2.Token) bool {
 	// SSO and STS tokens currently do not have expiration, as indicated by empty Expiry.
 	return token != nil && !token.Expiry.IsZero() && time.Now().After(token.Expiry)
 }
 
-func getCredentialType(settings *sgauth.Settings) string {
-	cred, err := sgauth.FindJSONCredentials(context.Background(), settings)
-	if err != nil {
-		return ""
+func getCredentialType(creds *google.Credentials) string {
+	var m map[string]string
+	err := json.Unmarshal(creds.JSON, &m)
+	if err != nil && m["type"] != "" {
+		return m["type"]
 	}
-	return cred.Type
+	return ""
 }
 
-// Prints the token with the specified format
-func printToken(token *sgauth.Token, format string, settings *sgauth.Settings) {
+// Marshals the given oauth2.Token into a JSON bytearray and include Extra
+// fields that normally would be omitted with default marshalling.
+func marshalWithExtras(token *oauth2.Token, indent string) ([]byte, error) {
+	data, err := json.Marshal(token)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]string
+	err = json.Unmarshal(data, &m)
+	if err != nil {
+		return nil, err
+	}
+	if token.Extra("issued_token_type") != nil {
+		m["issued_token_type"] = token.Extra("issued_token_type").(string)
+	}
+	return json.MarshalIndent(m, "", indent)
+}
+
+// Prints the token with the specified format.
+func printToken(token *oauth2.Token, format string, settings *Settings) {
 	if token != nil {
 		switch format {
 		case formatBare:
@@ -226,32 +254,30 @@ func printToken(token *sgauth.Token, format string, settings *sgauth.Settings) {
 		case formatHeader:
 			printHeader(token.TokenType, token.AccessToken)
 		case formatJson:
-			json, err := json.MarshalIndent(token.Raw, "", "  ")
-			if err != nil {
-				log.Fatal(err.Error())
-				return
-			}
-			fmt.Println(string(json))
+			printJson(token, "  ")
 		case formatJsonCompact:
-			json, err := json.Marshal(token.Raw)
+			printJson(token, "")
+		case formatPretty:
+			creds, err := FindJSONCredentials(context.Background(), settings)
 			if err != nil {
 				log.Fatal(err.Error())
-				return
 			}
-			fmt.Println(string(json))
-		case formatPretty:
 			fmt.Printf("Fetched credentials of type:\n  %s\n"+
 				"Access Token:\n  %s\n",
-				getCredentialType(settings), token.AccessToken)
+				getCredentialType(creds), token.AccessToken)
 		case formatRefreshToken:
-			creds, err := sgauth.FindJSONCredentials(context.Background(), settings)
+			creds, err := FindJSONCredentials(context.Background(), settings)
 			if err != nil {
 				log.Fatal(err.Error())
 			}
-			if creds.Type == credentials.ServiceAccountKey {
+			credsType := getCredentialType(creds)
+			if credsType == serviceAccountKey {
 				log.Fatalf("Refresh token output format is not supported for Service Account credentials type")
 			}
-			if creds.Type == credentials.UserCredentialsKey {
+			if credsType == externalAccountKey {
+				log.Fatalf("Refresh token output format is not supported for External Account credentials type")
+			}
+			if credsType == userCredentialsKey {
 				fmt.Print(string(creds.JSON)) // The input credential is already in refresh token format.
 			}
 			fmt.Println(BuildRefreshTokenJSON(token.RefreshToken, creds))
@@ -263,4 +289,13 @@ func printToken(token *sgauth.Token, format string, settings *sgauth.Settings) {
 
 func printHeader(tokenType string, token string) {
 	fmt.Println(BuildHeader(tokenType, token))
+}
+
+func printJson(token *oauth2.Token, indent string) {
+	data, err := marshalWithExtras(token, indent)
+	if err != nil {
+		log.Fatal(err.Error())
+		return
+	}
+	fmt.Println(string(data))
 }
