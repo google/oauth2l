@@ -24,6 +24,11 @@ export GOFLAGS = -mod=vendor
 build:
 	@rm -rf build/
 	@for GOOS in ${GOOSES}; do \
+		if [ $${GOOS} = "windows" ]; then \
+			SUFFIX=".exe"; \
+		else \
+			SUFFIX=""; \
+		fi ; \
 		for GOARCH in ${GOARCHES}; do \
 			echo "Building $${GOOS}/$${GOARCH}" ; \
 			GOOS=$${GOOS} GOARCH=$${GOARCH} go build \
@@ -31,7 +36,7 @@ build:
 				-ldflags "-s -w -extldflags 'static'" \
 				-installsuffix cgo \
 				-tags netgo \
-				-o build/$${GOOS}_$${GOARCH}/${NAME} \
+				-o build/$${GOOS}_$${GOARCH}/${NAME}$${SUFFIX} \
 				. ; \
 		done ; \
 	done
