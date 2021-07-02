@@ -16,8 +16,8 @@ package util
 
 import (
 	"context"
+	"errors"
 	"strings"
-  "errors"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -77,13 +77,13 @@ func JWTTokenSource(ctx context.Context, settings *Settings) (oauth2.TokenSource
 	if err != nil {
 		return nil, err
 	}
-  if settings.Audience != "" {
-	  return google.JWTAccessTokenSourceFromJSON(creds.JSON, settings.Audience)
-  } else if settings.Scope != "" {
-    return google.JWTAccessTokenSourceWithScope(creds.JSON, settings.Scope)
-  } else {
-    return nil, errors.New("neither audience or scope is provided.")
-  }
+	if settings.Audience != "" {
+		return google.JWTAccessTokenSourceFromJSON(creds.JSON, settings.Audience)
+	} else if settings.Scope != "" {
+		return google.JWTAccessTokenSourceWithScope(creds.JSON, settings.Scope)
+	} else {
+		return nil, errors.New("neither audience or scope is provided.")
+	}
 }
 
 // FindJSONCredentials obtains credentials from settings or Application Default Credentials
