@@ -27,6 +27,8 @@ var MethodAPIKey = "apikey"
 type Settings struct {
 	// The JSON credentials content downloaded from Google Cloud Console.
 	CredentialsJSON string
+
+  AuthMethod string
 	// If specified, use OAuth. Otherwise, JWT.
 	Scope string
 	// The audience field for JWT auth
@@ -52,8 +54,10 @@ type Settings struct {
 	ServiceAccount string
 }
 
-func (s Settings) AuthMethod() string {
-	if s.APIKey != "" {
+func (s Settings) GetAuthMethod() string {
+  if s.AuthMethod != "" {
+    return s.AuthMethod
+	} else if s.APIKey != "" {
 		return MethodAPIKey
 	} else if s.Scope != "" {
 		return MethodOAuth

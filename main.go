@@ -313,17 +313,16 @@ func main() {
 			if audience == "" {
 				if len(remainingArgs) > 0 {
 					audience = remainingArgs[0]
-				} else {
-					fmt.Println("Missing audience argument for JWT")
-					return
 				}
 			}
 
 			// JWT flow requires empty Scope.
 			// Also, JWT currently does not work with STS.
 			settings = &util.Settings{
+        AuthMethod:      util.MethodJWT,
 				CredentialsJSON: json,
 				Audience:        audience,
+        Scope:           scope,
 			}
 		} else if authType == "sso" {
 			// Fallback to reading email from first remaining arg
@@ -380,6 +379,7 @@ func main() {
 				Sts:             sts,
 				ServiceAccount:  serviceAccount,
 				Email:           email,
+        AuthMethod:      util.MethodOAuth,
 			}
 		}
 
