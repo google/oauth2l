@@ -27,7 +27,7 @@ var MethodAPIKey = "apikey"
 type Settings struct {
 	// The JSON credentials content downloaded from Google Cloud Console.
 	CredentialsJSON string
-
+	// The authentication method should be used.
 	AuthMethod string
 	// If specified, use OAuth. Otherwise, JWT.
 	Scope string

@@ -17,6 +17,7 @@ package util
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"golang.org/x/oauth2"
@@ -36,8 +37,11 @@ func newTokenSource(ctx context.Context, settings *Settings) (*oauth2.TokenSourc
 		return nil, nil
 	} else if settings.GetAuthMethod() == MethodOAuth {
 		ts, err = OAuthJSONTokenSource(ctx, settings)
-	} else {
+	} else if settings.GetAuthMethod() == MethodJWT {
 		ts, err = JWTTokenSource(ctx, settings)
+	} else {
+		return nil, fmt.Errorf(
+      "Unsupported authentcation method: %s", settings.GetAuthMethod())
 	}
 	if err != nil {
 		return nil, err
@@ -82,7 +86,7 @@ func JWTTokenSource(ctx context.Context, settings *Settings) (oauth2.TokenSource
 	} else if settings.Scope != "" {
 		return google.JWTAccessTokenSourceWithScope(creds.JSON, settings.Scope)
 	} else {
-		return nil, errors.New("neither audience or scope is provided.")
+		return nil, errors.New("neither audience nor scope is provided")
 	}
 }
 

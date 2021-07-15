@@ -22,33 +22,33 @@ var now = func() time.Time {
 type Config struct {
 	// Audience is the Secure Token Service (STS) audience which contains the resource name for the workload
 	// identity pool or the workforce pool and the provider identifier in that pool.
-	Audience                       string
+	Audience string
 	// SubjectTokenType is the STS token type based on the Oauth2.0 token exchange spec
 	// e.g. `urn:ietf:params:oauth:token-type:jwt`.
-	SubjectTokenType               string
+	SubjectTokenType string
 	// TokenURL is the STS token exchange endpoint.
-	TokenURL                       string
+	TokenURL string
 	// TokenInfoURL is the token_info endpoint used to retrieve the account related information (
 	// user attributes like account identifier, eg. email, username, uid, etc). This is
 	// needed for gCloud session account identification.
-	TokenInfoURL                   string
+	TokenInfoURL string
 	// ServiceAccountImpersonationURL is the URL for the service account impersonation request. This is only
 	// required for workload identity pools when APIs to be accessed have not integrated with UberMint.
 	ServiceAccountImpersonationURL string
 	// ClientSecret is currently only required if token_info endpoint also
 	// needs to be called with the generated GCP access token. When provided, STS will be
 	// called with additional basic authentication using client_id as username and client_secret as password.
-	ClientSecret                   string
+	ClientSecret string
 	// ClientID is only required in conjunction with ClientSecret, as described above.
-	ClientID                       string
+	ClientID string
 	// CredentialSource contains the necessary information to retrieve the token itself, as well
 	// as some environmental information.
-	CredentialSource               CredentialSource
+	CredentialSource CredentialSource
 	// QuotaProjectID is injected by gCloud. If the value is non-empty, the Auth libraries
 	// will set the x-goog-user-project which overrides the project associated with the credentials.
-	QuotaProjectID                 string
+	QuotaProjectID string
 	// Scopes contains the desired scopes for the returned access token.
-	Scopes                         []string
+	Scopes []string
 }
 
 // TokenSource Returns an external account TokenSource struct. This is to be called by package google to construct a google.Credentials.
