@@ -33,15 +33,15 @@ func newTokenSource(ctx context.Context, settings *Settings) (*oauth2.TokenSourc
 	var err error
 	if settings == nil {
 		ts, err = google.DefaultTokenSource(ctx, DefaultScope)
-	} else if settings.GetAuthMethod() == MethodAPIKey {
+	} else if settings.GetAuthType() == AuthTypeAPIKey {
 		return nil, nil
-	} else if settings.GetAuthMethod() == MethodOAuth {
+	} else if settings.GetAuthType() == AuthTypeOAuth {
 		ts, err = OAuthJSONTokenSource(ctx, settings)
-	} else if settings.GetAuthMethod() == MethodJWT {
+	} else if settings.GetAuthType() == AuthTypeJWT {
 		ts, err = JWTTokenSource(ctx, settings)
 	} else {
 		return nil, fmt.Errorf(
-      "Unsupported authentcation method: %s", settings.GetAuthMethod())
+      "Unsupported authentcation method: %s", settings.GetAuthType())
 	}
 	if err != nil {
 		return nil, err

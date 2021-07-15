@@ -18,17 +18,18 @@ import (
 	"golang.org/x/oauth2/authhandler"
 )
 
-var MethodOAuth = "oauth"
-var MethodJWT = "jwt"
-var MethodAPIKey = "apikey"
+var AuthTypeOAuth = "oauth"
+var AuthTypeJWT = "jwt"
+var AuthTypeAPIKey = "apikey"
+var AuthTypeSSO = "sso"
 
 // An extensible structure that holds the credentials for
 // Google API authentication.
 type Settings struct {
 	// The JSON credentials content downloaded from Google Cloud Console.
 	CredentialsJSON string
-	// The authentication method should be used.
-	AuthMethod string
+	// The authentication type.
+	AuthType string
 	// If specified, use OAuth. Otherwise, JWT.
 	Scope string
 	// The audience field for JWT auth
@@ -54,13 +55,13 @@ type Settings struct {
 	ServiceAccount string
 }
 
-func (s Settings) GetAuthMethod() string {
-	if s.AuthMethod != "" {
-		return s.AuthMethod
+func (s Settings) GetAuthType() string {
+	if s.AuthType != "" {
+		return s.AuthType
 	} else if s.APIKey != "" {
-		return MethodAPIKey
+		return AuthTypeAPIKey
 	} else if s.Scope != "" {
-		return MethodOAuth
+		return AuthTypeOAuth
 	}
-	return MethodJWT
+	return AuthTypeJWT
 }
