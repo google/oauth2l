@@ -301,7 +301,7 @@ func main() {
 
 		// Configure GUAC settings based on authType.
 		var settings *util.Settings
-		if authType == "jwt" {
+		if authType == util.AuthTypeJWT {
 			json, err := readJSON(credentials)
 			if err != nil {
 				fmt.Println("Failed to open file: " + credentials)
@@ -313,19 +313,16 @@ func main() {
 			if audience == "" {
 				if len(remainingArgs) > 0 {
 					audience = remainingArgs[0]
-				} else {
-					fmt.Println("Missing audience argument for JWT")
-					return
 				}
 			}
 
-			// JWT flow requires empty Scope.
-			// Also, JWT currently does not work with STS.
 			settings = &util.Settings{
+				AuthType:        util.AuthTypeJWT,
 				CredentialsJSON: json,
 				Audience:        audience,
+				Scope:           scope,
 			}
-		} else if authType == "sso" {
+		} else if authType == util.AuthTypeSSO {
 			// Fallback to reading email from first remaining arg
 			argProcessedIndex := 0
 			if email == "" {
@@ -380,6 +377,7 @@ func main() {
 				Sts:             sts,
 				ServiceAccount:  serviceAccount,
 				Email:           email,
+				AuthType:        util.AuthTypeOAuth,
 			}
 		}
 
