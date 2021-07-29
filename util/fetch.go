@@ -16,6 +16,8 @@ package util
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 
 	"golang.org/x/oauth2"
@@ -31,12 +33,15 @@ func newTokenSource(ctx context.Context, settings *Settings) (*oauth2.TokenSourc
 	var err error
 	if settings == nil {
 		ts, err = google.DefaultTokenSource(ctx, DefaultScope)
-	} else if settings.APIKey != "" {
+	} else if settings.GetAuthType() == AuthTypeAPIKey {
 		return nil, nil
-	} else if settings.Scope != "" {
+	} else if settings.GetAuthType() == AuthTypeOAuth {
 		ts, err = OAuthJSONTokenSource(ctx, settings)
-	} else {
+	} else if settings.GetAuthType() == AuthTypeJWT {
 		ts, err = JWTTokenSource(ctx, settings)
+	} else {
+		return nil, fmt.Errorf(
+      "Unsupported authentcation method: %s", settings.GetAuthType())
 	}
 	if err != nil {
 		return nil, err
@@ -76,8 +81,13 @@ func JWTTokenSource(ctx context.Context, settings *Settings) (oauth2.TokenSource
 	if err != nil {
 		return nil, err
 	}
-	ts, err := google.JWTAccessTokenSourceFromJSON(creds.JSON, settings.Audience)
-	return ts, err
+	if settings.Audience != "" {
+		return google.JWTAccessTokenSourceFromJSON(creds.JSON, settings.Audience)
+	} else if settings.Scope != "" {
+		return google.JWTAccessTokenSourceWithScope(creds.JSON, settings.Scope)
+	} else {
+		return nil, errors.New("neither audience nor scope is provided")
+	}
 }
 
 // FindJSONCredentials obtains credentials from settings or Application Default Credentials

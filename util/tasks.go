@@ -242,6 +242,9 @@ func marshalWithExtras(token *oauth2.Token, indent string) ([]byte, error) {
 	if token.Extra("issued_token_type") != nil {
 		m["issued_token_type"] = token.Extra("issued_token_type").(string)
 	}
+	if token.Extra("id_token") != nil {
+		m["id_token"] = token.Extra("id_token").(string)
+	}
 	return json.MarshalIndent(m, "", indent)
 }
 

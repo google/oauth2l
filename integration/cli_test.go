@@ -162,7 +162,7 @@ func TestCLI(t *testing.T) {
 		{
 			"fetch; jwt; no audience",
 			[]string{"fetch", "--type", "jwt"},
-			"no-audience.golden",
+			"no-scope-or-audience.golden",
 			false,
 		},
 		{
