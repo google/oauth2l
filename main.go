@@ -316,11 +316,17 @@ func main() {
 				}
 			}
 
+			scopes := getScopesWithFallback(scope, remainingArgs...)
+			if audience == "" && len(scopes) < 1 {
+				fmt.Println("Neither audience nor scope argument is provided for JWT")
+				return
+			}
+
 			settings = &util.Settings{
 				AuthType:        util.AuthTypeJWT,
 				CredentialsJSON: json,
 				Audience:        audience,
-				Scope:           scope,
+				Scope:           parseScopes(scopes),
 			}
 		} else if authType == util.AuthTypeSSO {
 			// Fallback to reading email from first remaining arg

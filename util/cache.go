@@ -53,7 +53,6 @@ func LookupCache(settings *Settings) (*oauth2.Token, error) {
 	if CacheLocation == "" {
 		return nil, nil
 	}
-	var token oauth2.Token
 	var cache, err = loadCache()
 	if err != nil {
 		return nil, err
@@ -63,11 +62,7 @@ func LookupCache(settings *Settings) (*oauth2.Token, error) {
 		return nil, err
 	}
 	val := cache[string(key)]
-	err = json.Unmarshal(val, &token)
-	if err != nil {
-		return nil, err
-	}
-	return &token, nil
+	return UnmarshalWithExtras(val)
 }
 
 func InsertCache(settings *Settings, token *oauth2.Token) error {
@@ -78,7 +73,7 @@ func InsertCache(settings *Settings, token *oauth2.Token) error {
 	if err != nil {
 		return err
 	}
-	val, err := json.Marshal(*token)
+	val, err := MarshalWithExtras(token, "")
 	if err != nil {
 		return err
 	}
@@ -154,4 +149,44 @@ func GuessUnixHomeDir() string {
 		return u.HomeDir
 	}
 	return ""
+}
+
+// Marshals the given oauth2.Token into a JSON bytearray and include Extra
+// fields that normally would be omitted with default marshalling.
+func MarshalWithExtras(token *oauth2.Token, indent string) ([]byte, error) {
+	data, err := json.Marshal(token)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]string
+	err = json.Unmarshal(data, &m)
+	if err != nil {
+		return nil, err
+	}
+	if token.Extra("issued_token_type") != nil {
+		m["issued_token_type"] = token.Extra("issued_token_type").(string)
+	}
+	if token.Extra("id_token") != nil {
+		m["id_token"] = token.Extra("id_token").(string)
+	}
+	if token.Extra("scope") != nil {
+		m["scope"] = token.Extra("scope").(string)
+	}
+	return json.MarshalIndent(m, "", indent)
+}
+
+// Unmarshals the given JSON bytearray into oauth2.Token and include Extra
+// fields that normally would be omitted with default unmarshalling.
+func UnmarshalWithExtras(data []byte) (*oauth2.Token, error) {
+	var extra map[string]interface{}
+	err := json.Unmarshal(data, &extra)
+	if err != nil {
+		return nil, err
+	}
+	var token oauth2.Token
+	err = json.Unmarshal(data, &token)
+	if err != nil {
+		return nil, err
+	}
+	return token.WithExtra(extra), nil
 }

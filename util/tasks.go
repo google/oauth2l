@@ -227,27 +227,6 @@ func getCredentialType(creds *google.Credentials) string {
 	return ""
 }
 
-// Marshals the given oauth2.Token into a JSON bytearray and include Extra
-// fields that normally would be omitted with default marshalling.
-func marshalWithExtras(token *oauth2.Token, indent string) ([]byte, error) {
-	data, err := json.Marshal(token)
-	if err != nil {
-		return nil, err
-	}
-	var m map[string]string
-	err = json.Unmarshal(data, &m)
-	if err != nil {
-		return nil, err
-	}
-	if token.Extra("issued_token_type") != nil {
-		m["issued_token_type"] = token.Extra("issued_token_type").(string)
-	}
-	if token.Extra("id_token") != nil {
-		m["id_token"] = token.Extra("id_token").(string)
-	}
-	return json.MarshalIndent(m, "", indent)
-}
-
 // Prints the token with the specified format.
 func printToken(token *oauth2.Token, format string, settings *Settings) {
 	if token != nil {
@@ -295,7 +274,7 @@ func printHeader(tokenType string, token string) {
 }
 
 func printJson(token *oauth2.Token, indent string) {
-	data, err := marshalWithExtras(token, indent)
+	data, err := MarshalWithExtras(token, indent)
 	if err != nil {
 		log.Fatal(err.Error())
 		return
