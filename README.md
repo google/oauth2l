@@ -262,17 +262,17 @@ $ oauth2l fetch --type oauth --credentials ~/client_credentials.json --scope clo
 
 When jwt is selected and the json file specified in the `--credentials` option
 is a service account key file, a JWT token signed by the service account private
-key will be generated. Either `--scope` or `--audience` must be specified for
+key will be generated. Either `--audience` or `--scope` must be specified for
 this option. See how to construct the audience [here](https://developers.google.com/identity/protocols/OAuth2ServiceAccount#jwt-auth).
-
-- With scope:
-  ```bash
-  $ oauth2l fetch --type jwt --credentials ~/client_credentials.json --scope cloud-platform
-  ```
 
 - With audience:
   ```bash
   $ oauth2l fetch --type jwt --credentials ~/service_account.json --audience https://pubsub.googleapis.com/
+  ```
+
+- With scope:
+  ```bash
+  $ oauth2l fetch --type jwt --credentials ~/service_account.json --scope cloud-platform
   ```
 
 #### sso

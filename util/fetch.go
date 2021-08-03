@@ -40,8 +40,7 @@ func newTokenSource(ctx context.Context, settings *Settings) (*oauth2.TokenSourc
 	} else if settings.GetAuthType() == AuthTypeJWT {
 		ts, err = JWTTokenSource(ctx, settings)
 	} else {
-		return nil, fmt.Errorf(
-      "Unsupported authentcation method: %s", settings.GetAuthType())
+		return nil, fmt.Errorf("Unsupported authentcation method: %s", settings.GetAuthType())
 	}
 	if err != nil {
 		return nil, err
@@ -86,7 +85,7 @@ func JWTTokenSource(ctx context.Context, settings *Settings) (oauth2.TokenSource
 	} else if settings.Scope != "" {
 		return google.JWTAccessTokenSourceWithScope(creds.JSON, settings.Scope)
 	} else {
-		return nil, errors.New("neither audience nor scope is provided")
+		return nil, errors.New("Neither audience nor scope is provided for JWTTokenSource")
 	}
 }
 
