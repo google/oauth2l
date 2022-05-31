@@ -59,7 +59,7 @@ deps:
 
 # dev installs the tool locally
 dev:
-	@go install -i ./...
+	@go install ./...
 .PHONY: dev
 
 # test runs the tests
