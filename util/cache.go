@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/oauth2"
 )
@@ -127,8 +128,15 @@ func loadCache() (map[string][]byte, error) {
 }
 
 func createKey(settings *Settings) CacheKey {
+
+	var credentialsJSON string = settings.CredentialsJSON
+
+	if settings.OverriddenURI.NewURI != settings.OverriddenURI.OriginalURI {
+		credentialsJSON = strings.Replace(credentialsJSON, "\""+settings.OverriddenURI.NewURI+"\"", "\""+settings.OverriddenURI.OriginalURI+"\"", -1)
+	}
+
 	return CacheKey{
-		CredentialsJSON: settings.CredentialsJSON,
+		CredentialsJSON: credentialsJSON,
 		Scope:           settings.Scope,
 		Audience:        settings.Audience,
 		Email:           settings.Email,

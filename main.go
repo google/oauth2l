@@ -15,11 +15,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/oauth2l/util"
 	"github.com/jessevdk/go-flags"
@@ -89,6 +92,12 @@ type commonFetchOptions struct {
 	Jwt       bool   `long:"jwt" description:"Deprecated. Same as --type jwt." hidden:"true"`
 	Sso       bool   `long:"sso" description:"Deprecated. Same as --type sso." hidden:"true"`
 	OldFormat string `long:"credentials_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" description:"Deprecated. Same as --output_format" hidden:"true"`
+
+	// ConsentPage parameter.
+	ConsentPageInteractionTimeout      int    `long:"consentPageInteractionTimeout" description:"Max wait time for user to interact with consent page." default:"2"`
+	ConsentPageInteractionTimeoutUnits string `long:"consentPageInteractionTimeoutUnits" choice:"seconds" choice:"minutes" description:"Consent page timeout units." default:"minutes"`
+	ConsentPageAllowRedirect           string `long:"consentPageAllowRedirect" description:"Redirect URL when allow button is clicked on the consent page." default:""`
+	ConsentPageCancelRedirect          string `long:"consentPageCancelRedirect" description:"Redirect URL when cancel button is clicked on the consent page." default:""`
 }
 
 // Additional options for "fetch" command.
@@ -138,20 +147,58 @@ func readJSON(file string) (string, error) {
 	return "", nil
 }
 
-// Default 3LO authorization handler. Prints the authorization URL on stdout
+// 3LO authorization handler. Determines what algorithm to use
+// to get the authorization code.
+//
+// Note that the "state" parameter is used to prevent CSRF attacks.
+func cmdAuthorizationHandler(state string, authCodeServer *util.AuthorizationCodeServer) authhandler.AuthorizationHandler {
+	return func(authCodeURL string) (string, string, error) {
+
+		decodedValue, _ := url.ParseQuery(authCodeURL)
+		redirectURL := decodedValue.Get("redirect_uri")
+
+		if strings.Contains(redirectURL, "localhost") {
+			return cmdAuthorizationLoopback(authCodeURL, authCodeServer)
+		}
+
+		return cmdAuthorizationInteractive(state, authCodeURL)
+	}
+}
+
+// Interactive 3LO authorization. Prints the authorization URL on stdout
 // and reads the authorization code from stdin.
 //
 // Note that the "state" parameter is used to prevent CSRF attacks.
-// For convenience, CmdAuthorizationHandler returns a pre-configured state
+// For convenience, cmdAuthorizationInteractive returns a pre-configured state
 // instead of requiring the user to copy it from the browser.
-func cmdAuthorizationHandler(state string) authhandler.AuthorizationHandler {
-	return func(authCodeURL string) (string, string, error) {
-		fmt.Printf("Go to the following link in your browser:\n\n   %s\n\n", authCodeURL)
-		fmt.Println("Enter authorization code:")
-		var code string
-		fmt.Scanln(&code)
-		return code, state, nil
+func cmdAuthorizationInteractive(state string, authCodeURL string) (string, string, error) {
+	fmt.Printf("Go to the following link in your browser:\n\n   %s\n\n", authCodeURL)
+	fmt.Println("Enter authorization code:")
+	var code string
+	fmt.Scanln(&code)
+	return code, state, nil
+}
+
+// Loopback 3LO authorization. Prints the authorization URL on stdout
+// and opens a new browser window and redirects it to the authCodeURL.
+// It then reads the authorization code from a localhost endpoint.
+//
+// Note that the "state" parameter is used to prevent CSRF attacks.
+// For convenience, cmdAuthorizationLoopback returns the state
+// associated with the authorization code sent to the localhost.
+func cmdAuthorizationLoopback(authCodeURL string, authCodeServer *util.AuthorizationCodeServer) (string, string, error) {
+
+	started, _ := (*authCodeServer).WaitForListeningAndServing(10 * time.Second)
+
+	if started {
+		b := util.Browser{}
+		fmt.Println("Your browser has been opened to visit:")
+		fmt.Println("\n", authCodeURL)
+		b.OpenURL(authCodeURL)
+		(*authCodeServer).WaitForConsentPageToReturnControl()
 	}
+	code, err := (*authCodeServer).GetAuthenticationCode()
+	return code.Code, code.State, err
 }
 
 // Append Google OAuth scope prefix if not provided and joins
@@ -191,6 +238,17 @@ func getCommonFetchOptions(cmdOpts commandOptions, cmd string) commonFetchOption
 		commonOpts = cmdOpts.Curl.commonFetchOptions
 	}
 	return commonOpts
+}
+
+// Generates a time duration
+func getTimeDuration(quantity int, units string) time.Duration {
+
+	switch units {
+	case "seconds":
+		return time.Duration(quantity) * time.Second
+	default:
+		return time.Duration(quantity) * time.Minute
+	}
 }
 
 // Get the authentication type, with backward compatibility.
@@ -247,6 +305,14 @@ func getInfoOptions(cmdOpts commandOptions, cmd string) infoOptions {
 }
 
 func main() {
+
+	var authCodeServer util.AuthorizationCodeServer = nil
+	defer func() {
+		if authCodeServer != nil {
+			authCodeServer.Close()
+		}
+	}()
+
 	// Parse command-line flags via "go-flags" library
 	parser := flags.NewParser(&opts, flags.Default)
 
@@ -371,12 +437,50 @@ func main() {
 				return
 			}
 
+			interactionTimeout := getTimeDuration(commonOpts.ConsentPageInteractionTimeout, commonOpts.ConsentPageInteractionTimeoutUnits)
+			consentPageSettings := util.ConsentPageSettings{
+				InteractionTimeout:     interactionTimeout,
+				AllowResponseRedirect:  commonOpts.ConsentPageAllowRedirect,
+				CancelResponseRedirect: commonOpts.ConsentPageCancelRedirect,
+			}
+
+			redirectUri, err := getFirstRedirectURI(json)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+
+			overridenURI := util.OverriddenURI{}
+
+			// 3LO Loopback case
+			if strings.Contains(redirectUri, "localhost") {
+
+				authCodeServer = &util.AuthorizationCodeLocalhost{
+					ConsentPageSettings: consentPageSettings,
+					AuthCodeReqStatus: util.AuthorizationCodeStatus{
+						Status: util.WAITING, Details: "Authorization code not yet set."},
+				}
+
+				adr, err := authCodeServer.ListenAndServe(redirectUri)
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+
+				overridenURI.OriginalURI = redirectUri
+				overridenURI.NewURI = adr
+
+				if overridenURI.NewURI != overridenURI.OriginalURI {
+					json = strings.Replace(json, "\""+overridenURI.OriginalURI+"\"", "\""+overridenURI.NewURI+"\"", -1)
+				}
+			}
+
 			// 3LO or 2LO depending on the credential type.
-			// For 2LO flow AuthHandler and State are not needed.
+			// For 2LO flow AuthHandler, State and ConsentPageSettings are not needed.
 			settings = &util.Settings{
 				CredentialsJSON: json,
 				Scope:           parseScopes(scopes),
-				AuthHandler:     cmdAuthorizationHandler(defaultState),
+				AuthHandler:     cmdAuthorizationHandler(defaultState, &authCodeServer),
 				State:           defaultState,
 				Audience:        audience,
 				QuotaProject:    quotaProject,
@@ -384,6 +488,7 @@ func main() {
 				ServiceAccount:  serviceAccount,
 				Email:           email,
 				AuthType:        util.AuthTypeOAuth,
+				OverriddenURI:   overridenURI,
 			}
 		}
 
@@ -415,4 +520,46 @@ func main() {
 		setCacheLocation(opts.Reset.Cache)
 		util.Reset()
 	}
+}
+
+// getFirstRedirectURI returns the the first URI in "redirect_uris"
+//
+// credentialsJSON represents the credentials json file.
+//
+// Returns firstRedirectURI: is the address of the first URI in "redirect_uris".
+// Returns err: if nuable to process the credentialsJSON file.
+func getFirstRedirectURI(credentialsJSON string) (firstRedirectURI string, err error) {
+
+	type cred struct {
+		RedirectURIs []string `json:"redirect_uris"`
+	}
+	var j struct {
+		Web       *cred `json:"web"`
+		Installed *cred `json:"installed"`
+	}
+
+	data := []byte(credentialsJSON)
+	if err := json.Unmarshal(data, &j); err != nil {
+		return "", fmt.Errorf("Unable to process credentialsJSON: %v", err)
+	}
+
+	var credObj *cred
+	switch {
+	case j.Web != nil:
+		credObj = j.Web
+	case j.Installed != nil:
+		credObj = j.Installed
+	default:
+		// TODO: throw error once 2LO becomes unsupported
+		// Let lower layers take care of non 3LO-Loopback (or malformed json)
+		return "", nil
+	}
+
+	// TODO: throw error once 2LO becomes unsupported
+	//  Let lower layers take care of non 3LO-Loopback (or malformed json)
+	if len(credObj.RedirectURIs) < 1 {
+		return "", nil
+	}
+
+	return credObj.RedirectURIs[0], nil
 }
