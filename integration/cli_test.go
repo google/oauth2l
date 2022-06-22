@@ -229,7 +229,7 @@ func Test3LOFlow(t *testing.T) {
 		},
 		{
 			"fetch; 3lo; old interface",
-			[]string{"fetch", "--json", "integration/fixtures/fake-client-secrets.json", "--cache", "", "--scope", "pubsub"},
+			[]string{"fetch", "--json", "integration/fixtures/fake-client-secrets.json", "--cache", "", "pubsub"},
 			"fetch-3lo.golden",
 			false,
 		},
