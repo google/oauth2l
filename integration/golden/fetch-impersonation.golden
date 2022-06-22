@@ -5,10 +5,6 @@
     "status": "UNAUTHENTICATED",
     "details": [
       {
-        "@type": "type.googleapis.com/google.rpc.DebugInfo",
-        "detail": "Authentication error: 16; Error Details: Credential sent is invalid. Unknown token version 0 for token string: ya29.GltDB_y~"
-      },
-      {
         "@type": "type.googleapis.com/google.rpc.ErrorInfo",
         "reason": "ACCESS_TOKEN_TYPE_UNSUPPORTED",
         "metadata": {

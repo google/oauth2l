@@ -229,7 +229,7 @@ func Test3LOFlow(t *testing.T) {
 		},
 		{
 			"fetch; 3lo; old interface",
-			[]string{"fetch", "--json", "integration/fixtures/fake-client-secrets.json", "--cache", "", "pubsub"},
+			[]string{"fetch", "--json", "integration/fixtures/fake-client-secrets.json", "--cache", "", "--scope", "pubsub"},
 			"fetch-3lo.golden",
 			false,
 		},
@@ -291,76 +291,84 @@ func Test3LOFlow(t *testing.T) {
 	runTestScenariosWithInput(t, tests, newFixture(t, "fake-verification-code.fixture").asFile())
 }
 
+// TODO: Enhance tests so that the entire loopback flow can be tested
+// TODO: Once enhanced, uncomment and fix cache tests in this flow
 // Test OAuth 3LO loopback flow with fake client secrets. Stops waiting for consent page interaction to advance the flow.
 func Test3LOLoopbackFlow(t *testing.T) {
 	tests := []testCase{
 		{
 			"fetch; 3lo; loopback",
 			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds",
+				"--disableAutoOpenConsentPage", "true"},
 			"fetch-3lo-loopback.golden",
 			false,
 		},
 		{
 			"fetch; 3lo; old interface; loopback",
-			[]string{"fetch", "--json", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "", "pubsub", "--consentPageInteractionTimeout", "1",
-				"--consentPageInteractionTimeoutUnits", "seconds"},
+			[]string{"fetch", "--json", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "", "--scope", "pubsub",
+				"--disableAutoOpenConsentPage", "true",
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
 			"fetch-3lo-loopback.golden",
 			false,
 		},
 		{
 			"fetch; 3lo; userinfo scopes; loopback",
 			[]string{"fetch", "--scope", "userinfo.profile,userinfo.email", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds",
+				"--disableAutoOpenConsentPage", "true"},
 			"fetch-3lo-loopback-userinfo.golden",
 			false,
 		},
 		{
 			"header; 3lo; loopback",
 			[]string{"header", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds",
+				"--disableAutoOpenConsentPage", "true"},
 			"header-3lo-loopback.golden",
 			false,
 		},
 		{
 			"fetch; 3lo; refresh token output format; loopback",
 			[]string{"fetch", "--output_format", "refresh_token", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds",
+				"--disableAutoOpenConsentPage", "true"},
 			"fetch-3lo-loopback-refresh-token.golden",
 			false,
 		},
 		{
 			"curl; 3lo; loopback",
 			[]string{"curl", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--url", "http://localhost:8080/curl",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds",
+				"--disableAutoOpenConsentPage", "true"},
 			"curl-3lo-loopback.golden",
 			false,
 		},
-		/* <<-----
-		{
-			"fetch; 3lo cached",
-			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
-			"fetch-3lo-cached.golden",
-			false,
-		},
-		{
-			"fetch; 3lo insert expired token into cache",
-			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json","--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
-			"fetch-3lo.golden",
-			false,
-		},
-		{
-			"fetch; 3lo cached; token expired",
-			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json","--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
-			"fetch-3lo.golden",
-			false,
-		},
-		{
-			"fetch; 3lo cached; refresh expired token",
-			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json", "--refresh","--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
-			"fetch-3lo-cached.golden",
-			false,
-		},*/
+		/*
+			{
+				"fetch; 3lo cached",
+				[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"fetch-3lo-cached.golden",
+				false,
+			},
+			{
+				"fetch; 3lo insert expired token into cache",
+				[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json","--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"fetch-3lo.golden",
+				false,
+			},
+			{
+				"fetch; 3lo cached; token expired",
+				[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json","--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"fetch-3lo.golden",
+				false,
+			},
+			{
+				"fetch; 3lo cached; refresh expired token",
+				[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json", "--refresh","--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"fetch-3lo-cached.golden",
+				false,
+			},*/
 	}
 
 	process3LOOutput := func(output string) string {

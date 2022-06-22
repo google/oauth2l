@@ -94,10 +94,9 @@ type commonFetchOptions struct {
 	OldFormat string `long:"credentials_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" description:"Deprecated. Same as --output_format" hidden:"true"`
 
 	// ConsentPage parameter.
-	ConsentPageInteractionTimeout      int    `long:"consentPageInteractionTimeout" description:"Max wait time for user to interact with consent page." default:"2"`
+	DisableAutoOpenConsentPage         bool   `long:"disableAutoOpenConsentPage" description:"Disables the ability to open the consent page automatically."`
+	ConsentPageInteractionTimeout      int    `long:"consentPageInteractionTimeout" description:"Maximum wait time for user to interact with consent page." default:"2"`
 	ConsentPageInteractionTimeoutUnits string `long:"consentPageInteractionTimeoutUnits" choice:"seconds" choice:"minutes" description:"Consent page timeout units." default:"minutes"`
-	ConsentPageAllowRedirect           string `long:"consentPageAllowRedirect" description:"Redirect URL when allow button is clicked on the consent page." default:""`
-	ConsentPageCancelRedirect          string `long:"consentPageCancelRedirect" description:"Redirect URL when cancel button is clicked on the consent page." default:""`
 }
 
 // Additional options for "fetch" command.
@@ -151,14 +150,15 @@ func readJSON(file string) (string, error) {
 // to get the authorization code.
 //
 // Note that the "state" parameter is used to prevent CSRF attacks.
-func cmdAuthorizationHandler(state string, authCodeServer *util.AuthorizationCodeServer) authhandler.AuthorizationHandler {
+func cmdAuthorizationHandler(state string, consentSettings util.ConsentPageSettings,
+	authCodeServer *util.AuthorizationCodeServer) authhandler.AuthorizationHandler {
 	return func(authCodeURL string) (string, string, error) {
 
 		decodedValue, _ := url.ParseQuery(authCodeURL)
 		redirectURL := decodedValue.Get("redirect_uri")
 
 		if strings.Contains(redirectURL, "localhost") {
-			return cmdAuthorizationLoopback(authCodeURL, authCodeServer)
+			return cmdAuthorizationLoopback(authCodeURL, consentSettings, authCodeServer)
 		}
 
 		return cmdAuthorizationInteractive(state, authCodeURL)
@@ -186,15 +186,25 @@ func cmdAuthorizationInteractive(state string, authCodeURL string) (string, stri
 // Note that the "state" parameter is used to prevent CSRF attacks.
 // For convenience, cmdAuthorizationLoopback returns the state
 // associated with the authorization code sent to the localhost.
-func cmdAuthorizationLoopback(authCodeURL string, authCodeServer *util.AuthorizationCodeServer) (string, string, error) {
+func cmdAuthorizationLoopback(authCodeURL string, consentSettings util.ConsentPageSettings,
+	authCodeServer *util.AuthorizationCodeServer) (string, string, error) {
 
 	started, _ := (*authCodeServer).WaitForListeningAndServing(10 * time.Second)
 
 	if started {
-		b := util.Browser{}
-		fmt.Println("Your browser has been opened to visit:")
-		fmt.Println("\n", authCodeURL)
-		b.OpenURL(authCodeURL)
+
+		// Auto open consent disabled - true case
+		if consentSettings.DisableAutoOpenConsentPage {
+			fmt.Println("Go to the following link in your browser:")
+			fmt.Println("\n", authCodeURL)
+		} else {
+			fmt.Println("Your browser has been opened to visit:")
+			fmt.Println("\n", authCodeURL)
+
+			b := util.Browser{}
+			b.OpenURL(authCodeURL)
+		}
+
 		(*authCodeServer).WaitForConsentPageToReturnControl()
 	}
 	code, err := (*authCodeServer).GetAuthenticationCode()
@@ -439,9 +449,8 @@ func main() {
 
 			interactionTimeout := getTimeDuration(commonOpts.ConsentPageInteractionTimeout, commonOpts.ConsentPageInteractionTimeoutUnits)
 			consentPageSettings := util.ConsentPageSettings{
-				InteractionTimeout:     interactionTimeout,
-				AllowResponseRedirect:  commonOpts.ConsentPageAllowRedirect,
-				CancelResponseRedirect: commonOpts.ConsentPageCancelRedirect,
+				DisableAutoOpenConsentPage: commonOpts.DisableAutoOpenConsentPage,
+				InteractionTimeout:         interactionTimeout,
 			}
 
 			redirectUri, err := getFirstRedirectURI(json)
@@ -480,7 +489,7 @@ func main() {
 			settings = &util.Settings{
 				CredentialsJSON: json,
 				Scope:           parseScopes(scopes),
-				AuthHandler:     cmdAuthorizationHandler(defaultState, &authCodeServer),
+				AuthHandler:     cmdAuthorizationHandler(defaultState, consentPageSettings, &authCodeServer),
 				State:           defaultState,
 				Audience:        audience,
 				QuotaProject:    quotaProject,
@@ -540,7 +549,10 @@ func getFirstRedirectURI(credentialsJSON string) (firstRedirectURI string, err e
 
 	data := []byte(credentialsJSON)
 	if err := json.Unmarshal(data, &j); err != nil {
-		return "", fmt.Errorf("Unable to process credentialsJSON: %v", err)
+		// TODO: throw error once 2LO becomes unsupported
+		// Let lower layers take care of non 3LO-Loopback (or malformed json)
+		// This affects empty credentials (env. var. GOOGLE_APPLICATION_CREDENTIALS case).
+		return "", nil
 	}
 
 	var credObj *cred

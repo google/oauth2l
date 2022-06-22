@@ -101,17 +101,12 @@ type AuthorizationCodeStatus struct {
 // ConsentPageSettings is a 3-legged-OAuth helper that
 // contains the settings for the interaction with the consent page
 type ConsentPageSettings struct {
+	// DisableAutoOpenConsentPage controls the feature to automatically
+	// open the browser to vist the consent page
+	DisableAutoOpenConsentPage bool
 	// InteractionTimeout is the maximum time to wait for the user
 	// to interact with the consent page
 	InteractionTimeout time.Duration
-	// AllowResponseRedirect contains the URL to which the browser
-	// is rediceted to when the user click the allow button in the
-	// consent page
-	AllowResponseRedirect string
-	// AllowResponseRedirect contains the URL to which the browser
-	// is rediceted to when the user click the cancel button in the
-	// consent page
-	CancelResponseRedirect string
 }
 
 // AuthorizationCodeLocalhost implements AuthorizationCodeServer.
@@ -235,37 +230,42 @@ func (lh *AuthorizationCodeLocalhost) WaitForConsentPageToReturnControl() (err e
 // redirectUriHandler handles the redirect logic when aquiring the authorization code.
 func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, r *http.Request) {
 
+	const (
+		closeTab string = ". Please close this tab."
+	)
+
 	rq := r.URL.RawQuery
 	urlValues, err := url.ParseQuery(rq)
 	if err != nil {
-		err := fmt.Errorf("Unable to parse query: %v", err)
-		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err.Error()}
+		err := fmt.Sprintf("Unable to parse query: %v", err)
 
+		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err}
 		lh.authCode = AuthorizationCode{}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(lh.AuthCodeReqStatus.Details + ". Please close this tab."))
+		w.Write([]byte(lh.AuthCodeReqStatus.Details + closeTab))
 		return
 	}
 
 	// Authentication Code Error from consent page
 	if urlValues.Has("error") {
-		err := fmt.Errorf("An error occurred when getting athorization code: %s",
+		err := fmt.Sprintf("An error occurred when getting authorization code: %s",
 			urlValues.Get("error"))
-		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err.Error()}
 
+		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err}
 		lh.authCode = AuthorizationCode{}
-		http.Redirect(w, r, lh.ConsentPageSettings.CancelResponseRedirect, 301)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(lh.AuthCodeReqStatus.Details + closeTab))
 		return
 	}
 
-	// No Code or Status Granted is treated as unknown error
+	// No Code, Status, or Error is treated as unknown error
 	if !urlValues.Has("code") && !urlValues.Has("state") {
-		err := fmt.Errorf("Unknown error when getting athorization code.")
-		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err.Error()}
+		err := "Unknown error when getting athorization code"
+		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err}
 
 		lh.authCode = AuthorizationCode{}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(lh.AuthCodeReqStatus.Details + ". Please close this tab."))
+		w.Write([]byte(lh.AuthCodeReqStatus.Details + closeTab))
 		return
 	}
 
@@ -280,17 +280,17 @@ func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, 
 		lh.AuthCodeReqStatus = AuthorizationCodeStatus{
 			Status: GRANTED, Details: "Authorization code granted"}
 
-		http.Redirect(w, r, lh.ConsentPageSettings.AllowResponseRedirect, 301)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(lh.AuthCodeReqStatus.Details + closeTab))
 		return
 	}
 
-	// Unknown errors
-	err = fmt.Errorf("Athorization code missing code and/or state.")
+	err = fmt.Errorf("Athorization code missing code or state.")
 	lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err.Error()}
 
 	lh.authCode = AuthorizationCode{}
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(lh.AuthCodeReqStatus.Details + ". Please close this tab."))
+	w.Write([]byte(lh.AuthCodeReqStatus.Details + closeTab))
 	return
 }
 

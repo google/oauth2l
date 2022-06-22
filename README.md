@@ -241,10 +241,36 @@ $ export GOOGLE_APPLICATION_CREDENTIALS="~/service_account.json"
 $ oauth2l fetch --scope cloud-platform
 ```
 
+If the first `redirect_uris` in the `--credentials service_account.json` is set to `urn:ietf:wg:oauth:2.0:oob`,
+the 3LO or 2LO interactive flow is activated.
+
+If the first `redirect_uris` in the `--credentials service_account.json` is set to `http://localhost[:PORT]`,
+the 3LO loopback flow is activated. When the port is omitted, an available port will be used to spin the localhost.
+When a port is provided, oauth2l will attempt to use such port. If the port cannot be used, oauth2l will stop.  
+
 ### --type
 
 The authentication type. The currently supported types are "oauth", "jwt", or
 "sso". Defaults to "oauth".
+
+### --disableAutoOpenConsentPage
+
+Disables the feature to automatically open the consent page in 3LO loopback flows.
+Its default value is false. When set to `true`, the user will be provided with a 
+URL to manually interact with the consent page.
+
+### --consentPageInteractionTimeout
+
+Amount of time to wait for a user to interact with the consent page in 3LO loopback flows.
+Once the time has lapsed, the localhost at the `redirect_uri` will no longer be available.  
+Its default value is 2. See `--consentPageInteractionTimeoutUnits` to change the units.
+
+### --consentPageInteractionTimeoutUnits
+
+Units of measurement to use when `--consentPageInteractionTimeout` is set.
+Its default value is `minutes`. Valid inputs are `seconds` and `minutes`.
+This option only affects 3LO loopback flows.
+
 
 #### oauth
 
