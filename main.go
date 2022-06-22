@@ -87,16 +87,16 @@ type commonFetchOptions struct {
 	// Refresh is used for 3LO flow. When used in conjunction with caching, the user can avoid re-authorizing.
 	Refresh bool `long:"refresh" description:"If the cached access token is expired, attempt to refresh it using refreshToken."`
 
+	// Consent page parameters.
+	DisableAutoOpenConsentPage         bool   `long:"disableAutoOpenConsentPage" description:"Disables the ability to open the consent page automatically."`
+	ConsentPageInteractionTimeout      int    `long:"consentPageInteractionTimeout" description:"Maximum wait time for user to interact with consent page." default:"2"`
+	ConsentPageInteractionTimeoutUnits string `long:"consentPageInteractionTimeoutUnits" choice:"seconds" choice:"minutes" description:"Consent page timeout units." default:"minutes"`
+
 	// Deprecated flags kept for backwards compatibility. Hidden from help page.
 	Json      string `long:"json" description:"Deprecated. Same as --credentials." hidden:"true"`
 	Jwt       bool   `long:"jwt" description:"Deprecated. Same as --type jwt." hidden:"true"`
 	Sso       bool   `long:"sso" description:"Deprecated. Same as --type sso." hidden:"true"`
 	OldFormat string `long:"credentials_format" choice:"bare" choice:"header" choice:"json" choice:"json_compact" choice:"pretty" description:"Deprecated. Same as --output_format" hidden:"true"`
-
-	// Consent page parameters.
-	DisableAutoOpenConsentPage         bool   `long:"disableAutoOpenConsentPage" description:"Disables the ability to open the consent page automatically."`
-	ConsentPageInteractionTimeout      int    `long:"consentPageInteractionTimeout" description:"Maximum wait time for user to interact with consent page." default:"2"`
-	ConsentPageInteractionTimeoutUnits string `long:"consentPageInteractionTimeoutUnits" choice:"seconds" choice:"minutes" description:"Consent page timeout units." default:"minutes"`
 }
 
 // Additional options for "fetch" command.
