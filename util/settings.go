@@ -55,7 +55,7 @@ type Settings struct {
 	ServiceAccount string
 
 	// Overridden URI in credential json file.
-	// If empty, nothing was overridden.
+	// If Original URI and NewUri are the same, then nothing was overriden.
 	OverriddenURI OverriddenURI
 }
 
