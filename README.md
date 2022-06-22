@@ -255,25 +255,6 @@ When a port is provided, oauth2l will attempt to use such port. If the port cann
 The authentication type. The currently supported types are "oauth", "jwt", or
 "sso". Defaults to "oauth".
 
-### --disableAutoOpenConsentPage
-
-Disables the feature to automatically open the consent page in 3LO loopback flows.
-Its default value is false. When set to `true`, the user will be provided with a 
-URL to manually interact with the consent page.
-
-### --consentPageInteractionTimeout
-
-Amount of time to wait for a user to interact with the consent page in 3LO loopback flows.
-Once the time has lapsed, the localhost at the `redirect_uri` will no longer be available.  
-Its default value is 2. See `--consentPageInteractionTimeoutUnits` to change the units.
-
-### --consentPageInteractionTimeoutUnits
-
-Units of measurement to use when `--consentPageInteractionTimeout` is set.
-Its default value is `minutes`. Valid inputs are `seconds` and `minutes`.
-This option only affects 3LO loopback flows.
-
-
 #### oauth
 
 When oauth is selected, the tool will fetch an OAuth access token through one
@@ -417,6 +398,24 @@ Impersonation [here](https://cloud.google.com/iam/docs/impersonating-service-acc
 ```bash
 $ oauth2l fetch --credentials ~/client_credentials.json --scope cloud-platform,pubsub --impersonate-service-account 113258942105700140798
 ```
+
+### --disableAutoOpenConsentPage
+
+Disables the feature to automatically open the consent page in 3LO loopback flows.
+Its default value is false. When set to `true`, the user will be provided with a 
+URL to manually interact with the consent page.
+
+### --consentPageInteractionTimeout
+
+Amount of time to wait for a user to interact with the consent page in 3LO loopback flows.
+Once the time has lapsed, the localhost at the `redirect_uri` will no longer be available.  
+Its default value is 2. See `--consentPageInteractionTimeoutUnits` to change the units.
+
+### --consentPageInteractionTimeoutUnits
+
+Units of measurement to use when `--consentPageInteractionTimeout` is set.
+Its default value is `minutes`. Valid inputs are `seconds` and `minutes`.
+This option only affects 3LO loopback flows.
 
 ### fetch --output_format
 
