@@ -189,7 +189,12 @@ func cmdAuthorizationInteractive(state string, authCodeURL string) (string, stri
 func cmdAuthorizationLoopback(authCodeURL string, consentSettings util.ConsentPageSettings,
 	authCodeServer *util.AuthorizationCodeServer) (string, string, error) {
 
-	started, _ := (*authCodeServer).WaitForListeningAndServing(10 * time.Second)
+	const (
+		// Max wait time for the server to start listening and serving
+		maxWaitForListenAndServe time.Duration = 10 * time.Second
+	)
+
+	started, _ := (*authCodeServer).WaitForListeningAndServing(maxWaitForListenAndServe)
 
 	if started {
 
