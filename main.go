@@ -251,13 +251,15 @@ func getCommonFetchOptions(cmdOpts commandOptions, cmd string) commonFetchOption
 }
 
 // Generates a time duration
-func getTimeDuration(quantity int, units string) time.Duration {
+func getTimeDuration(quantity int, units string) (time.Duration, error) {
 
 	switch units {
 	case "seconds":
-		return time.Duration(quantity) * time.Second
+		return time.Duration(quantity) * time.Second, nil
+	case "minutes":
+		return time.Duration(quantity) * time.Minute, nil
 	default:
-		return time.Duration(quantity) * time.Minute
+		return time.Duration(0), fmt.Errorf("Invalid units: %s", units)
 	}
 }
 
@@ -447,7 +449,12 @@ func main() {
 				return
 			}
 
-			interactionTimeout := getTimeDuration(commonOpts.ConsentPageInteractionTimeout, commonOpts.ConsentPageInteractionTimeoutUnits)
+			interactionTimeout, err := getTimeDuration(commonOpts.ConsentPageInteractionTimeout, commonOpts.ConsentPageInteractionTimeoutUnits)
+			if err != nil {
+				fmt.Println("Failed to create time.Duration: " + err.Error())
+				return
+			}
+
 			consentPageSettings := util.ConsentPageSettings{
 				DisableAutoOpenConsentPage: commonOpts.DisableAutoOpenConsentPage,
 				InteractionTimeout:         interactionTimeout,
