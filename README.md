@@ -241,11 +241,13 @@ $ export GOOGLE_APPLICATION_CREDENTIALS="~/service_account.json"
 $ oauth2l fetch --scope cloud-platform
 ```
 
-If the first `redirect_uris` in the `--credentials service_account.json` is set to `urn:ietf:wg:oauth:2.0:oob`,
-the 3LO or 2LO interactive flow is activated.
+When using an OAuth client ID file, the following applies: 
+ 
+If the first `redirect_uris` in the `--credentials client_id.json` is set to `urn:ietf:wg:oauth:2.0:oob`,
+the 3LO out of band flow is activated. NOTE: 3LO out of band flow has been deprecated and will stop working entirely in Oct 2022.
 
-If the first `redirect_uris` in the `--credentials service_account.json` is set to `http://localhost[:PORT]`,
-the 3LO loopback flow is activated. When the port is omitted, an available port will be used to spin the localhost.
+If the first `redirect_uris` in the `--credentials client_id.json` is set to `http://localhost[:PORT]`,
+the 3LO loopback flow is activated. When the port is omitted, an available port will be used to spin up the localhost.
 When a port is provided, oauth2l will attempt to use such port. If the port cannot be used, oauth2l will stop.  
 
 ### --type
