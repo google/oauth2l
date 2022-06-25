@@ -12,6 +12,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// loopback implements an authorization code localhost server that
+// handles 3LO loopback flows. (see AuthorizationCodeServer interface)
 package util
 
 import (
