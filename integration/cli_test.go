@@ -309,8 +309,8 @@ func Test3LOLoopbackFlow(t *testing.T) {
 		},
 		{
 			"fetch; 3lo loopback; old interface",
-			[]string{"fetch", "--json", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "", "pubsub",
-				"--disableAutoOpenConsentPage", "True",
+			[]string{"fetch", "--json", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "", "--scope", "pubsub",
+				"--disableAutoOpenConsentPage", "true",
 				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
 			"fetch-3lo-loopback.golden",
 			false,
