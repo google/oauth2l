@@ -402,8 +402,12 @@ $ oauth2l fetch --credentials ~/client_credentials.json --scope cloud-platform,p
 ### --disableAutoOpenConsentPage
 
 Disables the feature to automatically open the consent page in 3LO loopback flows.
-Its default value is false. When set to `true`, the user will be provided with a 
-URL to manually interact with the consent page.
+When this option is used, the user will be provided with a URL to manually interact with the consent page.
+This flag does not take any arguments. Simply add the option to disable this feature.
+
+```bash
+$ oauth2l fetch --credentials ~/client_credentials.json --disableAutoOpenConsentPage --consentPageInteractionTimeout 60 --consentPageInteractionTimeoutUnits seconds --scope cloud-platform
+```
 
 ### --consentPageInteractionTimeout
 
