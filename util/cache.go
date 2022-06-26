@@ -132,9 +132,9 @@ func createKey(settings *Settings) CacheKey {
 	// Removing redirect_uri from credentials file. This allows for dynamic
 	// localhost ports created during 3LO loopback.
 	var credentialsJSON string = settings.CredentialsJSON
-	re := regexp.MustCompile("redirect_uri=\"(.*?)\"")
+	re := regexp.MustCompile("\"redirect_uris\":\\[(.*?)\\]")
 	match := re.FindString(credentialsJSON)
-	credentialsJSON = strings.Replace(credentialsJSON, match, "redirect_uri=\"\"", 1)
+	credentialsJSON = strings.Replace(credentialsJSON, match, "redirect_uris\":[]", 1)
 
 	return CacheKey{
 		CredentialsJSON: credentialsJSON,
