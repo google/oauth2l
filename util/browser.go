@@ -12,6 +12,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// browser implements helper functions to interact with the OS's default
+// internet browser. MacOs, Windows and Linux are the only supported OS.
 package util
 
 import (
@@ -25,7 +28,6 @@ type Browser struct{}
 
 // Opens URL in a new broser tab.
 func (b *Browser) OpenURL(url string) error {
-
 	var err error
 	rt := runtime.GOOS
 
@@ -43,6 +45,5 @@ func (b *Browser) OpenURL(url string) error {
 	if err != nil {
 		return fmt.Errorf("Unable to open browser window for runtime: %s: %v", rt, err)
 	}
-
 	return nil
 }

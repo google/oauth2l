@@ -378,11 +378,9 @@ func Test3LOLoopbackFlow(t *testing.T) {
 	}
 
 	process3LOOutput := func(output string) string {
-
 		re := regexp.MustCompile("redirect_uri=http%3A%2F%2Flocalhost%3A\\d+")
 		match := re.FindString(output)
 		output = strings.Replace(output, match, "redirect_uri=http%3A%2F%2Flocalhost", 1)
-
 		return output
 	}
 
