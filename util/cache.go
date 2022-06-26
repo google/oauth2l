@@ -134,7 +134,7 @@ func createKey(settings *Settings) CacheKey {
 	var credentialsJSON string = settings.CredentialsJSON
 	re := regexp.MustCompile("\"redirect_uris\":\\[(.*?)\\]")
 	match := re.FindString(credentialsJSON)
-	credentialsJSON = strings.Replace(credentialsJSON, match, "redirect_uris\":[]", 1)
+	credentialsJSON = strings.Replace(credentialsJSON, match, "\"redirect_uris\":[]", 1)
 
 	return CacheKey{
 		CredentialsJSON: credentialsJSON,
