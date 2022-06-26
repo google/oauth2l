@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"golang.org/x/oauth2"
@@ -128,12 +129,12 @@ func loadCache() (map[string][]byte, error) {
 }
 
 func createKey(settings *Settings) CacheKey {
-
+	// Removing redirect_uri from credentials file. This allows for dynamic
+	// localhost ports created during 3LO loopback.
 	var credentialsJSON string = settings.CredentialsJSON
-
-	if settings.OverriddenURI.NewURI != settings.OverriddenURI.OriginalURI {
-		credentialsJSON = strings.Replace(credentialsJSON, "\""+settings.OverriddenURI.NewURI+"\"", "\""+settings.OverriddenURI.OriginalURI+"\"", -1)
-	}
+	re := regexp.MustCompile("redirect_uri=\"(.*?)\"")
+	match := re.FindString(credentialsJSON)
+	credentialsJSON = strings.Replace(credentialsJSON, match, "redirect_uri=\"\"", 1)
 
 	return CacheKey{
 		CredentialsJSON: credentialsJSON,

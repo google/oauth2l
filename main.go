@@ -15,7 +15,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/url"
@@ -465,34 +464,28 @@ func main() {
 				InteractionTimeout:         interactionTimeout,
 			}
 
-			redirectUri, err := getFirstRedirectURI(json)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
+			redirectUri, err := util.GetFirstRedirectURI(json)
+			if err == nil {
+				// 3LO Loopback case
+				if strings.Contains(redirectUri, "localhost") {
+					authCodeServer = &util.AuthorizationCodeLocalhost{
+						ConsentPageSettings: consentPageSettings,
+						AuthCodeReqStatus: util.AuthorizationCodeStatus{
+							Status: util.WAITING, Details: "Authorization code not yet set."},
+					}
 
-			overridenURI := util.OverriddenURI{}
+					// Start localhost server
+					adr, err := authCodeServer.ListenAndServe(redirectUri)
+					if err != nil {
+						fmt.Println(err)
+						return
+					}
 
-			// 3LO Loopback case
-			if strings.Contains(redirectUri, "localhost") {
-
-				authCodeServer = &util.AuthorizationCodeLocalhost{
-					ConsentPageSettings: consentPageSettings,
-					AuthCodeReqStatus: util.AuthorizationCodeStatus{
-						Status: util.WAITING, Details: "Authorization code not yet set."},
-				}
-
-				adr, err := authCodeServer.ListenAndServe(redirectUri)
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
-
-				overridenURI.OriginalURI = redirectUri
-				overridenURI.NewURI = adr
-
-				if overridenURI.NewURI != overridenURI.OriginalURI {
-					json = strings.Replace(json, "\""+overridenURI.OriginalURI+"\"", "\""+overridenURI.NewURI+"\"", -1)
+					// If a different dynamic redirect uri was created, replace the redirect uri in file.
+					// this happens if the original redirect does not have a port for the localhost.
+					redirectUri = fmt.Sprintf("\"%s\"", redirectUri)
+					adr = fmt.Sprintf("\"%s\"", adr)
+					json = util.ReplaceContentAll(json, redirectUri, adr)
 				}
 			}
 
@@ -509,7 +502,6 @@ func main() {
 				ServiceAccount:  serviceAccount,
 				Email:           email,
 				AuthType:        util.AuthTypeOAuth,
-				OverriddenURI:   overridenURI,
 			}
 		}
 
@@ -541,49 +533,4 @@ func main() {
 		setCacheLocation(opts.Reset.Cache)
 		util.Reset()
 	}
-}
-
-// getFirstRedirectURI returns the the first URI in "redirect_uris"
-//
-// credentialsJSON represents the credentials json file.
-//
-// Returns firstRedirectURI: is the address of the first URI in "redirect_uris".
-// Returns err: if nuable to process the credentialsJSON file.
-func getFirstRedirectURI(credentialsJSON string) (firstRedirectURI string, err error) {
-
-	type cred struct {
-		RedirectURIs []string `json:"redirect_uris"`
-	}
-	var j struct {
-		Web       *cred `json:"web"`
-		Installed *cred `json:"installed"`
-	}
-
-	data := []byte(credentialsJSON)
-	if err := json.Unmarshal(data, &j); err != nil {
-		// TODO: throw error once 2LO becomes unsupported
-		// Let lower layers take care of non 3LO-Loopback (or malformed json)
-		// This affects empty credentials (env. var. GOOGLE_APPLICATION_CREDENTIALS case).
-		return "", nil
-	}
-
-	var credObj *cred
-	switch {
-	case j.Web != nil:
-		credObj = j.Web
-	case j.Installed != nil:
-		credObj = j.Installed
-	default:
-		// TODO: throw error once 2LO becomes unsupported
-		// Let lower layers take care of non 3LO-Loopback (or malformed json)
-		return "", nil
-	}
-
-	// TODO: throw error once 2LO becomes unsupported
-	//  Let lower layers take care of non 3LO-Loopback (or malformed json)
-	if len(credObj.RedirectURIs) < 1 {
-		return "", nil
-	}
-
-	return credObj.RedirectURIs[0], nil
 }

@@ -53,15 +53,6 @@ type Settings struct {
 	// Used for Service Account Impersonation.
 	// Exchange User access token for Service Account access token.
 	ServiceAccount string
-
-	// Overridden URI in credential json file.
-	// If Original URI and NewUri are the same, then nothing was overriden.
-	OverriddenURI OverriddenURI
-}
-
-type OverriddenURI struct {
-	OriginalURI string
-	NewURI      string
 }
 
 func (s Settings) GetAuthType() string {
