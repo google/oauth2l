@@ -17,7 +17,6 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
-	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -25,8 +24,6 @@ import (
 
 	"github.com/google/oauth2l/util"
 	"github.com/jessevdk/go-flags"
-
-	"golang.org/x/oauth2/authhandler"
 )
 
 const (
@@ -145,76 +142,6 @@ func readJSON(file string) (string, error) {
 	return "", nil
 }
 
-// 3LO authorization handler. Determines what algorithm to use
-// to get the authorization code.
-//
-// Note that the "state" parameter is used to prevent CSRF attacks.
-func cmdAuthorizationHandler(state string, consentSettings util.ConsentPageSettings,
-	authCodeServer *util.AuthorizationCodeServer) authhandler.AuthorizationHandler {
-	return func(authCodeURL string) (string, string, error) {
-
-		decodedValue, _ := url.ParseQuery(authCodeURL)
-		redirectURL := decodedValue.Get("redirect_uri")
-
-		if strings.Contains(redirectURL, "localhost") {
-			return cmdAuthorizationLoopback(authCodeURL, consentSettings, authCodeServer)
-		}
-
-		return cmdAuthorizationInteractive(state, authCodeURL)
-	}
-}
-
-// Interactive 3LO authorization. Prints the authorization URL on stdout
-// and reads the authorization code from stdin.
-//
-// Note that the "state" parameter is used to prevent CSRF attacks.
-// For convenience, cmdAuthorizationInteractive returns a pre-configured state
-// instead of requiring the user to copy it from the browser.
-func cmdAuthorizationInteractive(state string, authCodeURL string) (string, string, error) {
-	fmt.Printf("Go to the following link in your browser:\n\n   %s\n\n", authCodeURL)
-	fmt.Println("Enter authorization code:")
-	var code string
-	fmt.Scanln(&code)
-	return code, state, nil
-}
-
-// Loopback 3LO authorization. Prints the authorization URL on stdout
-// and opens a new browser window and redirects it to the authCodeURL.
-// It then reads the authorization code from a localhost endpoint.
-//
-// Note that the "state" parameter is used to prevent CSRF attacks.
-// For convenience, cmdAuthorizationLoopback returns the state
-// associated with the authorization code sent to the localhost.
-func cmdAuthorizationLoopback(authCodeURL string, consentSettings util.ConsentPageSettings,
-	authCodeServer *util.AuthorizationCodeServer) (string, string, error) {
-
-	const (
-		// Max wait time for the server to start listening and serving
-		maxWaitForListenAndServe time.Duration = 10 * time.Second
-	)
-
-	started, _ := (*authCodeServer).WaitForListeningAndServing(maxWaitForListenAndServe)
-
-	if started {
-
-		// Auto open consent disabled - true case
-		if consentSettings.DisableAutoOpenConsentPage {
-			fmt.Println("Go to the following link in your browser:")
-			fmt.Println("\n", authCodeURL)
-		} else {
-			fmt.Println("Your browser has been opened to visit:")
-			fmt.Println("\n", authCodeURL)
-
-			b := util.Browser{}
-			b.OpenURL(authCodeURL)
-		}
-
-		(*authCodeServer).WaitForConsentPageToReturnControl()
-	}
-	code, err := (*authCodeServer).GetAuthenticationCode()
-	return code.Code, code.State, err
-}
-
 // Append Google OAuth scope prefix if not provided and joins
 // the slice into a whitespace-separated string.
 func parseScopes(scopes []string) string {
@@ -256,7 +183,6 @@ func getCommonFetchOptions(cmdOpts commandOptions, cmd string) commonFetchOption
 
 // Generates a time duration
 func getTimeDuration(quantity int, units string) (time.Duration, error) {
-
 	switch units {
 	case "seconds":
 		return time.Duration(quantity) * time.Second, nil
@@ -321,7 +247,6 @@ func getInfoOptions(cmdOpts commandOptions, cmd string) infoOptions {
 }
 
 func main() {
-
 	var authCodeServer util.AuthorizationCodeServer = nil
 	defer func() {
 		if authCodeServer != nil {
@@ -494,7 +419,7 @@ func main() {
 			settings = &util.Settings{
 				CredentialsJSON: json,
 				Scope:           parseScopes(scopes),
-				AuthHandler:     cmdAuthorizationHandler(defaultState, consentPageSettings, &authCodeServer),
+				AuthHandler:     util.Get3LOAuthorizationHandler(defaultState, consentPageSettings, &authCodeServer),
 				State:           defaultState,
 				Audience:        audience,
 				QuotaProject:    quotaProject,

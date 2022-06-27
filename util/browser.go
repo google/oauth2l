@@ -30,7 +30,6 @@ type Browser struct{}
 func (b *Browser) OpenURL(url string) error {
 	var err error
 	rt := runtime.GOOS
-
 	switch rt {
 	case "darwin":
 		err = exec.Command("open", url).Start()
