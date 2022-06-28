@@ -404,7 +404,7 @@ func main() {
 				// this happens if the original redirect does not have a port for the localhost.
 				redirectUri = fmt.Sprintf("\"%s\"", redirectUri)
 				adr = fmt.Sprintf("\"%s\"", adr)
-				json = util.ReplaceContentAll(json, redirectUri, adr)
+				json = strings.Replace(json, redirectUri, adr, -1)
 			}
 
 			// 3LO or 2LO depending on the credential type.

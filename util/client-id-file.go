@@ -18,8 +18,6 @@
 package util
 
 import (
-	"strings"
-
 	"golang.org/x/oauth2/google"
 )
 
@@ -53,17 +51,4 @@ func GetFirstRedirectURI(credentialsJSON string) (firstRedirectURI string, err e
 	}
 
 	return credentials.RedirectURL, nil
-}
-
-// ReplaceContentAll replaces content in the credentials json file with new content.
-// There is no limit on the number of replacements.
-//
-// credentialsJSON represents the credentials json file.
-//
-// Returns newCredentialsJSON: represents the modified credentials json file.
-func ReplaceContentAll(credentialsJSON string, replaceContent string, replacementContent string) (newCredentialsJSON string) {
-	if replaceContent == replacementContent {
-		return credentialsJSON
-	}
-	return strings.Replace(credentialsJSON, replaceContent, replacementContent, -1)
 }
