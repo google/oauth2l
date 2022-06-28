@@ -47,7 +47,7 @@ func Get3LOAuthorizationHandler(state string, consentSettings ConsentPageSetting
 // and reads the authorization code from stdin.
 //
 // Note that the "state" parameter is used to prevent CSRF attacks.
-// For convenience, cmdAuthorizationInteractive returns a pre-configured state
+// For convenience, authorization3LOOutOfBand returns a pre-configured state
 // instead of requiring the user to copy it from the browser.
 func authorization3LOOutOfBand(state string, authCodeURL string) (string, string, error) {
 	fmt.Printf("Go to the following link in your browser:\n\n   %s\n\n", authCodeURL)
@@ -64,7 +64,7 @@ func authorization3LOOutOfBand(state string, authCodeURL string) (string, string
 //
 // The code and state output parameters in this function are the same
 // as the ones generated after the user grants permission on the consent page.
-// When the user interacts with the consent page, an error or a code-status-tuple
+// When the user interacts with the consent page, an error or a code-state-tuple
 // is expected to be returned to the Auth Code Localhost Server endpoint
 // (see loopback.go for more info).
 func authorization3LOLoopback(authCodeURL string, consentSettings ConsentPageSettings,
