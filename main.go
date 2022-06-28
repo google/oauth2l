@@ -378,20 +378,19 @@ func main() {
 				return
 			}
 
-			interactionTimeout, err := getTimeDuration(commonOpts.ConsentPageInteractionTimeout, commonOpts.ConsentPageInteractionTimeoutUnits)
-			if err != nil {
-				fmt.Println("Failed to create time.Duration: " + err.Error())
-				return
-			}
-
-			consentPageSettings := util.ConsentPageSettings{
-				DisableAutoOpenConsentPage: commonOpts.DisableAutoOpenConsentPage,
-				InteractionTimeout:         interactionTimeout,
-			}
-
+			var consentPageSettings util.ConsentPageSettings
 			redirectUri, err := util.GetFirstRedirectURI(json)
 			// 3LO Loopback case
 			if err == nil && strings.Contains(redirectUri, "localhost") {
+				interactionTimeout, err := getTimeDuration(commonOpts.ConsentPageInteractionTimeout, commonOpts.ConsentPageInteractionTimeoutUnits)
+				if err != nil {
+					fmt.Println("Failed to create time.Duration: " + err.Error())
+					return
+				}
+				consentPageSettings = util.ConsentPageSettings{
+					DisableAutoOpenConsentPage: commonOpts.DisableAutoOpenConsentPage,
+					InteractionTimeout:         interactionTimeout,
+				}
 				authCodeServer = &util.AuthorizationCodeLocalhost{
 					ConsentPageSettings: consentPageSettings,
 					AuthCodeReqStatus: util.AuthorizationCodeStatus{
