@@ -20,11 +20,10 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/google/oauth2l/util"
 	"github.com/jessevdk/go-flags"
-
-	"golang.org/x/oauth2/authhandler"
 )
 
 const (
@@ -84,6 +83,11 @@ type commonFetchOptions struct {
 	// Refresh is used for 3LO flow. When used in conjunction with caching, the user can avoid re-authorizing.
 	Refresh bool `long:"refresh" description:"If the cached access token is expired, attempt to refresh it using refreshToken."`
 
+	// Consent page parameters.
+	DisableAutoOpenConsentPage         bool   `long:"disableAutoOpenConsentPage" description:"Disables the ability to open the consent page automatically."`
+	ConsentPageInteractionTimeout      int    `long:"consentPageInteractionTimeout" description:"Maximum wait time for user to interact with consent page." default:"2"`
+	ConsentPageInteractionTimeoutUnits string `long:"consentPageInteractionTimeoutUnits" choice:"seconds" choice:"minutes" description:"Consent page timeout units." default:"minutes"`
+
 	// Deprecated flags kept for backwards compatibility. Hidden from help page.
 	Json      string `long:"json" description:"Deprecated. Same as --credentials." hidden:"true"`
 	Jwt       bool   `long:"jwt" description:"Deprecated. Same as --type jwt." hidden:"true"`
@@ -138,22 +142,6 @@ func readJSON(file string) (string, error) {
 	return "", nil
 }
 
-// Default 3LO authorization handler. Prints the authorization URL on stdout
-// and reads the authorization code from stdin.
-//
-// Note that the "state" parameter is used to prevent CSRF attacks.
-// For convenience, CmdAuthorizationHandler returns a pre-configured state
-// instead of requiring the user to copy it from the browser.
-func cmdAuthorizationHandler(state string) authhandler.AuthorizationHandler {
-	return func(authCodeURL string) (string, string, error) {
-		fmt.Printf("Go to the following link in your browser:\n\n   %s\n\n", authCodeURL)
-		fmt.Println("Enter authorization code:")
-		var code string
-		fmt.Scanln(&code)
-		return code, state, nil
-	}
-}
-
 // Append Google OAuth scope prefix if not provided and joins
 // the slice into a whitespace-separated string.
 func parseScopes(scopes []string) string {
@@ -191,6 +179,18 @@ func getCommonFetchOptions(cmdOpts commandOptions, cmd string) commonFetchOption
 		commonOpts = cmdOpts.Curl.commonFetchOptions
 	}
 	return commonOpts
+}
+
+// Generates a time duration
+func getTimeDuration(quantity int, units string) (time.Duration, error) {
+	switch units {
+	case "seconds":
+		return time.Duration(quantity) * time.Second, nil
+	case "minutes":
+		return time.Duration(quantity) * time.Minute, nil
+	default:
+		return time.Duration(0), fmt.Errorf("Invalid units: %s", units)
+	}
 }
 
 // Get the authentication type, with backward compatibility.
@@ -371,12 +371,48 @@ func main() {
 				return
 			}
 
+			var authCodeServer util.AuthorizationCodeServer = nil
+			var consentPageSettings util.ConsentPageSettings
+			redirectUri, err := util.GetFirstRedirectURI(json)
+			// 3LO Loopback case
+			if err == nil && strings.Contains(redirectUri, "localhost") {
+				interactionTimeout, err := getTimeDuration(commonOpts.ConsentPageInteractionTimeout, commonOpts.ConsentPageInteractionTimeoutUnits)
+				if err != nil {
+					fmt.Println("Failed to create time.Duration: " + err.Error())
+					return
+				}
+				consentPageSettings = util.ConsentPageSettings{
+					DisableAutoOpenConsentPage: commonOpts.DisableAutoOpenConsentPage,
+					InteractionTimeout:         interactionTimeout,
+				}
+				authCodeServer = &util.AuthorizationCodeLocalhost{
+					ConsentPageSettings: consentPageSettings,
+					AuthCodeReqStatus: util.AuthorizationCodeStatus{
+						Status: util.WAITING, Details: "Authorization code not yet set."},
+				}
+
+				// Start localhost server
+				adr, err := authCodeServer.ListenAndServe(redirectUri)
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+				// Close localhost server's port on exit
+				defer authCodeServer.Close()
+
+				// If a different dynamic redirect uri was created, replace the redirect uri in file.
+				// this happens if the original redirect does not have a port for the localhost.
+				redirectUri = fmt.Sprintf("\"%s\"", redirectUri)
+				adr = fmt.Sprintf("\"%s\"", adr)
+				json = strings.Replace(json, redirectUri, adr, -1)
+			}
+
 			// 3LO or 2LO depending on the credential type.
-			// For 2LO flow AuthHandler and State are not needed.
+			// For 2LO flow AuthHandler, State and ConsentPageSettings are not needed.
 			settings = &util.Settings{
 				CredentialsJSON: json,
 				Scope:           parseScopes(scopes),
-				AuthHandler:     cmdAuthorizationHandler(defaultState),
+				AuthHandler:     util.Get3LOAuthorizationHandler(defaultState, consentPageSettings, &authCodeServer),
 				State:           defaultState,
 				Audience:        audience,
 				QuotaProject:    quotaProject,

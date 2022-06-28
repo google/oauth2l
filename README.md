@@ -241,6 +241,15 @@ $ export GOOGLE_APPLICATION_CREDENTIALS="~/service_account.json"
 $ oauth2l fetch --scope cloud-platform
 ```
 
+When using an OAuth client ID file, the following applies: 
+ 
+If the first `redirect_uris` in the `--credentials client_id.json` is set to `urn:ietf:wg:oauth:2.0:oob`,
+the 3LO out of band flow is activated. NOTE: 3LO out of band flow has been deprecated and will stop working entirely in Oct 2022.
+
+If the first `redirect_uris` in the `--credentials client_id.json` is set to `http://localhost[:PORT]`,
+the 3LO loopback flow is activated. When the port is omitted, an available port will be used to spin up the localhost.
+When a port is provided, oauth2l will attempt to use such port. If the port cannot be used, oauth2l will stop.  
+
 ### --type
 
 The authentication type. The currently supported types are "oauth", "jwt", or
@@ -389,6 +398,28 @@ Impersonation [here](https://cloud.google.com/iam/docs/impersonating-service-acc
 ```bash
 $ oauth2l fetch --credentials ~/client_credentials.json --scope cloud-platform,pubsub --impersonate-service-account 113258942105700140798
 ```
+
+### --disableAutoOpenConsentPage
+
+Disables the feature to automatically open the consent page in 3LO loopback flows.
+When this option is used, the user will be provided with a URL to manually interact with the consent page.
+This flag does not take any arguments. Simply add the option to disable this feature.
+
+```bash
+$ oauth2l fetch --credentials ~/client_credentials.json --disableAutoOpenConsentPage --consentPageInteractionTimeout 60 --consentPageInteractionTimeoutUnits seconds --scope cloud-platform
+```
+
+### --consentPageInteractionTimeout
+
+Amount of time to wait for a user to interact with the consent page in 3LO loopback flows.
+Once the time has lapsed, the localhost at the `redirect_uri` will no longer be available.  
+Its default value is 2. See `--consentPageInteractionTimeoutUnits` to change the units.
+
+### --consentPageInteractionTimeoutUnits
+
+Units of measurement to use when `--consentPageInteractionTimeout` is set.
+Its default value is `minutes`. Valid inputs are `seconds` and `minutes`.
+This option only affects 3LO loopback flows.
 
 ### fetch --output_format
 

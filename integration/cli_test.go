@@ -25,6 +25,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -217,6 +218,8 @@ func TestCLI(t *testing.T) {
 	runTestScenarios(t, tests)
 }
 
+// TODO: Remove this flow when the 3LO flow is deprecated. A replicated set of test is now part of Test3LOLoopbackFlow.
+// tests in Test3LOLoopbackFlow have been updated to account for new outputs.
 // Test OAuth 3LO flow with fake client secrets. Fake verification code is injected to stdin to advance the flow.
 func Test3LOFlow(t *testing.T) {
 	tests := []testCase{
@@ -288,6 +291,100 @@ func Test3LOFlow(t *testing.T) {
 		},
 	}
 	runTestScenariosWithInput(t, tests, newFixture(t, "fake-verification-code.fixture").asFile())
+}
+
+// TODO: Enhance tests so that the entire loopback flow can be tested
+// TODO: Once enhanced, uncomment and fix cache tests in this flow
+// TODO: Remove Test3LOFlow once the 3LO flow is deprecated
+// Test OAuth 3LO loopback flow with fake client secrets. Stops waiting for consent page interaction to advance the flow.
+func Test3LOLoopbackFlow(t *testing.T) {
+	tests := []testCase{
+		{
+			"fetch; 3lo loopback",
+			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
+				"--disableAutoOpenConsentPage",
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+			"fetch-3lo-loopback.golden",
+			false,
+		},
+		{
+			"fetch; 3lo loopback; old interface",
+			[]string{"fetch", "--json", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "", "pubsub",
+				"--disableAutoOpenConsentPage",
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+			"fetch-3lo-loopback.golden",
+			false,
+		},
+		{
+			"fetch; 3lo loopback; userinfo scopes",
+			[]string{"fetch", "--scope", "userinfo.profile,userinfo.email", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds",
+				"--disableAutoOpenConsentPage"},
+			"fetch-3lo-loopback-userinfo.golden",
+			false,
+		},
+		{
+			"header; 3lo loopback",
+			[]string{"header", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds",
+				"--disableAutoOpenConsentPage"},
+			"header-3lo-loopback.golden",
+			false,
+		},
+		{
+			"fetch; 3lo loopback; refresh token output format",
+			[]string{"fetch", "--output_format", "refresh_token", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds",
+				"--disableAutoOpenConsentPage"},
+			"fetch-3lo-loopback-refresh-token.golden",
+			false,
+		},
+		{
+			"curl; 3lo loopback",
+			[]string{"curl", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--url", "http://localhost:8080/curl",
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds",
+				"--disableAutoOpenConsentPage"},
+			"curl-3lo-loopback.golden",
+			false,
+		},
+		/*
+			{
+				"fetch; 3lo loopback cached",
+				[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"fetch-3lo-cached.golden",
+				false,
+			},
+			{
+				"fetch; 3lo loopback insert expired token into cache",
+				[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json",
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"fetch-3lo.golden",
+				false,
+			},
+			{
+				"fetch; 3lo loopback cached; token expired",
+				[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json",
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"fetch-3lo.golden",
+				false,
+			},
+			{
+				"fetch; 3lo loopback cached; refresh expired token",
+				[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json", "--refresh",
+				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"fetch-3lo-cached.golden",
+				false,
+			},*/
+	}
+
+	process3LOOutput := func(output string) string {
+		re := regexp.MustCompile("redirect_uri=http%3A%2F%2Flocalhost%3A\\d+")
+		match := re.FindString(output)
+		output = strings.Replace(output, match, "redirect_uri=http%3A%2F%2Flocalhost", 1)
+		return output
+	}
+
+	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, process3LOOutput)
 }
 
 // Test OAuth 2LO Flow with fake service account.
@@ -408,6 +505,7 @@ func TestStsFlow(t *testing.T) {
 // Test Service Account Impersonation Flow.
 // This currently sends request to the real IAM endpoint, which will return 401 for having invalid user access token, which is expected.
 func TestServiceAccountImpersonationFlow(t *testing.T) {
+
 	tests := []testCase{
 		{
 			"fetch; sso; impersonation",
@@ -416,7 +514,26 @@ func TestServiceAccountImpersonationFlow(t *testing.T) {
 			false,
 		},
 	}
-	runTestScenarios(t, tests)
+
+	processOutput := func(output string) string {
+
+		method := "\"method\": \"google.iam.credentials.v1.IAMCredentials.GenerateAccessToken\""
+		service := "\"service\": \"iamcredentials.googleapis.com\""
+
+		mPos := strings.Index(output, method)
+		sPos := strings.Index(output, service)
+
+		// If service appears later than method, revert order to match output
+		if sPos > mPos {
+			output = strings.Replace(output, method, "**MARKER-1**", 1)
+			output = strings.Replace(output, service, method, 1)
+			output = strings.Replace(output, "**MARKER-1**", service, 1)
+		}
+
+		return output
+	}
+
+	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processOutput)
 }
 
 func readFile(path string) string {
