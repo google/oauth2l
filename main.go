@@ -390,28 +390,26 @@ func main() {
 			}
 
 			redirectUri, err := util.GetFirstRedirectURI(json)
-			if err == nil {
-				// 3LO Loopback case
-				if strings.Contains(redirectUri, "localhost") {
-					authCodeServer = &util.AuthorizationCodeLocalhost{
-						ConsentPageSettings: consentPageSettings,
-						AuthCodeReqStatus: util.AuthorizationCodeStatus{
-							Status: util.WAITING, Details: "Authorization code not yet set."},
-					}
-
-					// Start localhost server
-					adr, err := authCodeServer.ListenAndServe(redirectUri)
-					if err != nil {
-						fmt.Println(err)
-						return
-					}
-
-					// If a different dynamic redirect uri was created, replace the redirect uri in file.
-					// this happens if the original redirect does not have a port for the localhost.
-					redirectUri = fmt.Sprintf("\"%s\"", redirectUri)
-					adr = fmt.Sprintf("\"%s\"", adr)
-					json = util.ReplaceContentAll(json, redirectUri, adr)
+			// 3LO Loopback case
+			if err == nil && strings.Contains(redirectUri, "localhost") {
+				authCodeServer = &util.AuthorizationCodeLocalhost{
+					ConsentPageSettings: consentPageSettings,
+					AuthCodeReqStatus: util.AuthorizationCodeStatus{
+						Status: util.WAITING, Details: "Authorization code not yet set."},
 				}
+
+				// Start localhost server
+				adr, err := authCodeServer.ListenAndServe(redirectUri)
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+
+				// If a different dynamic redirect uri was created, replace the redirect uri in file.
+				// this happens if the original redirect does not have a port for the localhost.
+				redirectUri = fmt.Sprintf("\"%s\"", redirectUri)
+				adr = fmt.Sprintf("\"%s\"", adr)
+				json = util.ReplaceContentAll(json, redirectUri, adr)
 			}
 
 			// 3LO or 2LO depending on the credential type.
