@@ -397,7 +397,7 @@ func main() {
 					fmt.Println(err)
 					return
 				}
-				// Closing server port on exit
+				// Close localhost server's port on exit
 				defer authCodeServer.Close()
 
 				// If a different dynamic redirect uri was created, replace the redirect uri in file.

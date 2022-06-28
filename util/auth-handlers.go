@@ -81,11 +81,14 @@ func authorization3LOLoopback(authCodeURL string, consentSettings ConsentPageSet
 			fmt.Println("Go to the following link in your browser:")
 			fmt.Println("\n", authCodeURL)
 		} else { // Auto open consent
-			fmt.Println("Your browser has been opened to visit:")
-			fmt.Println("\n", authCodeURL)
-
 			b := Browser{}
-			b.OpenURL(authCodeURL)
+			if be := b.OpenURL(authCodeURL); be != nil {
+				fmt.Println("Your browser could not be opened to visit:")
+				fmt.Println("\n", authCodeURL)
+			} else {
+				fmt.Println("Your browser has been opened to visit:")
+				fmt.Println("\n", authCodeURL)
+			}
 		}
 
 		// (Step 3) Wait for user to interact with consent page
