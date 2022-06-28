@@ -247,13 +247,6 @@ func getInfoOptions(cmdOpts commandOptions, cmd string) infoOptions {
 }
 
 func main() {
-	var authCodeServer util.AuthorizationCodeServer = nil
-	defer func() {
-		if authCodeServer != nil {
-			authCodeServer.Close()
-		}
-	}()
-
 	// Parse command-line flags via "go-flags" library
 	parser := flags.NewParser(&opts, flags.Default)
 
@@ -378,6 +371,7 @@ func main() {
 				return
 			}
 
+			var authCodeServer util.AuthorizationCodeServer = nil
 			var consentPageSettings util.ConsentPageSettings
 			redirectUri, err := util.GetFirstRedirectURI(json)
 			// 3LO Loopback case
@@ -403,6 +397,8 @@ func main() {
 					fmt.Println(err)
 					return
 				}
+				// Closing server port on exit
+				defer authCodeServer.Close()
 
 				// If a different dynamic redirect uri was created, replace the redirect uri in file.
 				// this happens if the original redirect does not have a port for the localhost.
