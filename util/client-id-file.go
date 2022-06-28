@@ -44,7 +44,7 @@ func IsValidOauthClientIdFile(credentialsJSON string) (isValidCredFile bool) {
 // credentialsJSON represents the credentials json file.
 //
 // Returns firstRedirectURI: is the address of the first URI in "redirect_uris".
-// Returns err: if nuable to process the credentialsJSON file.
+// Returns err: if unable to process the credentialsJSON file.
 func GetFirstRedirectURI(credentialsJSON string) (firstRedirectURI string, err error) {
 	data := []byte(credentialsJSON)
 	credentials, err := google.ConfigFromJSON(data)

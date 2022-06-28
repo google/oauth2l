@@ -218,7 +218,7 @@ func TestCLI(t *testing.T) {
 	runTestScenarios(t, tests)
 }
 
-// TODO: Remove thsi flow when the 3LO flow is deprecated. A replicated set of test is now part of Test3LOLoopbackFlow.
+// TODO: Remove this flow when the 3LO flow is deprecated. A replicated set of test is now part of Test3LOLoopbackFlow.
 // tests in Test3LOLoopbackFlow have been updated to account for new outputs.
 // Test OAuth 3LO flow with fake client secrets. Fake verification code is injected to stdin to advance the flow.
 func Test3LOFlow(t *testing.T) {
