@@ -45,7 +45,6 @@ const (
 // AuthorizationCodeServer represents a localhost server
 // that handles the Loopback 3LO authorization
 type AuthorizationCodeServer interface {
-
 	// Starts listening and serving on the provided address.
 	// If no port is specified in the address, an available port is assigned.
 	//
@@ -123,7 +122,6 @@ type AuthorizationCodeLocalhost struct {
 }
 
 func (lh *AuthorizationCodeLocalhost) ListenAndServe(address string) (serverAddress string, err error) {
-
 	listener, serverAddress, err := getListener(address)
 	if err != nil {
 		return "", fmt.Errorf("Unable to Listen: %v", err)
@@ -148,7 +146,6 @@ func (lh *AuthorizationCodeLocalhost) ListenAndServe(address string) (serverAddr
 }
 
 func (lh *AuthorizationCodeLocalhost) Close() {
-
 	if lh.server == nil {
 		return
 	}
@@ -160,7 +157,6 @@ func (lh *AuthorizationCodeLocalhost) Close() {
 }
 
 func (lh *AuthorizationCodeLocalhost) IsListeningAndServing() (isLisAndServ bool) {
-
 	if lh.server == nil {
 		return false
 	}
@@ -170,7 +166,6 @@ func (lh *AuthorizationCodeLocalhost) IsListeningAndServing() (isLisAndServ bool
 }
 
 func (lh *AuthorizationCodeLocalhost) WaitForListeningAndServing(maxWaitTime time.Duration) (isLisAndServ bool, err error) {
-
 	if lh.server == nil {
 		return false, fmt.Errorf("Server has not been set.")
 	}
@@ -191,21 +186,17 @@ func (lh *AuthorizationCodeLocalhost) WaitForListeningAndServing(maxWaitTime tim
 	if !lh.IsListeningAndServing() {
 		return false, fmt.Errorf("Timed out.")
 	}
-
 	return true, nil
 }
 
 func (lh *AuthorizationCodeLocalhost) GetAuthenticationCode() (authCode AuthorizationCode, err error) {
-
 	if lh.AuthCodeReqStatus.Status != GRANTED {
 		return lh.authCode, fmt.Errorf(lh.AuthCodeReqStatus.Details)
 	}
-
 	return lh.authCode, nil
 }
 
 func (lh *AuthorizationCodeLocalhost) WaitForConsentPageToReturnControl() (err error) {
-
 	if lh.server == nil {
 		return fmt.Errorf("Server has not been set.")
 	}
@@ -226,13 +217,11 @@ func (lh *AuthorizationCodeLocalhost) WaitForConsentPageToReturnControl() (err e
 	if lh.AuthCodeReqStatus.Status == WAITING {
 		return fmt.Errorf("Timed out.")
 	}
-
 	return nil
 }
 
 // redirectUriHandler handles the redirect logic when aquiring the authorization code.
 func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, r *http.Request) {
-
 	const (
 		closeTab string = ". Please close this tab."
 	)
@@ -313,7 +302,6 @@ func (lh *AuthorizationCodeLocalhost) statusGetHandler(w http.ResponseWriter, r 
 // Returns serverAddress: is the address of the listener. Its format is http://localhost[:port]
 // Returns err: if not nil an error occurred when creating the listener.
 func getListener(address string) (listener *net.Listener, serverAddress string, err error) {
-
 	var l net.Listener = nil
 
 	re := regexp.MustCompile("localhost:\\d+")
@@ -334,6 +322,5 @@ func getListener(address string) (listener *net.Listener, serverAddress string, 
 	tcpPort := (l).Addr().(*net.TCPAddr).Port
 	// Updating redirect uri to reflect port to use.
 	localhostAddr := "http://localhost:" + strconv.Itoa(tcpPort)
-
 	return &l, localhostAddr, nil
 }
