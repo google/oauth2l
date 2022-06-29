@@ -238,16 +238,12 @@ func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, 
 		return
 	}
 
-	// Getting query key value pairs
-	queryKVP := make(map[string][]string)
-	for k, v := range urlValues {
-		queryKVP[k] = v
-	}
-
-	urlErrors := queryKVP["error"]
+	urlError := urlValues.Get("error")
 	// Authentication Code Error from consent page
-	if len(urlErrors) != 0 {
-		err := fmt.Sprintf("Error(s) occurred when getting authorization code: %q", urlErrors)
+	if urlError != "" {
+		err := fmt.Sprintf("An error occurred when getting authorization code: %s",
+			urlValues.Get("error"))
+
 		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err}
 		lh.authCode = AuthorizationCode{}
 		w.WriteHeader(http.StatusOK)
@@ -255,10 +251,10 @@ func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, 
 		return
 	}
 
-	urlCodes := queryKVP["code"]
-	urlStates := queryKVP["state"]
+	urlCode := urlValues.Get("code")
+	urlState := urlValues.Get("state")
 	// No Code, Status, or Error is treated as unknown error
-	if len(urlCodes) == 0 && len(urlStates) == 0 {
+	if urlCode == "" && urlState == "" {
 		err := "Unknown error when getting athorization code"
 		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err}
 
@@ -269,10 +265,11 @@ func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, 
 	}
 
 	//  Authorization code returned
-	if len(urlCodes) != 0 && len(urlStates) != 0 {
+	if urlCode != "" && urlState != "" {
+
 		lh.authCode = AuthorizationCode{
-			Code:  urlCodes[0],
-			State: urlStates[0],
+			Code:  urlValues.Get("code"),
+			State: urlValues.Get("state"),
 		}
 
 		lh.AuthCodeReqStatus = AuthorizationCodeStatus{
