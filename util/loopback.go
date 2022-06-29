@@ -238,11 +238,10 @@ func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, 
 		return
 	}
 
+	urlError := urlValues.Get("error")
 	// Authentication Code Error from consent page
-	if urlValues.Has("error") {
-		err := fmt.Sprintf("An error occurred when getting authorization code: %s",
-			urlValues.Get("error"))
-
+	if urlError != "" {
+		err := fmt.Sprintf("An error occurred when getting authorization code: %s", urlError)
 		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err}
 		lh.authCode = AuthorizationCode{}
 		w.WriteHeader(http.StatusOK)
@@ -250,8 +249,10 @@ func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, 
 		return
 	}
 
+	urlCode := urlValues.Get("code")
+	urlState := urlValues.Get("state")
 	// No Code, Status, or Error is treated as unknown error
-	if !urlValues.Has("code") && !urlValues.Has("state") {
+	if urlCode == "" && urlState == "" {
 		err := "Unknown error when getting athorization code"
 		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err}
 
@@ -262,11 +263,10 @@ func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, 
 	}
 
 	//  Authorization code returned
-	if urlValues.Has("code") && urlValues.Has("state") {
-
+	if urlCode != "" && urlState != "" {
 		lh.authCode = AuthorizationCode{
-			Code:  urlValues.Get("code"),
-			State: urlValues.Get("state"),
+			Code:  urlCode,
+			State: urlState,
 		}
 
 		lh.AuthCodeReqStatus = AuthorizationCodeStatus{
