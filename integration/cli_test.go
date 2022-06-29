@@ -516,21 +516,12 @@ func TestServiceAccountImpersonationFlow(t *testing.T) {
 	}
 
 	processOutput := func(output string) string {
-
-		method := "\"method\": \"google.iam.credentials.v1.IAMCredentials.GenerateAccessToken\""
-		service := "\"service\": \"iamcredentials.googleapis.com\""
-
-		mPos := strings.Index(output, method)
-		sPos := strings.Index(output, service)
-
-		// If service appears later than method, revert order to match output
-		if sPos > mPos {
-			output = strings.Replace(output, method, "**MARKER-1**", 1)
-			output = strings.Replace(output, service, method, 1)
-			output = strings.Replace(output, "**MARKER-1**", service, 1)
-		}
-
-		return output
+		//Error details are constantly changing, so we will strip out "error.details" field.
+		var jsonData map[string]interface{}
+		json.Unmarshal([]byte(output), &jsonData) // nolint:errcheck
+		delete(jsonData["error"].(map[string]interface{}), "details")
+		jsonString, _ := json.Marshal(jsonData)
+		return string(jsonString)
 	}
 
 	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processOutput)
