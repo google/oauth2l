@@ -1,6 +1,6 @@
 module github.com/google/oauth2l
 
-go 1.15
+go 1.16
 
 require (
 	cloud.google.com/go/compute v1.7.0 // indirect
