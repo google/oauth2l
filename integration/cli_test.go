@@ -149,6 +149,9 @@ func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase,
 func removeCodeChallenge(s string) string {
 	re := regexp.MustCompile("code_challenge=.*code_challenge_method")
 	match := re.FindString(s)
+	if match == "" {
+		return s
+	}
 	return strings.Replace(s, match, "code_challenge_method", 1)
 }
 
