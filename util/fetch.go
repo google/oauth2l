@@ -96,6 +96,7 @@ func FindJSONCredentials(ctx context.Context, settings *Settings) (*google.Crede
 	params.State = "state"
 	params.AuthHandler = settings.AuthHandler
 	params.Subject = settings.Email
+	params.PKCE = GeneratePKCEParams()
 	if settings.CredentialsJSON != "" {
 		return google.CredentialsFromJSONWithParams(ctx, []byte(settings.CredentialsJSON),
 			params)

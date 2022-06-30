@@ -309,10 +309,10 @@ func getListener(address string) (listener *net.Listener, serverAddress string, 
 
 	if match == "" { // Case: No given port provided for localhost
 		// Creating a listener on the next available port
-		l, err = net.Listen("tcp", ":0")
+		l, err = net.Listen("tcp", "localhost:0")
 	} else { // Case: Port provided for localhost
 		// Creating a listener on the provided port
-		l, err = net.Listen("tcp", strings.Replace(match, "localhost", "", 1))
+		l, err = net.Listen("tcp", match)
 	}
 
 	if err != nil {
