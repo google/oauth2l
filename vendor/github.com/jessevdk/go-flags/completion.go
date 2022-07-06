@@ -2,6 +2,7 @@ package flags
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -62,6 +63,11 @@ func completionsWithoutDescriptions(items []string) []Completion {
 // prefix.
 func (f *Filename) Complete(match string) []Completion {
 	ret, _ := filepath.Glob(match + "*")
+	if len(ret) == 1 {
+		if info, err := os.Stat(ret[0]); err == nil && info.IsDir() {
+			ret[0] = ret[0] + "/"
+		}
+	}
 	return completionsWithoutDescriptions(ret)
 }
 
@@ -124,7 +130,7 @@ func (c *completion) completeCommands(s *parseState, match string) []Completion 
 	n := make([]Completion, 0, len(s.command.commands))
 
 	for _, cmd := range s.command.commands {
-		if cmd.data != c && strings.HasPrefix(cmd.Name, match) {
+		if cmd.data != c && !cmd.Hidden && strings.HasPrefix(cmd.Name, match) {
 			n = append(n, Completion{
 				Item:        cmd.Name,
 				Description: cmd.ShortDescription,

@@ -145,6 +145,16 @@ func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase,
 	}
 }
 
+// Helper for removing the randomly generated code_challenge string from comparison.
+func removeCodeChallenge(s string) string {
+	re := regexp.MustCompile("code_challenge=.*code_challenge_method")
+	match := re.FindString(s)
+	if match == "" {
+		return s
+	}
+	return strings.Replace(s, match, "code_challenge_method", 1)
+}
+
 // Test base-case scenarios
 func TestCLI(t *testing.T) {
 	tests := []testCase{
@@ -290,7 +300,10 @@ func Test3LOFlow(t *testing.T) {
 			false,
 		},
 	}
-	runTestScenariosWithInput(t, tests, newFixture(t, "fake-verification-code.fixture").asFile())
+	process3LOOutput := func(output string) string {
+		return removeCodeChallenge(output)
+	}
+	runTestScenariosWithInputAndProcessedOutput(t, tests, newFixture(t, "fake-verification-code.fixture").asFile(), process3LOOutput)
 }
 
 // TODO: Enhance tests so that the entire loopback flow can be tested
@@ -381,7 +394,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 		re := regexp.MustCompile("redirect_uri=http%3A%2F%2Flocalhost%3A\\d+")
 		match := re.FindString(output)
 		output = strings.Replace(output, match, "redirect_uri=http%3A%2F%2Flocalhost", 1)
-		return output
+		return removeCodeChallenge(output)
 	}
 
 	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, process3LOOutput)
@@ -579,7 +592,7 @@ func TestMain(m *testing.M) {
 	// Start mock server
 	go func() {
 		mux := http.NewServeMux()
-		server := http.Server{Addr: ":8080", Handler: mux}
+		server := http.Server{Addr: "localhost:8080", Handler: mux}
 		mux.HandleFunc("/token", MockTokenApi)
 		mux.HandleFunc("/expiredtoken", MockExpiredTokenApi)
 		mux.HandleFunc("/curl", MockCurlApi)
