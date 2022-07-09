@@ -115,10 +115,10 @@ func runTestScenariosWithInput(t *testing.T, tests []testCase, input *os.File) {
 // Used for processing test output before comparing to golden files.
 type processOutput func(string) string
 
-// Used for added logic before executing oauth2l's command
+// Used for additional logic before executing oauth2l's command
 type preCommandLogic func(*testCase) error
 
-// Used for added logic before executing oauth2l's command
+// Used for additional logic after executing oauth2l's command
 type postCommandLogic func(*testCase)
 
 // Runs test cases where stdin input is needed and output needs to be processed before comparing to golden files.
