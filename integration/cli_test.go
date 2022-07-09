@@ -123,12 +123,12 @@ type postCommandLogic func(*testCase)
 
 // Runs test cases where stdin input is needed and output needs to be processed before comparing to golden files.
 func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase, input *os.File, processOutput processOutput,
-	preComndLogic preCommandLogic, postComndLogic postCommandLogic) {
+	preCmdLogic preCommandLogic, postCmdLogic postCommandLogic) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// Processing logic before exec.Command
-			if preComndLogic != nil {
-				if err := preComndLogic(&tc); err != nil {
+			if preCmdLogic != nil {
+				if err := preCmdLogic(&tc); err != nil {
 					t.Fatalf("Unexpected error: %v", err)
 				}
 			}
@@ -140,8 +140,8 @@ func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase,
 
 			output, err := cmd.CombinedOutput()
 			// Processing logic after exec.Command
-			if postComndLogic != nil {
-				postComndLogic(&tc)
+			if postCmdLogic != nil {
+				postCmdLogic(&tc)
 			}
 
 			if (err != nil) != tc.wantErr {
