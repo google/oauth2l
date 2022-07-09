@@ -28,6 +28,12 @@ import (
 	"time"
 )
 
+// Loopback server endpoints
+const (
+	SERVER_STATUS_ENDPOINT_URL   = "/status/get"
+	SERVER_LOOPBACK_ENDPOINT_URL = "/"
+)
+
 type AuthorizationCodeRequestStatus int
 
 // Phases of the authorization code
@@ -132,8 +138,8 @@ func (lh *AuthorizationCodeLocalhost) ListenAndServe(address string) (serverAddr
 	// Setup local host in given address
 	mux := http.NewServeMux()
 	lh.server = &http.Server{Addr: strings.Replace(lh.addr, "http://", "", 1), Handler: mux}
-	mux.HandleFunc("/", lh.redirectUriHandler)
-	mux.HandleFunc("/status/get", lh.statusGetHandler)
+	mux.HandleFunc(SERVER_LOOPBACK_ENDPOINT_URL, lh.redirectUriHandler)
+	mux.HandleFunc(SERVER_STATUS_ENDPOINT_URL, lh.statusGetHandler)
 
 	go func() {
 		// Start Listed and Serve

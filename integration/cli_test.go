@@ -450,7 +450,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 			// Triggering loopback logic
 			go func() {
 				for (*ll).quit != true {
-					url := a + "/status/get"
+					url := a + util.SERVER_STATUS_ENDPOINT_URL
 					req, err := http.NewRequest("GET", url, nil)
 					if err == nil {
 						res, err := http.DefaultClient.Do(req)
