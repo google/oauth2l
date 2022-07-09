@@ -15,8 +15,6 @@
 package main
 
 import (
-	//"encoding/base64"
-	//"encoding/json"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -111,66 +109,29 @@ func runTestScenarios(t *testing.T, tests []testCase) {
 
 // Runs test cases where stdin input is needed.
 func runTestScenariosWithInput(t *testing.T, tests []testCase, input *os.File) {
-	runTestScenariosWithInputAndProcessedOutput(t, tests, input, nil, false)
+	runTestScenariosWithInputAndProcessedOutput(t, tests, input, nil, nil, nil)
 }
 
 // Used for processing test output before comparing to golden files.
 type processOutput func(string) string
 
+// Used for added logic before executing oauth2l's command
+type preCommandLogic func(*testCase) error
+
+// Used for added logic before executing oauth2l's command
+type postCommandLogic func(*testCase)
+
 // Runs test cases where stdin input is needed and output needs to be processed before comparing to golden files.
-func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase, input *os.File, processOutput processOutput, loopback bool) {
+func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase, input *os.File, processOutput processOutput,
+	preComndLogic preCommandLogic, postComndLogic postCommandLogic) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			var content string = ""
-			var quit bool = false
-			var cred *testFile = nil
-			if loopback {
-
-				l, a, err := util.GetListener("http://localhost")
-				if err != nil {
+			// Processing logic before exec.Command
+			if preComndLogic != nil {
+				if err := preComndLogic(&tc); err != nil {
 					t.Fatalf("Unexpected error: %v", err)
 				}
-				(*l).Close()
-
-				e := ""
-				i := 0
-				for i, e = range tc.args {
-					if e == "--credentials" || e == "--json" {
-						break
-					}
-				}
-				cred = newFixture(t, path.Base(tc.args[i+1]))
-				content = cred.load()
-				re := regexp.MustCompile("\"http://localhost\"")
-				match := re.FindString(content)
-				newContent := strings.Replace(content, match, "\""+a+"\"", 1)
-				cred.write(newContent)
-
-				go func() {
-					for quit != true {
-						url := a + "/status/get"
-						req, err := http.NewRequest("GET", url, nil)
-						if err == nil {
-							res, err := http.DefaultClient.Do(req)
-							if err == nil {
-								body, _ := ioutil.ReadAll(res.Body)
-								res.Body.Close()
-								if string(body) == "Status OK" {
-									url := a + "/?state=state&code=4/gwEhAq4N7tdTj4ZStstQgaDAUpcoceoFSEPmSsoWEKVZoYSn6URLVEw"
-									//req.Header.Add("content-type", "application/x-www-form-urlencoded")
-									req, _ := http.NewRequest("POST", url, nil)
-									res, err := http.DefaultClient.Do(req)
-									if err == nil {
-										res.Body.Close()
-									}
-									quit = true
-								}
-							}
-						}
-					}
-				}()
 			}
-			// New End
 
 			cmd := exec.Command(binaryPath, tc.args...)
 			if input != nil {
@@ -178,10 +139,11 @@ func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase,
 			}
 
 			output, err := cmd.CombinedOutput()
-			if loopback {
-				quit = true
-				cred.write(content)
+			// Processing logic after exec.Command
+			if postComndLogic != nil {
+				postComndLogic(&tc)
 			}
+
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("%s\nexpected (err != nil) to be %v, but got %v. err: %v", output, tc.wantErr, err != nil, err)
 			}
@@ -214,7 +176,7 @@ func removeCodeChallenge(s string) string {
 	return strings.Replace(s, match, "code_challenge_method", 1)
 }
 
-/* Test base-case scenarios
+// Test base-case scenarios
 func TestCLI(t *testing.T) {
 	tests := []testCase{
 		{
@@ -285,7 +247,7 @@ func TestCLI(t *testing.T) {
 		},
 	}
 	runTestScenarios(t, tests)
-}*/
+}
 
 // TODO: Remove this flow when the 3LO flow is deprecated. A replicated set of test is now part of Test3LOLoopbackFlow.
 // tests in Test3LOLoopbackFlow have been updated to account for new outputs.
@@ -362,7 +324,7 @@ func Test3LOFlow(t *testing.T) {
 	process3LOOutput := func(output string) string {
 		return removeCodeChallenge(output)
 	}
-	runTestScenariosWithInputAndProcessedOutput(t, tests, newFixture(t, "fake-verification-code.fixture").asFile(), process3LOOutput, false)
+	runTestScenariosWithInputAndProcessedOutput(t, tests, newFixture(t, "fake-verification-code.fixture").asFile(), process3LOOutput, nil, nil)
 }
 
 // TODO: Enhance tests so that the entire loopback flow can be tested
@@ -453,6 +415,78 @@ func Test3LOLoopbackFlow(t *testing.T) {
 		},
 	}
 
+	type LoopbackLogic struct {
+		quit    bool
+		cred    *testFile
+		content string
+	}
+	loopbackLogic := func() (func(*testCase) error, func(*testCase)) {
+		var ll *LoopbackLogic
+
+		preLogic := func(tc *testCase) error {
+			ll = &LoopbackLogic{}
+
+			// Looking for available port
+			l, a, err := util.GetListener("http://localhost")
+			if err != nil {
+				return fmt.Errorf("Error when getting listener: %v", err)
+			}
+			(*l).Close()
+
+			// searching for credentials
+			f := getCredentialsFileName(tc)
+			if f == "" {
+				return fmt.Errorf("Credentials file is missing. Please add to test arguments.")
+			}
+
+			// Modifiying credentials file: redirect uri
+			(*ll).cred = newFixture(t, path.Base(f))
+			(*ll).content = (*ll).cred.load()
+			re := regexp.MustCompile("\"http://localhost\"")
+			match := re.FindString((*ll).content)
+			newContent := strings.Replace((*ll).content, match, "\""+a+"\"", 1)
+			(*ll).cred.write(newContent)
+
+			// Triggering loopback logic
+			go func() {
+				for (*ll).quit != true {
+					url := a + "/status/get"
+					req, err := http.NewRequest("GET", url, nil)
+					if err == nil {
+						res, err := http.DefaultClient.Do(req)
+						if err == nil {
+							body, _ := ioutil.ReadAll(res.Body)
+							res.Body.Close()
+							if string(body) == "Status OK" {
+								url := a + "/?state=state&code=4/gwEhAq4N7tdTj4ZStstQgaDAUpcoceoFSEPmSsoWEKVZoYSn6URLVEw"
+								req, err := http.NewRequest("POST", url, nil)
+								if err == nil {
+									res, err := http.DefaultClient.Do(req)
+									if err == nil {
+										res.Body.Close()
+										(*ll).quit = true
+									}
+								}
+							}
+						}
+					}
+				}
+			}()
+			return nil
+		}
+
+		postLogic := func(tc *testCase) {
+			// Restore credentials file: redirect uri
+			(*ll).quit = true
+			(*ll).cred.write((*ll).content)
+			return
+		}
+
+		return preLogic, postLogic
+	}
+
+	pre, post := loopbackLogic()
+
 	process3LOOutput := func(output string) string {
 		re := regexp.MustCompile("redirect_uri=http%3A%2F%2Flocalhost%3A\\d+")
 		match := re.FindString(output)
@@ -462,7 +496,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 		return removeCodeChallenge(output)
 	}
 
-	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, process3LOOutput, true)
+	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, process3LOOutput, pre, post)
 }
 
 // Test OAuth 2LO Flow with fake service account.
@@ -530,7 +564,7 @@ func TestJWTFlow(t *testing.T) {
 		jsonString, _ := json.Marshal(jsonData)
 		return string(jsonString)
 	}
-	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processJwtOutput, false)
+	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processJwtOutput, nil, nil)
 }
 
 // Test SSO Flow. Uses "sh" to invoke fake ssocli to return a mock access token.
@@ -577,7 +611,7 @@ func TestStsFlow(t *testing.T) {
 		jsonString, _ := json.Marshal(jsonData)
 		return string(jsonString)
 	}
-	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processStsOutput, false)
+	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processStsOutput, nil, nil)
 }
 
 // Test Service Account Impersonation Flow.
@@ -602,7 +636,21 @@ func TestServiceAccountImpersonationFlow(t *testing.T) {
 		return string(jsonString)
 	}
 
-	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processOutput, false)
+	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processOutput, nil, nil)
+}
+
+func getCredentialsFileName(tc *testCase) string {
+	var a string
+	var i int
+	for i, a = range tc.args {
+		if a == "--credentials" || a == "--json" {
+			break
+		}
+	}
+	if i >= len(tc.args)-1 {
+		return ""
+	}
+	return path.Base(tc.args[i+1])
 }
 
 func readFile(path string) string {
