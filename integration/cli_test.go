@@ -109,7 +109,7 @@ func runTestScenarios(t *testing.T, tests []testCase) {
 
 // Runs test cases where stdin input is needed.
 func runTestScenariosWithInput(t *testing.T, tests []testCase, input *os.File) {
-	runTestScenariosWithInputAndProcessedOutput(t, tests, input, nil, nil, nil)
+	runTestScenariosWithInputAndProcessedOutput(t, tests, input, nil)
 }
 
 // Used for processing test output before comparing to golden files.
@@ -121,8 +121,8 @@ type preCommandLogic func(*testCase) error
 // Used for additional logic after executing oauth2l's command
 type postCommandLogic func(*testCase)
 
-// Runs test cases where stdin input is needed and output needs to be processed before comparing to golden files.
-func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase, input *os.File, processOutput processOutput,
+// Runs tests where extra logic needs to be added before and or after the command execution.
+func runTestScenariosWithAdvancedLogic(t *testing.T, tests []testCase, input *os.File, processOutput processOutput,
 	preCmdLogic preCommandLogic, postCmdLogic postCommandLogic) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -164,6 +164,11 @@ func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase,
 			}
 		})
 	}
+}
+
+// Runs test cases where stdin input is needed and output needs to be processed before comparing to golden files.
+func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase, input *os.File, processOutput processOutput) {
+	runTestScenariosWithAdvancedLogic(t, tests, input, processOutput, nil, nil)
 }
 
 // Helper for removing the randomly generated code_challenge string from comparison.
@@ -324,7 +329,7 @@ func Test3LOFlow(t *testing.T) {
 	process3LOOutput := func(output string) string {
 		return removeCodeChallenge(output)
 	}
-	runTestScenariosWithInputAndProcessedOutput(t, tests, newFixture(t, "fake-verification-code.fixture").asFile(), process3LOOutput, nil, nil)
+	runTestScenariosWithInputAndProcessedOutput(t, tests, newFixture(t, "fake-verification-code.fixture").asFile(), process3LOOutput)
 }
 
 // TODO: Enhance tests so that the entire loopback flow can be tested
@@ -496,7 +501,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 		return removeCodeChallenge(output)
 	}
 
-	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, process3LOOutput, pre, post)
+	runTestScenariosWithAdvancedLogic(t, tests, nil, process3LOOutput, pre, post)
 }
 
 // Test OAuth 2LO Flow with fake service account.
@@ -564,7 +569,7 @@ func TestJWTFlow(t *testing.T) {
 		jsonString, _ := json.Marshal(jsonData)
 		return string(jsonString)
 	}
-	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processJwtOutput, nil, nil)
+	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processJwtOutput)
 }
 
 // Test SSO Flow. Uses "sh" to invoke fake ssocli to return a mock access token.
@@ -611,7 +616,7 @@ func TestStsFlow(t *testing.T) {
 		jsonString, _ := json.Marshal(jsonData)
 		return string(jsonString)
 	}
-	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processStsOutput, nil, nil)
+	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processStsOutput)
 }
 
 // Test Service Account Impersonation Flow.
@@ -636,7 +641,7 @@ func TestServiceAccountImpersonationFlow(t *testing.T) {
 		return string(jsonString)
 	}
 
-	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processOutput, nil, nil)
+	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processOutput)
 }
 
 func getCredentialsFileName(tc *testCase) string {
