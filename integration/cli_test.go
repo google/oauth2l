@@ -121,7 +121,7 @@ type preCommandLogic func(*testCase) error
 // Used for additional logic after executing oauth2l's command
 type postCommandLogic func(*testCase)
 
-// Runs tests where extra logic needs to be added before and or after the command execution.
+// Runs tests where extra logic needs to be added before and/or after the command execution.
 func runTestScenariosWithAdvancedLogic(t *testing.T, tests []testCase, input *os.File, processOutput processOutput,
 	preCmdLogic preCommandLogic, postCmdLogic postCommandLogic) {
 	for _, tc := range tests {
@@ -332,10 +332,9 @@ func Test3LOFlow(t *testing.T) {
 	runTestScenariosWithInputAndProcessedOutput(t, tests, newFixture(t, "fake-verification-code.fixture").asFile(), process3LOOutput)
 }
 
-// TODO: Enhance tests so that the entire loopback flow can be tested
-// TODO: Once enhanced, uncomment and fix cache tests in this flow
 // TODO: Remove Test3LOFlow once the 3LO flow is deprecated
-// Test OAuth 3LO loopback flow with fake client secrets. Stops waiting for consent page interaction to advance the flow.
+// Test OAuth 3LO loopback flow with fake client secrets. It does not wait for consent page interaction.
+// Instead a post request with the code and state is sent to the loopback server to advance the flow.
 func Test3LOLoopbackFlow(t *testing.T) {
 	tests := []testCase{
 		{
