@@ -172,6 +172,16 @@ func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase,
 	runTestScenariosWithAdvancedLogic(t, tests, input, processOutput, nil, nil)
 }
 
+// Helper for removing the randomly generated redirect uri's port from comparison.
+func removeRedirectUriPort(s string) string {
+	re := regexp.MustCompile("redirect_uri=.*http%3A%2F%2Flocalhost%3A\\d+")
+	match := re.FindString(s)
+	if match != "" {
+		return strings.Replace(s, match, "redirect_uri=http%3A%2F%2Flocalhost", 1)
+	}
+	return s
+}
+
 // Helper for removing the randomly generated code_challenge string from comparison.
 func removeCodeChallenge(s string) string {
 	re := regexp.MustCompile("code_challenge=.*code_challenge_method")
@@ -438,7 +448,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 			}
 			(*l).Close()
 
-			// searching for credentials
+			// searching for credentials filename.
 			f := getCredentialsFileName(tc)
 			if f == "" {
 				return fmt.Errorf("Credentials file is missing. Please add to test arguments.")
@@ -495,12 +505,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 	pre, post := loopbackLogic()
 
 	process3LOOutput := func(output string) string {
-		re := regexp.MustCompile("redirect_uri=http%3A%2F%2Flocalhost%3A\\d+")
-		match := re.FindString(output)
-		if match != "" {
-			output = strings.Replace(output, match, "redirect_uri=http%3A%2F%2Flocalhost", 1)
-		}
-		return removeCodeChallenge(output)
+		return removeCodeChallenge(removeRedirectUriPort(output))
 	}
 
 	runTestScenariosWithAdvancedLogic(t, tests, nil, process3LOOutput, pre, post)
