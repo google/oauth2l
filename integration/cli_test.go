@@ -96,6 +96,18 @@ func (tf *testFile) load() string {
 	return string(content)
 }
 
+// saveAs saves the currect instance into another file in the same directory.
+// The current instance is not substituded by the newly create one.
+//
+// input filename: is the new filename.
+func (tf *testFile) saveAs(filename string) {
+	content := tf.load()
+	temp := tf.name
+	tf.name = filename
+	tf.write(content)
+	tf.name = temp
+}
+
 type testCase struct {
 	name    string
 	args    []string
@@ -116,20 +128,32 @@ func runTestScenariosWithInput(t *testing.T, tests []testCase, input *os.File) {
 // Used for processing test output before comparing to golden files.
 type processOutput func(string) string
 
-// Used for additional logic before executing oauth2l's command
-type preCommandLogic func(*testCase) error
+// Used for additional logic before executing oauth2l's command.
+type preCommandLogic func(tc *testCase, loopbackAddr string) error
 
-// Used for additional logic after executing oauth2l's command
-type postCommandLogic func(*testCase)
+// Used for additional logic after executing oauth2l's command.
+type postCommandLogic func(loopbackAddr string)
 
-// Runs tests where extra logic needs to be added before and/or after the command execution.
+// Runs tests where extra logic needs to be added before/after the command execution.
+//
+// input processOutput: processes test output before comparing to golden files
+// input preCmdLogic: additional logic excuted once per test case before command excution. It allows for test argument manipulation.
+// input postCmdLogic: additional logic excuted once per test case after command excution. It allows for cleanup.
 func runTestScenariosWithAdvancedLogic(t *testing.T, tests []testCase, input *os.File, processOutput processOutput,
 	preCmdLogic preCommandLogic, postCmdLogic postCommandLogic) {
+	// Looking for available port.
+	// The port is passed to the the advance logic functions.
+	l, a, err := util.GetListener("http://localhost")
+	if err != nil {
+		t.Fatalf("Error when getting listener: %v", err)
+	}
+	(*l).Close()
+
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// Processing logic before exec.Command
+			// Processing logic before exec. Command
 			if preCmdLogic != nil {
-				if err := preCmdLogic(&tc); err != nil {
+				if err := preCmdLogic(&tc, a); err != nil {
 					t.Fatalf("Unexpected error: %v", err)
 				}
 			}
@@ -139,12 +163,13 @@ func runTestScenariosWithAdvancedLogic(t *testing.T, tests []testCase, input *os
 				cmd.Stdin = input
 			}
 
+			// exec.Command and gathering output
 			output, err := cmd.CombinedOutput()
-			// Processing logic after exec.Command
-			if postCmdLogic != nil {
-				postCmdLogic(&tc)
-			}
 
+			// Processing logic after exec. Command
+			if postCmdLogic != nil {
+				postCmdLogic(a)
+			}
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("%s\nexpected (err != nil) to be %v, but got %v. err: %v", output, tc.wantErr, err != nil, err)
 			}
@@ -169,7 +194,34 @@ func runTestScenariosWithAdvancedLogic(t *testing.T, tests []testCase, input *os
 
 // Runs test cases where stdin input is needed and output needs to be processed before comparing to golden files.
 func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase, input *os.File, processOutput processOutput) {
-	runTestScenariosWithAdvancedLogic(t, tests, input, processOutput, nil, nil)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command(binaryPath, tc.args...)
+			if input != nil {
+				cmd.Stdin = input
+			}
+
+			output, err := cmd.CombinedOutput()
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("%s\nexpected (err != nil) to be %v, but got %v. err: %v", output, tc.wantErr, err != nil, err)
+			}
+			actual := string(output)
+
+			if processOutput != nil {
+				actual = processOutput(actual)
+			}
+
+			golden := newGoldenFile(t, tc.golden)
+
+			if *update {
+				golden.write(actual)
+			}
+			expected := golden.load()
+			if !reflect.DeepEqual(expected, actual) {
+				t.Fatalf("Expected: %v Actual: %v", expected, actual)
+			}
+		})
+	}
 }
 
 // Helper for removing the randomly generated redirect uri's port from comparison.
@@ -430,42 +482,48 @@ func Test3LOLoopbackFlow(t *testing.T) {
 		},
 	}
 
-	type LoopbackLogic struct {
-		quit    bool
-		cred    *testFile
-		content string
+	type LoopbackLogicState struct {
+		quitRetry bool
+		cred      *testFile
 	}
-	loopbackLogic := func() (func(*testCase) error, func(*testCase)) {
-		var ll *LoopbackLogic
+	loopbackLogic := func() (func(tc *testCase, loopbackAddr string) error, func(loopbackAddr string)) {
+		var ll *LoopbackLogicState
+		const (
+			CODE_AND_STATE   = "/?state=state&code=4/gwEhAq4N7tdTj4ZStstQgaDAUpcoceoFSEPmSsoWEKVZoYSn6URLVEw"
+			QUOTED_LOCALHOST = "\"http://localhost\""
+			TEMP_CRED_FILE   = "temp-cred-file.json"
+		)
 
-		preLogic := func(tc *testCase) error {
-			ll = &LoopbackLogic{}
-
-			// Looking for available port
-			l, a, err := util.GetListener("http://localhost")
-			if err != nil {
-				return fmt.Errorf("Error when getting listener: %v", err)
-			}
-			(*l).Close()
+		preLogic := func(tc *testCase, loopbackAddr string) error {
+			ll = &LoopbackLogicState{}
 
 			// searching for credentials filename.
 			f := getCredentialsFileName(tc)
 			if f == "" {
 				return fmt.Errorf("Credentials file is missing. Please add to test arguments.")
 			}
+			changeCredentialsFileName(tc, TEMP_CRED_FILE)
 
-			// Modifiying credentials file: redirect uri
-			(*ll).cred = newFixture(t, path.Base(f))
-			(*ll).content = (*ll).cred.load()
-			re := regexp.MustCompile("\"http://localhost\"")
-			match := re.FindString((*ll).content)
-			newContent := strings.Replace((*ll).content, match, "\""+a+"\"", 1)
+			// Loading credentials file
+			origFile := newFixture(t, path.Base(f))
+			origFile.saveAs(TEMP_CRED_FILE)
+
+			// Loading credentials file temp copy
+			(*ll).cred = newFixture(t, TEMP_CRED_FILE)
+			fileContent := (*ll).cred.load()
+
+			// Modifiying credentials file temp copy: redirect uri
+			re := regexp.MustCompile(QUOTED_LOCALHOST)
+			match := re.FindString(fileContent)
+			newContent := strings.Replace(fileContent, match, "\""+loopbackAddr+"\"", 1)
 			(*ll).cred.write(newContent)
 
-			// Triggering loopback logic
+			// Triggering loopback logic: sends code and state message to
+			// the localhost server handling the authentication code - see loopback.go
+			// for more detials.
 			go func() {
-				for (*ll).quit != true {
-					url := a + util.SERVER_STATUS_ENDPOINT_URL
+				for (*ll).quitRetry != true {
+					url := loopbackAddr + util.SERVER_STATUS_ENDPOINT_URL
 					req, err := http.NewRequest("GET", url, nil)
 					if err == nil {
 						res, err := http.DefaultClient.Do(req)
@@ -473,13 +531,13 @@ func Test3LOLoopbackFlow(t *testing.T) {
 							body, _ := ioutil.ReadAll(res.Body)
 							res.Body.Close()
 							if string(body) == "Status OK" {
-								url := a + "/?state=state&code=4/gwEhAq4N7tdTj4ZStstQgaDAUpcoceoFSEPmSsoWEKVZoYSn6URLVEw"
+								url := loopbackAddr + CODE_AND_STATE
 								req, err := http.NewRequest("POST", url, nil)
 								if err == nil {
 									res, err := http.DefaultClient.Do(req)
 									if err == nil {
 										res.Body.Close()
-										(*ll).quit = true
+										(*ll).quitRetry = true
 									}
 								}
 							}
@@ -492,10 +550,9 @@ func Test3LOLoopbackFlow(t *testing.T) {
 			return nil
 		}
 
-		postLogic := func(tc *testCase) {
-			// Restore credentials file: redirect uri
-			(*ll).quit = true
-			(*ll).cred.write((*ll).content)
+		postLogic := func(loopbackAddr string) {
+			(*ll).quitRetry = true
+			os.Remove((*ll).cred.path())
 			return
 		}
 
@@ -503,11 +560,9 @@ func Test3LOLoopbackFlow(t *testing.T) {
 	}
 
 	pre, post := loopbackLogic()
-
 	process3LOOutput := func(output string) string {
 		return removeCodeChallenge(removeRedirectUriPort(output))
 	}
-
 	runTestScenariosWithAdvancedLogic(t, tests, nil, process3LOOutput, pre, post)
 }
 
@@ -655,6 +710,8 @@ func TestServiceAccountImpersonationFlow(t *testing.T) {
 // If no filename is found, an empty string is returned.
 //
 // Note: the "--credentials" or "--json" options are used to find the credentials file.
+//
+// input tc: is the test case.
 func getCredentialsFileName(tc *testCase) string {
 	var a string
 	var i int
@@ -667,6 +724,26 @@ func getCredentialsFileName(tc *testCase) string {
 		return ""
 	}
 	return path.Base(tc.args[i+1])
+}
+
+// changeCredentialsFileName replaces the credentials filename in the test arguments.
+// If the credentials file is not found, no changes are made.
+//
+// input tc: is the test case.
+// input filename: is the new filename.
+func changeCredentialsFileName(tc *testCase, filename string) {
+	var a string
+	var i int
+	for i, a = range tc.args {
+		if a == "--credentials" || a == "--json" {
+			break
+		}
+	}
+	if i >= len(tc.args)-1 {
+		return
+	}
+	dir := path.Dir(tc.args[i+1])
+	tc.args[i+1] = dir + "/" + filename
 }
 
 func readFile(path string) string {
