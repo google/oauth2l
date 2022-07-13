@@ -646,6 +646,10 @@ func TestServiceAccountImpersonationFlow(t *testing.T) {
 	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processOutput)
 }
 
+// getCredentialsFileName finds the credentials filename provided in the testCase argument.
+// If no filename is found, an empty string is returned.
+//
+// Note: the "--credentials" or "--json" options are used to find the credentials file.
 func getCredentialsFileName(tc *testCase) string {
 	var a string
 	var i int
