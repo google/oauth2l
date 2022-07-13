@@ -30,6 +30,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/oauth2l/util"
 )
@@ -473,6 +474,8 @@ func Test3LOLoopbackFlow(t *testing.T) {
 								}
 							}
 						}
+					} else {
+						time.Sleep(1 * time.Second)
 					}
 				}
 			}()
