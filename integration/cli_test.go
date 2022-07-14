@@ -542,7 +542,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 		postLogic := func() {
 			// End loopback logic if it is still retrying:
 			// In the event where exec Command exits prematurely, the loopback loop
-			// should not try to POST the code and state. It will only waste resources.
+			// should not try to POST the code and state - It would only waste resources.
 			(*ll).quitRetry = true
 			// Removing temp credentials file.
 			os.Remove((*ll).cred.path())
