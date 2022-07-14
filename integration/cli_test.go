@@ -97,7 +97,7 @@ func (tf *testFile) load() string {
 }
 
 // saveAs saves the currect instance into another file in the same directory.
-// The current instance is not substituded by the newly create one.
+// The current instance is not substituted by the newly create one.
 //
 // input filename: is the new filename.
 func (tf *testFile) saveAs(filename string) {
@@ -402,9 +402,9 @@ func Test3LOLoopbackFlow(t *testing.T) {
 
 	const (
 		// NOTE: Update all consent page settings accordingly if one is changed.
-		CONSET_PAGE_TIMEOUT       = "30"
-		CONSET_PAGE_TIMEOUT_UNITS = "seconds"
-		CONSET_PAGE_DURATION      = time.Duration(30 * time.Second)
+		CONSENT_PAGE_TIMEOUT       = "30"
+		CONSENT_PAGE_TIMEOUT_UNITS = "seconds"
+		CONSENT_PAGE_DURATION      = time.Duration(30 * time.Second)
 	)
 
 	tests := []testCase{
@@ -412,7 +412,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 			"fetch; 3lo loopback",
 			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
 				"--disableAutoOpenConsentPage",
-				"--consentPageInteractionTimeout", CONSET_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSET_PAGE_TIMEOUT_UNITS},
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS},
 			"fetch-3lo-loopback.golden",
 			false,
 		},
@@ -420,14 +420,14 @@ func Test3LOLoopbackFlow(t *testing.T) {
 			"fetch; 3lo loopback; old interface",
 			[]string{"fetch", "--json", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "", "pubsub",
 				"--disableAutoOpenConsentPage",
-				"--consentPageInteractionTimeout", CONSET_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSET_PAGE_TIMEOUT_UNITS},
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS},
 			"fetch-3lo-loopback.golden",
 			false,
 		},
 		{
 			"fetch; 3lo loopback; userinfo scopes",
 			[]string{"fetch", "--scope", "userinfo.profile,userinfo.email", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
-				"--consentPageInteractionTimeout", CONSET_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSET_PAGE_TIMEOUT_UNITS,
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS,
 				"--disableAutoOpenConsentPage"},
 			"fetch-3lo-loopback-userinfo.golden",
 			false,
@@ -435,7 +435,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 		{
 			"header; 3lo loopback",
 			[]string{"header", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
-				"--consentPageInteractionTimeout", CONSET_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSET_PAGE_TIMEOUT_UNITS,
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS,
 				"--disableAutoOpenConsentPage"},
 			"header-3lo-loopback.golden",
 			false,
@@ -443,7 +443,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 		{
 			"fetch; 3lo loopback; refresh token output format",
 			[]string{"fetch", "--output_format", "refresh_token", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
-				"--consentPageInteractionTimeout", CONSET_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSET_PAGE_TIMEOUT_UNITS,
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS,
 				"--disableAutoOpenConsentPage"},
 			"fetch-3lo-loopback-refresh-token.golden",
 			false,
@@ -451,7 +451,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 		{
 			"curl; 3lo loopback",
 			[]string{"curl", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--url", "http://localhost:8080/curl",
-				"--consentPageInteractionTimeout", CONSET_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSET_PAGE_TIMEOUT_UNITS,
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS,
 				"--disableAutoOpenConsentPage"},
 			"curl-3lo-loopback.golden",
 			false,
@@ -460,7 +460,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 			"fetch; 3lo loopback cached",
 			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json",
 				"--disableAutoOpenConsentPage",
-				"--consentPageInteractionTimeout", CONSET_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSET_PAGE_TIMEOUT_UNITS},
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS},
 			"fetch-3lo-cached.golden",
 			false,
 		},
@@ -468,7 +468,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 			"fetch; 3lo loopback insert expired token into cache",
 			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json",
 				"--disableAutoOpenConsentPage",
-				"--consentPageInteractionTimeout", CONSET_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSET_PAGE_TIMEOUT_UNITS},
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS},
 			"fetch-3lo-loopback.golden",
 			false,
 		},
@@ -476,7 +476,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 			"fetch; 3lo loopback cached; token expired",
 			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json",
 				"--disableAutoOpenConsentPage",
-				"--consentPageInteractionTimeout", CONSET_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSET_PAGE_TIMEOUT_UNITS},
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS},
 			"fetch-3lo-loopback.golden",
 			false,
 		},
@@ -484,7 +484,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 			"fetch; 3lo loopback cached; refresh expired token",
 			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json", "--refresh",
 				"--disableAutoOpenConsentPage",
-				"--consentPageInteractionTimeout", CONSET_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSET_PAGE_TIMEOUT_UNITS},
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS},
 			"fetch-3lo-cached.golden",
 			false,
 		},
@@ -528,7 +528,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 
 			// Start loopback logic.
 			go func() {
-				timer := time.AfterFunc(CONSET_PAGE_DURATION, func() {
+				timer := time.AfterFunc(CONSENT_PAGE_DURATION, func() {
 					// Force ending the retry loop, so the retry logic does not loop
 					// forever. postLogic may trigger an end retry logic in case the
 					// exec. command finishes before the CONSET_PAGE_DURATION timeout.
