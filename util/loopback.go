@@ -28,6 +28,12 @@ import (
 	"time"
 )
 
+// Loopback server endpoints
+const (
+	SERVER_STATUS_ENDPOINT_URL   = "/status/get"
+	SERVER_LOOPBACK_ENDPOINT_URL = "/"
+)
+
 type AuthorizationCodeRequestStatus int
 
 // Phases of the authorization code
@@ -122,7 +128,7 @@ type AuthorizationCodeLocalhost struct {
 }
 
 func (lh *AuthorizationCodeLocalhost) ListenAndServe(address string) (serverAddress string, err error) {
-	listener, serverAddress, err := getListener(address)
+	listener, serverAddress, err := GetListener(address)
 	if err != nil {
 		return "", fmt.Errorf("Unable to Listen: %v", err)
 	}
@@ -132,8 +138,8 @@ func (lh *AuthorizationCodeLocalhost) ListenAndServe(address string) (serverAddr
 	// Setup local host in given address
 	mux := http.NewServeMux()
 	lh.server = &http.Server{Addr: strings.Replace(lh.addr, "http://", "", 1), Handler: mux}
-	mux.HandleFunc("/", lh.redirectUriHandler)
-	mux.HandleFunc("/status/get", lh.statusGetHandler)
+	mux.HandleFunc(SERVER_LOOPBACK_ENDPOINT_URL, lh.redirectUriHandler)
+	mux.HandleFunc(SERVER_STATUS_ENDPOINT_URL, lh.statusGetHandler)
 
 	go func() {
 		// Start Listed and Serve
@@ -293,7 +299,7 @@ func (lh *AuthorizationCodeLocalhost) statusGetHandler(w http.ResponseWriter, r 
 	return
 }
 
-// getListener gets a listener on the port specified in the address.
+// GetListener gets a listener on the port specified in the address.
 // If no port is specified in the address, an available port is assigned.
 //
 // Input address: represents a localhost address. Its format is http://localhost[:port]
@@ -301,7 +307,7 @@ func (lh *AuthorizationCodeLocalhost) statusGetHandler(w http.ResponseWriter, r 
 // Returns listener
 // Returns serverAddress: is the address of the listener. Its format is http://localhost[:port]
 // Returns err: if not nil an error occurred when creating the listener.
-func getListener(address string) (listener *net.Listener, serverAddress string, err error) {
+func GetListener(address string) (listener *net.Listener, serverAddress string, err error) {
 	var l net.Listener = nil
 
 	re := regexp.MustCompile("localhost:\\d+")

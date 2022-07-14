@@ -23,12 +23,16 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/oauth2l/util"
 )
 
 // Use this flag to update golden files with test outputs from current run.
@@ -92,6 +96,18 @@ func (tf *testFile) load() string {
 	return string(content)
 }
 
+// saveAs saves the currect instance into another file in the same directory.
+// The current instance is not substituted by the newly create one.
+//
+// input filename: is the new filename.
+func (tf *testFile) saveAs(filename string) {
+	content := tf.load()
+	temp := tf.name
+	tf.name = filename
+	tf.write(content)
+	tf.name = temp
+}
+
 type testCase struct {
 	name    string
 	args    []string
@@ -112,17 +128,40 @@ func runTestScenariosWithInput(t *testing.T, tests []testCase, input *os.File) {
 // Used for processing test output before comparing to golden files.
 type processOutput func(string) string
 
-// Runs test cases where stdin input is needed and output needs to be processed before comparing to golden files.
-func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase, input *os.File, processOutput processOutput) {
+// Used for additional logic before executing oauth2l's command.
+type preCommandLogic func(tc *testCase) error
+
+// Used for additional logic after executing oauth2l's command.
+type postCommandLogic func()
+
+// Runs tests where extra logic needs to be added before/after the command execution.
+//
+// input processOutput: processes test output before comparing to golden files
+// input preCmdLogic: additional logic excuted once per test case before command excution. It allows for test argument manipulation.
+// input postCmdLogic: additional logic excuted once per test case after command excution. It allows for cleanup.
+func runTestScenariosWithAdvancedLogic(t *testing.T, tests []testCase, input *os.File, processOutput processOutput,
+	preCmdLogic preCommandLogic, postCmdLogic postCommandLogic) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd := exec.Command(binaryPath, tc.args...)
+			// Processing logic before exec. Command
+			if preCmdLogic != nil {
+				if err := preCmdLogic(&tc); err != nil {
+					t.Fatalf("Unexpected error: %v", err)
+				}
+			}
 
+			cmd := exec.Command(binaryPath, tc.args...)
 			if input != nil {
 				cmd.Stdin = input
 			}
 
+			// exec.Command and gathering output
 			output, err := cmd.CombinedOutput()
+
+			// Processing logic after exec. Command
+			if postCmdLogic != nil {
+				postCmdLogic()
+			}
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("%s\nexpected (err != nil) to be %v, but got %v. err: %v", output, tc.wantErr, err != nil, err)
 			}
@@ -143,6 +182,21 @@ func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase,
 			}
 		})
 	}
+}
+
+// Runs test cases where stdin input is needed and output needs to be processed before comparing to golden files.
+func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase, input *os.File, processOutput processOutput) {
+	runTestScenariosWithAdvancedLogic(t, tests, input, processOutput, nil, nil)
+}
+
+// Helper for removing the randomly generated redirect uri's port from comparison.
+func removeRedirectUriPort(s string) string {
+	re := regexp.MustCompile("redirect_uri=.*http%3A%2F%2Flocalhost%3A\\d+")
+	match := re.FindString(s)
+	if match != "" {
+		return strings.Replace(s, match, "redirect_uri=http%3A%2F%2Flocalhost", 1)
+	}
+	return s
 }
 
 // Helper for removing the randomly generated code_challenge string from comparison.
@@ -306,17 +360,24 @@ func Test3LOFlow(t *testing.T) {
 	runTestScenariosWithInputAndProcessedOutput(t, tests, newFixture(t, "fake-verification-code.fixture").asFile(), process3LOOutput)
 }
 
-// TODO: Enhance tests so that the entire loopback flow can be tested
-// TODO: Once enhanced, uncomment and fix cache tests in this flow
 // TODO: Remove Test3LOFlow once the 3LO flow is deprecated
-// Test OAuth 3LO loopback flow with fake client secrets. Stops waiting for consent page interaction to advance the flow.
+// Test OAuth 3LO loopback flow with fake client secrets. It does not wait for consent page interaction.
+// Instead a post request with the code and state is sent to the loopback server to advance the flow.
 func Test3LOLoopbackFlow(t *testing.T) {
+
+	const (
+		// NOTE: Update all consent page settings accordingly if one is changed.
+		CONSENT_PAGE_TIMEOUT       = "30"
+		CONSENT_PAGE_TIMEOUT_UNITS = "seconds"
+		CONSENT_PAGE_DURATION      = time.Duration(30 * time.Second)
+	)
+
 	tests := []testCase{
 		{
 			"fetch; 3lo loopback",
 			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
 				"--disableAutoOpenConsentPage",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS},
 			"fetch-3lo-loopback.golden",
 			false,
 		},
@@ -324,14 +385,14 @@ func Test3LOLoopbackFlow(t *testing.T) {
 			"fetch; 3lo loopback; old interface",
 			[]string{"fetch", "--json", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "", "pubsub",
 				"--disableAutoOpenConsentPage",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS},
 			"fetch-3lo-loopback.golden",
 			false,
 		},
 		{
 			"fetch; 3lo loopback; userinfo scopes",
 			[]string{"fetch", "--scope", "userinfo.profile,userinfo.email", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds",
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS,
 				"--disableAutoOpenConsentPage"},
 			"fetch-3lo-loopback-userinfo.golden",
 			false,
@@ -339,7 +400,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 		{
 			"header; 3lo loopback",
 			[]string{"header", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds",
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS,
 				"--disableAutoOpenConsentPage"},
 			"header-3lo-loopback.golden",
 			false,
@@ -347,7 +408,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 		{
 			"fetch; 3lo loopback; refresh token output format",
 			[]string{"fetch", "--output_format", "refresh_token", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--cache", "",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds",
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS,
 				"--disableAutoOpenConsentPage"},
 			"fetch-3lo-loopback-refresh-token.golden",
 			false,
@@ -355,49 +416,147 @@ func Test3LOLoopbackFlow(t *testing.T) {
 		{
 			"curl; 3lo loopback",
 			[]string{"curl", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--url", "http://localhost:8080/curl",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds",
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS,
 				"--disableAutoOpenConsentPage"},
 			"curl-3lo-loopback.golden",
 			false,
 		},
-		/*
-			{
-				"fetch; 3lo loopback cached",
-				[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
-				"fetch-3lo-cached.golden",
-				false,
-			},
-			{
-				"fetch; 3lo loopback insert expired token into cache",
-				[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
-				"fetch-3lo.golden",
-				false,
-			},
-			{
-				"fetch; 3lo loopback cached; token expired",
-				[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
-				"fetch-3lo.golden",
-				false,
-			},
-			{
-				"fetch; 3lo loopback cached; refresh expired token",
-				[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json", "--refresh",
-				"--consentPageInteractionTimeout", "1", "--consentPageInteractionTimeoutUnits", "seconds"},
-				"fetch-3lo-cached.golden",
-				false,
-			},*/
+		{
+			"fetch; 3lo loopback cached",
+			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json",
+				"--disableAutoOpenConsentPage",
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS},
+			"fetch-3lo-cached.golden",
+			false,
+		},
+		{
+			"fetch; 3lo loopback insert expired token into cache",
+			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json",
+				"--disableAutoOpenConsentPage",
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS},
+			"fetch-3lo-loopback.golden",
+			false,
+		},
+		{
+			"fetch; 3lo loopback cached; token expired",
+			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json",
+				"--disableAutoOpenConsentPage",
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS},
+			"fetch-3lo-loopback.golden",
+			false,
+		},
+		{
+			"fetch; 3lo loopback cached; refresh expired token",
+			[]string{"fetch", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-expired-token-3lo-loopback.json", "--refresh",
+				"--disableAutoOpenConsentPage",
+				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS},
+			"fetch-3lo-cached.golden",
+			false,
+		},
 	}
 
+	type LoopbackLogicState struct {
+		quitRetry   bool
+		cred        *testFile
+		redirectUri string
+	}
+	loopbackLogic := func() (func(tc *testCase) error, func()) {
+		const (
+			CODE_AND_STATE   = "/?state=state&code=4/gwEhAq4N7tdTj4ZStstQgaDAUpcoceoFSEPmSsoWEKVZoYSn6URLVEw"
+			QUOTED_LOCALHOST = "\"http://localhost\""
+			TEMP_CRED_FILE   = "temp-cred-file.json"
+		)
+
+		// Looking for available port.
+		// The port is passed to the the advance logic functions.
+		l, addr, err := util.GetListener("http://localhost")
+		if err != nil {
+			t.Fatalf("Error when getting listener: %v", err)
+		}
+		(*l).Close()
+
+		var ll *LoopbackLogicState = &LoopbackLogicState{
+			quitRetry:   false,
+			cred:        nil,
+			redirectUri: addr,
+		}
+
+		preLogic := func(tc *testCase) error {
+			// Partially resetting state - keeping redirect uri.
+			(*ll).quitRetry = false
+			(*ll).cred = nil
+
+			// searching for credentials filename.
+			f := getCredentialsFileName(tc)
+			if f == "" {
+				return fmt.Errorf("Credentials file is missing. Please add to test arguments.")
+			}
+			changeCredentialsFileName(tc, TEMP_CRED_FILE)
+
+			// Loading credentials file
+			origFile := newFixture(t, path.Base(f))
+			origFile.saveAs(TEMP_CRED_FILE)
+
+			// Loading credentials file temp copy
+			(*ll).cred = newFixture(t, TEMP_CRED_FILE)
+			fileContent := (*ll).cred.load()
+
+			// Modifiying credentials file temp copy: redirect uri
+			re := regexp.MustCompile(QUOTED_LOCALHOST)
+			match := re.FindString(fileContent)
+			newContent := strings.Replace(fileContent, match, "\""+(*ll).redirectUri+"\"", 1)
+			(*ll).cred.write(newContent)
+
+			// Start loopback logic.
+			go func() {
+				timer := time.AfterFunc(CONSENT_PAGE_DURATION, func() {
+					// Force ending the retry loop, so the retry logic does not loop
+					// forever. postLogic may trigger an end retry logic in case the
+					// exec. command finishes before the CONSET_PAGE_DURATION timeout.
+					(*ll).quitRetry = true
+				})
+				defer timer.Stop()
+
+				code_state_endpoint := (*ll).redirectUri + CODE_AND_STATE
+				for (*ll).quitRetry != true {
+					req, err := http.NewRequest("POST", code_state_endpoint, nil)
+					if err == nil {
+						// Sending code and state message to the localhost server handling
+						// the authentication code - see loopback.go for more detials.
+						res, err := http.DefaultClient.Do(req)
+						if err == nil {
+							res.Body.Close()
+							// Ending the retry loop
+							(*ll).quitRetry = true
+							// Bypass sleep
+							return
+						}
+					}
+					// If unable to reach code_state_endpoint wait a second.
+					time.Sleep(1 * time.Second)
+				}
+			}()
+			return nil
+		}
+
+		postLogic := func() {
+			// End loopback logic if it is still retrying:
+			// In the event where exec Command exits prematurely, the loopback loop
+			// should not try to POST the code and state - It would only waste resources.
+			(*ll).quitRetry = true
+			// Removing temp credentials file.
+			os.Remove((*ll).cred.path())
+			return
+		}
+
+		return preLogic, postLogic
+	}
+
+	pre, post := loopbackLogic()
 	process3LOOutput := func(output string) string {
-		re := regexp.MustCompile("redirect_uri=http%3A%2F%2Flocalhost%3A\\d+")
-		match := re.FindString(output)
-		output = strings.Replace(output, match, "redirect_uri=http%3A%2F%2Flocalhost", 1)
-		return removeCodeChallenge(output)
+		return removeCodeChallenge(removeRedirectUriPort(output))
 	}
-
-	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, process3LOOutput)
+	runTestScenariosWithAdvancedLogic(t, tests, nil, process3LOOutput, pre, post)
 }
 
 // Test OAuth 2LO Flow with fake service account.
@@ -538,6 +697,46 @@ func TestServiceAccountImpersonationFlow(t *testing.T) {
 	}
 
 	runTestScenariosWithInputAndProcessedOutput(t, tests, nil, processOutput)
+}
+
+// getCredentialsFileName finds the credentials filename provided in the testCase arguments.
+// If no filename is found, an empty string is returned.
+//
+// Note: the "--credentials" or "--json" options are used to find the credentials file.
+//
+// input tc: is the test case.
+func getCredentialsFileName(tc *testCase) string {
+	var a string
+	var i int
+	for i, a = range tc.args {
+		if a == "--credentials" || a == "--json" {
+			break
+		}
+	}
+	if i >= len(tc.args)-1 {
+		return ""
+	}
+	return path.Base(tc.args[i+1])
+}
+
+// changeCredentialsFileName replaces the credentials filename in the test arguments.
+// If the credentials file is not found, no changes are made.
+//
+// input tc: is the test case.
+// input filename: is the new filename.
+func changeCredentialsFileName(tc *testCase, filename string) {
+	var a string
+	var i int
+	for i, a = range tc.args {
+		if a == "--credentials" || a == "--json" {
+			break
+		}
+	}
+	if i >= len(tc.args)-1 {
+		return
+	}
+	dir := path.Dir(tc.args[i+1])
+	tc.args[i+1] = dir + "/" + filename
 }
 
 func readFile(path string) string {
