@@ -129,10 +129,10 @@ func runTestScenariosWithInput(t *testing.T, tests []testCase, input *os.File) {
 type processOutput func(string) string
 
 // Used for additional logic before executing oauth2l's command.
-type preCommandLogic func(tc *testCase, loopbackAddr string) error
+type preCommandLogic func(tc *testCase) error
 
 // Used for additional logic after executing oauth2l's command.
-type postCommandLogic func(loopbackAddr string)
+type postCommandLogic func()
 
 // Runs tests where extra logic needs to be added before/after the command execution.
 //
@@ -141,19 +141,11 @@ type postCommandLogic func(loopbackAddr string)
 // input postCmdLogic: additional logic excuted once per test case after command excution. It allows for cleanup.
 func runTestScenariosWithAdvancedLogic(t *testing.T, tests []testCase, input *os.File, processOutput processOutput,
 	preCmdLogic preCommandLogic, postCmdLogic postCommandLogic) {
-	// Looking for available port.
-	// The port is passed to the the advance logic functions.
-	l, a, err := util.GetListener("http://localhost")
-	if err != nil {
-		t.Fatalf("Error when getting listener: %v", err)
-	}
-	(*l).Close()
-
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// Processing logic before exec. Command
 			if preCmdLogic != nil {
-				if err := preCmdLogic(&tc, a); err != nil {
+				if err := preCmdLogic(&tc); err != nil {
 					t.Fatalf("Unexpected error: %v", err)
 				}
 			}
@@ -168,7 +160,7 @@ func runTestScenariosWithAdvancedLogic(t *testing.T, tests []testCase, input *os
 
 			// Processing logic after exec. Command
 			if postCmdLogic != nil {
-				postCmdLogic(a)
+				postCmdLogic()
 			}
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("%s\nexpected (err != nil) to be %v, but got %v. err: %v", output, tc.wantErr, err != nil, err)
@@ -491,19 +483,35 @@ func Test3LOLoopbackFlow(t *testing.T) {
 	}
 
 	type LoopbackLogicState struct {
-		quitRetry bool
-		cred      *testFile
+		quitRetry   bool
+		cred        *testFile
+		redirectUri string
 	}
-	loopbackLogic := func() (func(tc *testCase, loopbackAddr string) error, func(loopbackAddr string)) {
-		var ll *LoopbackLogicState
+	loopbackLogic := func() (func(tc *testCase) error, func()) {
 		const (
 			CODE_AND_STATE   = "/?state=state&code=4/gwEhAq4N7tdTj4ZStstQgaDAUpcoceoFSEPmSsoWEKVZoYSn6URLVEw"
 			QUOTED_LOCALHOST = "\"http://localhost\""
 			TEMP_CRED_FILE   = "temp-cred-file.json"
 		)
 
-		preLogic := func(tc *testCase, loopbackAddr string) error {
-			ll = &LoopbackLogicState{}
+		// Looking for available port.
+		// The port is passed to the the advance logic functions.
+		l, addr, err := util.GetListener("http://localhost")
+		if err != nil {
+			t.Fatalf("Error when getting listener: %v", err)
+		}
+		(*l).Close()
+
+		var ll *LoopbackLogicState = &LoopbackLogicState{
+			quitRetry:   false,
+			cred:        nil,
+			redirectUri: addr,
+		}
+
+		preLogic := func(tc *testCase) error {
+			// Partially resetting state - keeping redirect uri.
+			(*ll).quitRetry = false
+			(*ll).cred = nil
 
 			// searching for credentials filename.
 			f := getCredentialsFileName(tc)
@@ -523,7 +531,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 			// Modifiying credentials file temp copy: redirect uri
 			re := regexp.MustCompile(QUOTED_LOCALHOST)
 			match := re.FindString(fileContent)
-			newContent := strings.Replace(fileContent, match, "\""+loopbackAddr+"\"", 1)
+			newContent := strings.Replace(fileContent, match, "\""+(*ll).redirectUri+"\"", 1)
 			(*ll).cred.write(newContent)
 
 			// Start loopback logic.
@@ -536,7 +544,7 @@ func Test3LOLoopbackFlow(t *testing.T) {
 				})
 				defer timer.Stop()
 
-				code_state_endpoint := loopbackAddr + CODE_AND_STATE
+				code_state_endpoint := (*ll).redirectUri + CODE_AND_STATE
 				for (*ll).quitRetry != true {
 					req, err := http.NewRequest("POST", code_state_endpoint, nil)
 					if err == nil {
@@ -547,18 +555,21 @@ func Test3LOLoopbackFlow(t *testing.T) {
 							res.Body.Close()
 							// Ending the retry loop
 							(*ll).quitRetry = true
+							// Bypass sleep
+							return
 						}
-					} else {
-						// if unable to reach code_state_endpoint wait a second.
-						time.Sleep(1 * time.Second)
 					}
+					// If unable to reach code_state_endpoint wait a second.
+					time.Sleep(1 * time.Second)
 				}
 			}()
 			return nil
 		}
 
-		postLogic := func(loopbackAddr string) {
-			// End loopback logic if it is still retrying.
+		postLogic := func() {
+			// End loopback logic if it is still retrying:
+			// In the event where exec Command exits prematurely, the loopback loop
+			// should not try to POST the code and state. It will only waste resources.
 			(*ll).quitRetry = true
 			// Removing temp credentials file.
 			os.Remove((*ll).cred.path())
