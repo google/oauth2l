@@ -186,34 +186,7 @@ func runTestScenariosWithAdvancedLogic(t *testing.T, tests []testCase, input *os
 
 // Runs test cases where stdin input is needed and output needs to be processed before comparing to golden files.
 func runTestScenariosWithInputAndProcessedOutput(t *testing.T, tests []testCase, input *os.File, processOutput processOutput) {
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			cmd := exec.Command(binaryPath, tc.args...)
-			if input != nil {
-				cmd.Stdin = input
-			}
-
-			output, err := cmd.CombinedOutput()
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("%s\nexpected (err != nil) to be %v, but got %v. err: %v", output, tc.wantErr, err != nil, err)
-			}
-			actual := string(output)
-
-			if processOutput != nil {
-				actual = processOutput(actual)
-			}
-
-			golden := newGoldenFile(t, tc.golden)
-
-			if *update {
-				golden.write(actual)
-			}
-			expected := golden.load()
-			if !reflect.DeepEqual(expected, actual) {
-				t.Fatalf("Expected: %v Actual: %v", expected, actual)
-			}
-		})
-	}
+	runTestScenariosWithAdvancedLogic(t, tests, input, processOutput, nil, nil)
 }
 
 // Helper for removing the randomly generated redirect uri's port from comparison.
