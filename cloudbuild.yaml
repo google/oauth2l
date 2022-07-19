@@ -14,18 +14,18 @@
 
 steps:
 - id: test
-  name: golang:1.13
+  name: golang:1.16
   entrypoint: make
   args: ['test']
 
 - id: build
-  name: golang:1.13
+  name: golang:1.16
   entrypoint: make
   args: ['build']
   waitFor: ['test']
 
 - id: compress
-  name: golang:1.13
+  name: golang:1.16
   entrypoint: make
   args: ['compress']
   waitFor: ['build']
