@@ -42,7 +42,7 @@ func (b *Browser) OpenURL(url string) error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("Unable to open browser window for runtime: %s: %v", rt, err)
+		return fmt.Errorf("Unable to open browser window for runtime, %s: %v", rt, err)
 	}
 	return nil
 }
