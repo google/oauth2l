@@ -85,6 +85,7 @@ func authorization3LOLoopback(authCodeURL string, consentSettings ConsentPageSet
 			if be := b.OpenURL(authCodeURL); be != nil {
 				fmt.Println("Your browser could not be opened to visit:")
 				fmt.Println("\n", authCodeURL)
+				fmt.Println("\nError:", be)
 			} else {
 				fmt.Println("Your browser has been opened to visit:")
 				fmt.Println("\n", authCodeURL)
