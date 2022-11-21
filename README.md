@@ -145,6 +145,13 @@ example, the following command uses the PubSub API to list all PubSub topics.
 $ curl -H "$(oauth2l header --scope pubsub)" https://pubsub.googleapis.com/v1/projects/my-project-id/topics
 ```
 
+To send an API request using domain-wide delegation (DwD), for example, to
+list `user@example.com`'s Gmail labels:
+
+```bash
+$ curl -H "$(oauth2l header --email user@example.com --credentials service_account_credentials.json --scope https://www.googleapis.com/auth/gmail.labels)" https://gmail.googleapis.com/gmail/v1/users/me/labels
+```
+
 ### curl
 
 This is a shortcut command that fetches an access token for the specified OAuth
@@ -154,6 +161,14 @@ default). Additional flags after "--" will be treated as curl flags.
 ```bash
 $ oauth2l curl --scope cloud-platform,pubsub --url https://pubsub.googleapis.com/v1/projects/my-project-id/topics -- -i
 ```
+
+To send an API request using domain-wide delegation (DwD), for example, to
+list `user@example.com`'s Gmail labels:
+
+```bash
+$ oauth2l curl --email user@example.com --credentials service_account_credentials.json --scope https://www.googleapis.com/auth/gmail.labels --url https://gmail.googleapis.com/gmail/v1/users/me/labels
+```
+
 
 ### info
 
