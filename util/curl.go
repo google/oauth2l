@@ -15,8 +15,8 @@
 package util
 
 import (
-	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 )
 
@@ -33,11 +33,11 @@ func CurlCommand(cli string, header string, url string, extraArgs ...string) {
 	cmdArgs := append(requiredArgs, extraArgs...)
 
 	cmd := exec.Command(cli, cmdArgs...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	err := cmd.Run()
 	if err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, err)
 	}
-	print(out.String())
 }
