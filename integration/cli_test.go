@@ -1,11 +1,10 @@
-//
 // Copyright 2019 Google Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -325,7 +324,8 @@ func Test3LOFlow(t *testing.T) {
 		},
 		{
 			"curl; 3lo",
-			[]string{"curl", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets.json", "--url", "http://localhost:8080/curl"},
+			[]string{"curl", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets.json", "--url", "http://localhost:8080/curl",
+				"--", "-s"},
 			"curl-3lo.golden",
 			false,
 		},
@@ -417,7 +417,8 @@ func Test3LOLoopbackFlow(t *testing.T) {
 			"curl; 3lo loopback",
 			[]string{"curl", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-client-secrets-3lo-loopback.json", "--url", "http://localhost:8080/curl",
 				"--consentPageInteractionTimeout", CONSENT_PAGE_TIMEOUT, "--consentPageInteractionTimeoutUnits", CONSENT_PAGE_TIMEOUT_UNITS,
-				"--disableAutoOpenConsentPage"},
+				"--disableAutoOpenConsentPage",
+				"--", "-s"},
 			"curl-3lo-loopback.golden",
 			false,
 		},
@@ -588,7 +589,8 @@ func Test2LOFlow(t *testing.T) {
 		},
 		{
 			"curl; 2lo",
-			[]string{"curl", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-service-account.json", "--url", "http://localhost:8080/curl"},
+			[]string{"curl", "--scope", "pubsub", "--credentials", "integration/fixtures/fake-service-account.json", "--url", "http://localhost:8080/curl",
+				"--", "-s"},
 			"curl-2lo.golden",
 			false,
 		},
