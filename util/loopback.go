@@ -42,7 +42,7 @@ const (
 	// (waiting for authorization code request to start,
 	//	or for authorization code request to complete)
 	WAITING AuthorizationCodeRequestStatus = iota
-	// Athorization code successfully granted.
+	// Authorization code successfully granted.
 	GRANTED
 	// Failed to grant authorization code
 	FAILED
@@ -259,7 +259,7 @@ func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, 
 	urlState := urlValues.Get("state")
 	// No Code, Status, or Error is treated as unknown error
 	if urlCode == "" && urlState == "" {
-		err := "Unknown error when getting athorization code"
+		err := "Unknown error when getting authorization code"
 		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err}
 
 		lh.authCode = AuthorizationCode{}
@@ -283,7 +283,7 @@ func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, 
 		return
 	}
 
-	err = fmt.Errorf("Athorization code missing code or state.")
+	err = fmt.Errorf("Authorization code missing code or state.")
 	lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err.Error()}
 
 	lh.authCode = AuthorizationCode{}
