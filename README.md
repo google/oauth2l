@@ -242,6 +242,10 @@ $ oauth2l fetch --help
 Specifies an OAuth credential file (either an OAuth client ID or a Service
 Account key) to start the OAuth flow. You can download the file from
 [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
+If you wish to use OAuth client ID with oauth2l, please choose "Desktop"
+(instead of "Web", etc.) for your application type when generating the file,
+so that the post-authentication flow can correctly redirect to the oauth2l
+localhost server.
 
 ```bash
 $ oauth2l fetch --credentials ~/service_account.json --scope cloud-platform
