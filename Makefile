@@ -14,7 +14,7 @@
 
 NAME ?= oauth2l
 GOOSES ?= darwin linux windows
-GOARCHES ?= amd64
+GOARCHES ?= amd64 arm64
 
 export CGO_ENABLED = 0
 export GO111MODULE = on
@@ -26,10 +26,12 @@ build:
 	@for GOOS in ${GOOSES}; do \
 		if [ $${GOOS} = "windows" ]; then \
 			SUFFIX=".exe"; \
+			GOARCHES_SUPPORTED="amd64";  # Only build amd64 for Windows
 		else \
 			SUFFIX=""; \
+			GOARCHES_SUPPORTED="${GOARCHES}"; # Use all architectures for other OSes
 		fi ; \
-		for GOARCH in ${GOARCHES}; do \
+		for GOARCH in ${GOARCHES_SUPPORTED}; do \
 			echo "Building $${GOOS}/$${GOARCH}" ; \
 			GOOS=$${GOOS} GOARCH=$${GOARCH} go build \
 				-a \
