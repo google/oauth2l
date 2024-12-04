@@ -26,10 +26,10 @@ build:
 	@for GOOS in ${GOOSES}; do \
 		if [ $${GOOS} = "windows" ]; then \
 			SUFFIX=".exe"; \
-			GOARCHES_SUPPORTED="amd64";  # Only build amd64 for Windows
+			GOARCHES_SUPPORTED="amd64"; \
 		else \
 			SUFFIX=""; \
-			GOARCHES_SUPPORTED="${GOARCHES}"; # Use all architectures for other OSes
+			GOARCHES_SUPPORTED="${GOARCHES}"; \
 		fi ; \
 		for GOARCH in ${GOARCHES_SUPPORTED}; do \
 			echo "Building $${GOOS}/$${GOARCH}" ; \
