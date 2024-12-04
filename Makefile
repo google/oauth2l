@@ -31,7 +31,7 @@ build:
 			SUFFIX=""; \
 			GOARCHES_SUPPORTED="${GOARCHES}"; \
 		fi ; \
-		for GOARCH in ${GOARCHES_SUPPORTED}; do \
+		for GOARCH in $${GOARCHES_SUPPORTED}; do \
 			echo "Building $${GOOS}/$${GOARCH}" ; \
 			GOOS=$${GOOS} GOARCH=$${GOARCH} go build \
 				-a \
