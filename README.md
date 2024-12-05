@@ -38,17 +38,19 @@ accounts and service accounts in different environments:
 
 ### Pre-compiled binaries
 
-Pre-built binaries are available for Darwin (Mac OS X), Linux, and Windows. You
-can download a build for any tag, for example:
+Pre-built binaries are available for Darwin (Mac OS X), Linux, and Windows. The latest
+releases can be downloaded from the links below:
 
-| OS      | Link                                                            |
-| ------- | --------------------------------------------------------------- |
-| Darwin  | https://storage.googleapis.com/oauth2l/latest/darwin_amd64.tgz  |
-| Linux   | https://storage.googleapis.com/oauth2l/latest/linux_amd64.tgz   |
-| Windows | https://storage.googleapis.com/oauth2l/latest/windows_amd64.tgz |
+| OS             | Link                                                            |
+| -------------- | --------------------------------------------------------------- |
+| Darwin (amd64) | https://storage.googleapis.com/oauth2l/latest/darwin_amd64.tgz  |
+| Darwin (arm64) | https://storage.googleapis.com/oauth2l/latest/darwin_arm64.tgz  |
+| Linux (amd64)  | https://storage.googleapis.com/oauth2l/latest/linux_amd64.tgz   |
+| Linux (arm64)  | https://storage.googleapis.com/oauth2l/latest/linux_arm64.tgz   |
+| Windows (amd64)| https://storage.googleapis.com/oauth2l/latest/windows_amd64.tgz |
 
-Substitute "latest" for any tag version you'd like, removing any leading "v"
-prefix.
+To download an older version, substitute "latest" for any tagged version you like,
+omitting the "v" prefix (ex: 1.3.1).
 
 ### Homebrew (Mac OS X)
 
@@ -58,8 +60,8 @@ On Mac OS X, you can install `oauth2l` via [Homebrew](https://brew.sh):
 $ brew install oauth2l
 ```
 
-Note that new releases may not be immediately available via Homebrew because
-updating is a manual process.
+Note that new releases may not be immediately available via Homebrew due to propagation delay.
+Details are available at [Homebrew oauth2l page](https://formulae.brew.sh/formula/oauth2l).
 
 ### Docker
 
