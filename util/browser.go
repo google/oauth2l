@@ -26,7 +26,7 @@ import (
 // Browser represents an internet browser.
 type Browser struct{}
 
-// Opens URL in a new broser tab.
+// Opens URL in a new browser tab.
 func (b *Browser) OpenURL(url string) error {
 	var err error
 	rt := runtime.GOOS
