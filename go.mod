@@ -1,12 +1,17 @@
 module github.com/google/oauth2l
 
-go 1.16
+go 1.23
+
+toolchain go1.24.0
 
 require (
-	cloud.google.com/go/compute v1.7.0 // indirect
-	github.com/google/uuid v1.3.0
-	github.com/jessevdk/go-flags v1.5.0
-	golang.org/x/net v0.0.0-20220624214902-1bab6f366d9e // indirect
-	golang.org/x/oauth2 v0.0.0-20220628200809-02e64fa58f26
-	golang.org/x/sys v0.0.0-20220627191245-f75cf1eec38b // indirect
+	github.com/google/uuid v1.6.0
+	github.com/jessevdk/go-flags v1.6.1
+	golang.org/x/oauth2 v0.28.0
+)
+
+require (
+	cloud.google.com/go/compute/metadata v0.6.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
 )
