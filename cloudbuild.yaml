@@ -40,7 +40,7 @@ steps:
     REF="${TAG//v}"
     [[ -z "$${REF}" && "${BRANCH_NAME}" == "master" ]] && REF="latest"
     [[ -z "$${REF}" ]] && echo "not a tag or master branch" && exit 0
-    gsutil cp build/*.tgz gs://oauth2l/$${REF}/
+    gcloud storage cp build/*.tgz gs://oauth2l/$${REF}/
   waitFor: ['compress']
 
 - id: docker-build-and-push
