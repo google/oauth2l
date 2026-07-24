@@ -1,8 +1,8 @@
 module github.com/google/oauth2l
 
-go 1.23
+go 1.26
 
-toolchain go1.24.0
+toolchain go1.26.4
 
 require (
 	github.com/google/uuid v1.6.0
