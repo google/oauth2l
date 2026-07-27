@@ -197,7 +197,7 @@ func (lh *AuthorizationCodeLocalhost) WaitForListeningAndServing(maxWaitTime tim
 
 func (lh *AuthorizationCodeLocalhost) GetAuthenticationCode() (authCode AuthorizationCode, err error) {
 	if lh.AuthCodeReqStatus.Status != GRANTED {
-		return lh.authCode, fmt.Errorf(lh.AuthCodeReqStatus.Details)
+		return lh.authCode, fmt.Errorf("%s", lh.AuthCodeReqStatus.Details)
 	}
 	return lh.authCode, nil
 }
