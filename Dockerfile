@@ -29,9 +29,15 @@ RUN make build
 # part of a build step or run custom commands without needing to build their own
 # container image.
 FROM alpine:latest
-RUN apk --no-cache add ca-certificates && \
-  update-ca-certificates
-RUN apk --no-cache add curl
+
+RUN apk --no-cache upgrade && \
+    apk --no-cache add \
+      ca-certificates \
+      curl \
+      "openssl>=3.5.8-r0" \
+      "libcrypto3>=3.5.8-r0" \
+      "libssl3>=3.5.8-r0" && \
+    update-ca-certificates
 
 COPY --from=builder /src/build/linux_amd64/oauth2l /bin/oauth2l
 ENTRYPOINT ["/bin/oauth2l"]
