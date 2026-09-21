@@ -33,7 +33,7 @@ FROM alpine:latest
 RUN apk --no-cache upgrade && \
     apk --no-cache add \
       ca-certificates \
-      curl \
+      "curl>=8.22.0-r0" \
       "openssl>=3.5.8-r0" \
       "libcrypto3>=3.5.8-r0" \
       "libssl3>=3.5.8-r0" && \
