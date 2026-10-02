@@ -215,16 +215,6 @@ file `~/.oauth2l` by default.
 $ oauth2l reset
 ```
 
-### web
-
-Locally deploys and launches the OAuth2l Playground web application in a browser. If the web application packages are not yet installed, it will be installed under `~/.oauth2l-web` by default. See Command Options section for all supported options for the web command.
-
-Note that a local installation of Docker and docker-compose tool is required in order to support this feature. For most platforms, Docker can be installed by following the instructions [here](https://docs.docker.com/get-docker/). For Google workstations, follow special installation procedures at "go/installdocker". The web feature is currently experimental and will be improved in the future.
-
-```bash
-$ oauth2l web
-```
-
 ## Command Options
 
 ### --help
@@ -464,22 +454,6 @@ Path to curl CLI. For optional use with "curl" command.
 
 ```bash
 $ oauth2l curl --curlcli /usr/bin/curl --type sso --email me@google.com --scope cloud-platform --url https://pubsub.googleapis.com/v1/projects/my-project-id/topics
-```
-
-### web --stop
-
-Stops the OAuth2l Playground web app.
-
-```bash
-$ oauth2l web --stop
-```
-
-### web --directory
-
-Installs OAuth2l-web packages to a specfic directory. If this option is used, it should be provided again for future executions of the web command, such as stopping and restarting the web app.
-
-```
-$ oauth2l web --directory your/new/directory
 ```
 
 ## Previous Version

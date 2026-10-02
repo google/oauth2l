@@ -53,7 +53,6 @@ type commandOptions struct {
 	Info   infoOptions   `command:"info" description:"Display info about an OAuth access token."`
 	Test   infoOptions   `command:"test" description:"Tests an OAuth access token. Returns 0 for valid token."`
 	Reset  resetOptions  `command:"reset" description:"Resets the cache."`
-	Web    webOptions    `command:"web"   description:"Launches a local instance of the OAuth2l Playground web app. This feature is experimental."`
 }
 
 // Common options for "fetch", "header", and "curl" commands.
@@ -124,12 +123,6 @@ type resetOptions struct {
 	Cache *string `long:"cache" description:"Path to the credential cache file to remove. Defaults to ~/.oauth2l."`
 }
 
-// Options for "web" command
-type webOptions struct {
-	Stop      bool   `long:"stop" description:"Stops the OAuth2l Playground where OAuth2l-web should be located."`
-	Directory string `long:"directory" description:"Sets the directory of where OAuth2l-web should be located. Defaults to ~/.oauth2l-web." `
-}
-
 // Reads and returns content of JSON file.
 func readJSON(file string) (string, error) {
 	if file != "" {
@@ -157,13 +150,6 @@ func parseScopes(scopes []string) string {
 func setCacheLocation(cache *string) {
 	if cache != nil {
 		util.CacheLocation = *cache
-	}
-}
-
-// Overrides default web directory if configured.
-func setWebDirectory(directory string) {
-	if directory != "" {
-		util.WebDirectory = directory
 	}
 }
 
@@ -439,14 +425,6 @@ func main() {
 		}
 
 		os.Exit(task(token))
-	} else if cmd == "web" {
-		setWebDirectory(opts.Web.Directory)
-		if opts.Web.Stop {
-			util.WebStop()
-		} else {
-			util.Web()
-		}
-
 	} else if cmd == "reset" {
 		setCacheLocation(opts.Reset.Cache)
 		util.Reset()
