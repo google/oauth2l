@@ -26,6 +26,7 @@ accounts and service accounts in different environments:
 
 - When running with command option `--type jwt --audience xxx` and a service
   account key, a JWT token signed by the service account key will be generated.
+  Add `--id_token` to instead get a Google-signed ID token for the audience.
 
 - When running with command option `--type sso --email xxx`, `oauth2l` invokes
   an external `sso` command to retrieve Single Sign-on (SSO) access token.
@@ -295,6 +296,11 @@ this option. See how to construct the audience [here](https://developers.google.
   $ oauth2l fetch --type jwt --credentials ~/service_account.json --scope cloud-platform
   ```
 
+- Google-signed ID token (see [--id_token](#--id_token)):
+  ```bash
+  $ oauth2l fetch --type jwt --credentials ~/service_account.json --audience https://hello.a.run.app --id_token
+  ```
+
 #### sso
 
 When sso is selected, the tool will use an external Single Sign-on (SSO)
@@ -350,6 +356,18 @@ authentication type. Can also be used for STS.
 
 ```bash
 $ oauth2l fetch --type jwt --audience https://pubsub.googleapis.com/
+```
+
+### --id_token
+
+Exchange a JWT signed by the service account key for a Google-signed ID token
+whose `aud` claim is the value of `--audience`. Use it to call services that
+verify Google ID tokens, such as Cloud Run, Cloud Functions or IAP. Only works
+with the jwt authentication type and a service account key; `--audience` is
+required.
+
+```bash
+$ oauth2l fetch --type jwt --credentials ~/service_account.json --audience https://hello.a.run.app --id_token
 ```
 
 ### --quota_project

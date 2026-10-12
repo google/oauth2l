@@ -80,13 +80,32 @@ func JWTTokenSource(ctx context.Context, settings *Settings) (oauth2.TokenSource
 	if err != nil {
 		return nil, err
 	}
-	if settings.Audience != "" {
+	if settings.IdToken {
+		if settings.Audience == "" {
+			return nil, errors.New("Audience is required for ID token")
+		}
+		return IDTokenSource(ctx, creds.JSON, settings.Audience)
+	} else if settings.Audience != "" {
 		return google.JWTAccessTokenSourceFromJSON(creds.JSON, settings.Audience)
 	} else if settings.Scope != "" {
 		return google.JWTAccessTokenSourceWithScope(creds.JSON, settings.Scope)
 	} else {
 		return nil, errors.New("Neither audience nor scope is provided for JWTTokenSource")
 	}
+}
+
+// IDTokenSource returns a token source of Google-signed ID tokens for the given
+// audience. A JWT with a target_audience claim, signed by the service account
+// key, is exchanged at the Google token endpoint for an ID token, which is
+// returned as the AccessToken.
+func IDTokenSource(ctx context.Context, jsonKey []byte, audience string) (oauth2.TokenSource, error) {
+	cfg, err := google.JWTConfigFromJSON(jsonKey)
+	if err != nil {
+		return nil, err
+	}
+	cfg.PrivateClaims = map[string]interface{}{"target_audience": audience}
+	cfg.UseIDToken = true
+	return cfg.TokenSource(ctx), nil
 }
 
 // FindJSONCredentials obtains credentials from settings or Application Default Credentials

@@ -68,6 +68,7 @@ type commonFetchOptions struct {
 	Credentials    string `long:"credentials" description:"Credentials file containing OAuth Client Id or Service Account Key. Optional if environment variable GOOGLE_APPLICATION_CREDENTIALS is set."`
 	Scope          string `long:"scope" description:"List of OAuth scopes requested. Required for oauth and sso authentication type. Comma delimited."`
 	Audience       string `long:"audience" description:"Audience used for JWT self-signed token and STS. Required for jwt authentication type."`
+	IdToken        bool   `long:"id_token" description:"Fetch a Google-signed ID token for the audience instead of a self-signed JWT. Only works with jwt authentication type and a Service Account key."`
 	Email          string `long:"email" description:"Email associated with SSO. Required for sso authentication type."`
 	QuotaProject   string `long:"quota_project" description:"Project override for quota and billing. Used for STS."`
 	Sts            bool   `long:"sts" description:"Perform STS token exchange."`
@@ -307,12 +308,17 @@ func main() {
 				fmt.Println("Neither audience nor scope argument is provided for JWT")
 				return
 			}
+			if commonOpts.IdToken && audience == "" {
+				fmt.Println("Missing audience argument for ID token")
+				return
+			}
 
 			settings = &util.Settings{
 				AuthType:        util.AuthTypeJWT,
 				CredentialsJSON: json,
 				Audience:        audience,
 				Scope:           parseScopes(scopes),
+				IdToken:         commonOpts.IdToken,
 			}
 		} else if authType == util.AuthTypeSSO {
 			// Fallback to reading email from first remaining arg

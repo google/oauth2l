@@ -34,6 +34,9 @@ type Settings struct {
 	Scope string
 	// The audience field for JWT auth
 	Audience string
+	// If true, exchange the self-signed JWT for a Google-signed ID token
+	// whose audience is Audience. Only used for JWT auth.
+	IdToken bool
 	// The Google API key
 	APIKey string
 	// This is only used for domain-wide delegation.

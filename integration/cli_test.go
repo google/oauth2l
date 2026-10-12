@@ -230,6 +230,12 @@ func TestCLI(t *testing.T) {
 			false,
 		},
 		{
+			"fetch; jwt; id_token; no audience",
+			[]string{"fetch", "--type", "jwt", "--id_token", "--scope", "cloud-platform"},
+			"no-audience-id-token.golden",
+			false,
+		},
+		{
 			"fetch; sso; no email",
 			[]string{"fetch", "--type", "sso"},
 			"no-email.golden",
