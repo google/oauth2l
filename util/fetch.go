@@ -16,6 +16,7 @@ package util
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -70,6 +71,21 @@ func OAuthJSONTokenSource(ctx context.Context, settings *Settings) (oauth2.Token
 	creds, err := FindJSONCredentials(ctx, settings)
 	if err != nil {
 		return nil, err
+	}
+	if settings.IdToken && settings.ServiceAccount == "" {
+		// Only a service account can mint an ID token for a custom audience.
+		var key struct {
+			Type string `json:"type"`
+		}
+		json.Unmarshal(creds.JSON, &key)
+		if key.Type == "service_account" {
+			if settings.Audience == "" {
+				return nil, errors.New("Audience is required for ID token with a service account")
+			}
+			return IDTokenSource(ctx, creds.JSON, settings.Audience)
+		} else if settings.Audience != "" {
+			return nil, errors.New("Audience for ID token requires a service account. Use --impersonate-service-account with user credentials.")
+		}
 	}
 	return creds.TokenSource, nil
 

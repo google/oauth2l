@@ -68,7 +68,7 @@ type commonFetchOptions struct {
 	Credentials    string `long:"credentials" description:"Credentials file containing OAuth Client Id or Service Account Key. Optional if environment variable GOOGLE_APPLICATION_CREDENTIALS is set."`
 	Scope          string `long:"scope" description:"List of OAuth scopes requested. Required for oauth and sso authentication type. Comma delimited."`
 	Audience       string `long:"audience" description:"Audience used for JWT self-signed token and STS. Required for jwt authentication type."`
-	IdToken        bool   `long:"id_token" description:"Fetch a Google-signed ID token for the audience instead of a self-signed JWT. Only works with jwt authentication type and a Service Account key."`
+	IdToken        bool   `long:"id_token" description:"Fetch a Google-signed ID token instead of an access token. For oauth, scope defaults to openid,email. For jwt, audience is required."`
 	Email          string `long:"email" description:"Email associated with SSO. Required for sso authentication type."`
 	QuotaProject   string `long:"quota_project" description:"Project override for quota and billing. Used for STS."`
 	Sts            bool   `long:"sts" description:"Perform STS token exchange."`
@@ -351,6 +351,24 @@ func main() {
 		} else {
 			// OAuth flow
 			scopes := getScopesWithFallback(scope, remainingArgs...)
+			if commonOpts.IdToken {
+				if sts {
+					fmt.Println("--id_token is not supported with --sts")
+					return
+				}
+				if serviceAccount != "" && audience == "" {
+					fmt.Println("Missing audience argument for ID token")
+					return
+				}
+				if len(scopes) < 1 {
+					if serviceAccount != "" {
+						// Required for calling the IAM Credentials API.
+						scopes = []string{"cloud-platform"}
+					} else {
+						scopes = []string{"openid", "email"}
+					}
+				}
+			}
 			if len(scopes) < 1 {
 				fmt.Println("Missing scope argument for OAuth 2.0")
 				return
@@ -412,6 +430,7 @@ func main() {
 				ServiceAccount:  serviceAccount,
 				Email:           email,
 				AuthType:        util.AuthTypeOAuth,
+				IdToken:         commonOpts.IdToken,
 			}
 		}
 

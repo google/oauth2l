@@ -190,7 +190,13 @@ func fetchToken(settings *Settings, taskSettings *TaskSettings) *oauth2.Token {
 				return nil
 			}
 		}
-		if settings.ServiceAccount != "" {
+		if settings.ServiceAccount != "" && settings.IdToken {
+			token, err = GenerateServiceAccountIdToken(token.AccessToken, settings.ServiceAccount, settings.Audience)
+			if err != nil {
+				fmt.Println(err)
+				return nil
+			}
+		} else if settings.ServiceAccount != "" {
 			token, err = GenerateServiceAccountAccessToken(token.AccessToken, settings.ServiceAccount, settings.Scope)
 			if err != nil {
 				fmt.Println(err)
@@ -209,6 +215,15 @@ func fetchToken(settings *Settings, taskSettings *TaskSettings) *oauth2.Token {
 			fmt.Println(err)
 			return nil
 		}
+	}
+	// Use the ID token in place of the access token if requested.
+	if settings.IdToken {
+		idToken, ok := token.Extra("id_token").(string)
+		if !ok || idToken == "" {
+			fmt.Println("No ID token returned. Make sure the openid scope is granted.")
+			return nil
+		}
+		token.AccessToken = idToken
 	}
 	return token
 }

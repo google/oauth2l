@@ -360,15 +360,37 @@ $ oauth2l fetch --type jwt --audience https://pubsub.googleapis.com/
 
 ### --id_token
 
-Exchange a JWT signed by the service account key for a Google-signed ID token
-whose `aud` claim is the value of `--audience`. Use it to call services that
-verify Google ID tokens, such as Cloud Run, Cloud Functions or IAP. Only works
-with the jwt authentication type and a service account key; `--audience` is
-required.
+Return a Google-signed ID token instead of an access token. Use it to call
+services that verify Google ID tokens, such as Cloud Run, Cloud Functions or IAP.
 
-```bash
-$ oauth2l fetch --type jwt --credentials ~/service_account.json --audience https://hello.a.run.app --id_token
-```
+- With the oauth authentication type, the ID token is returned along with the
+  OAuth token. `--scope` defaults to `openid,email`. Similar to
+  `gcloud auth print-identity-token`, this works with the user credentials from
+  `gcloud auth application-default login`:
+  ```bash
+  $ oauth2l fetch --id_token
+  $ oauth2l curl --id_token --url https://hello.a.run.app
+  ```
+  As with gcloud, `--audience` cannot be used with user credentials. If the
+  credentials are a service account key, `--audience` is required and the ID
+  token is minted for it, as with the jwt authentication type:
+  ```bash
+  $ oauth2l fetch --id_token --credentials ~/service_account.json --audience https://hello.a.run.app
+  ```
+
+- With `--impersonate-service-account`, the fetched access token is used to
+  generate an ID token for the Service Account with `--audience`, which is
+  required. `--scope` defaults to `cloud-platform`:
+  ```bash
+  $ oauth2l fetch --id_token --impersonate-service-account sa@my-project.iam.gserviceaccount.com --audience https://hello.a.run.app
+  ```
+
+- With the jwt authentication type and a service account key, a JWT signed by
+  the service account key is exchanged for an ID token whose `aud` claim is the
+  value of `--audience`, which is required:
+  ```bash
+  $ oauth2l fetch --type jwt --credentials ~/service_account.json --audience https://hello.a.run.app --id_token
+  ```
 
 ### --quota_project
 
@@ -427,6 +449,8 @@ Impersonation [here](https://cloud.google.com/iam/docs/impersonating-service-acc
 ```bash
 $ oauth2l fetch --credentials ~/client_credentials.json --scope cloud-platform,pubsub --impersonate-service-account 113258942105700140798
 ```
+
+Use with `--id_token` and `--audience` to get an ID token for the Service Account instead. See [--id_token](#--id_token).
 
 ### --disableAutoOpenConsentPage
 
