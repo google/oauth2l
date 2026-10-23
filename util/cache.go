@@ -172,7 +172,7 @@ func MarshalWithExtras(token *oauth2.Token, indent string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	delete(m,"expired_in")
+	delete(m,"expires_in")
 	if token.Extra("issued_token_type") != nil {
 		m["issued_token_type"] = token.Extra("issued_token_type").(string)
 	}
