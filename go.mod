@@ -2,7 +2,7 @@ module github.com/google/oauth2l
 
 go 1.26.0
 
-toolchain go1.26.6
+toolchain go1.26.10
 
 require (
 	cloud.google.com/go/auth v0.24.1
