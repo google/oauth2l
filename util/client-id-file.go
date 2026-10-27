@@ -31,7 +31,8 @@ type clientCredentialsConfig struct {
 }
 
 // clientCredentialsFile mirrors cloud.google.com/go/auth/internal/credsfile.ClientCredentialsFile,
-// which is internal to cloud.google.com/go/auth and not importable; kept in sync by hand.
+// which is internal to cloud.google.com/go/auth and not importable; parity with
+// credentials.DetectDefault is verified in client-id-file_test.go.
 type clientCredentialsFile struct {
 	Web       *clientCredentialsConfig `json:"web"`
 	Installed *clientCredentialsConfig `json:"installed"`

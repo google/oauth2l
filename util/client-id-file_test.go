@@ -15,8 +15,14 @@
 package util_test
 
 import (
+	"context"
+	"errors"
+	"net/url"
+	"strings"
 	"testing"
 
+	"cloud.google.com/go/auth"
+	"cloud.google.com/go/auth/credentials"
 	"github.com/google/oauth2l/util"
 )
 
@@ -140,8 +146,23 @@ func TestIsValidOauthClientIdFile(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := util.IsValidOauthClientIdFile(tc.json); got != tc.want {
+			got := util.IsValidOauthClientIdFile(tc.json)
+			if got != tc.want {
 				t.Errorf("IsValidOauthClientIdFile() = %v, want %v", got, tc.want)
+			}
+			if tc.json != "" {
+				// Parity check with cloud.google.com/go/auth/credentials.DetectDefault:
+				// when AuthHandlerOptions is nil, DetectDefault returns "auth handler must
+				// be specified for this credential filetype" iff its internal credsfile
+				// parser recognizes the JSON as a 3LO client credentials file.
+				_, err := credentials.DetectDefault(&credentials.DetectOptions{
+					CredentialsJSON: []byte(tc.json),
+					Scopes:          []string{"https://www.googleapis.com/auth/cloud-platform"},
+				})
+				goAuthRecognized := err != nil && strings.Contains(err.Error(), "auth handler must be specified for this credential filetype")
+				if got != goAuthRecognized {
+					t.Errorf("IsValidOauthClientIdFile() = %v, out of sync with credentials.DetectDefault (recognized=%v, err=%v)", got, goAuthRecognized, err)
+				}
 			}
 		})
 	}
@@ -206,6 +227,34 @@ func TestGetFirstRedirectURI(t *testing.T) {
 			}
 			if got != tc.wantURI {
 				t.Errorf("GetFirstRedirectURI() = %q, want %q", got, tc.wantURI)
+			}
+			if !tc.wantErr {
+				// Parity check: verify credentials.DetectDefault extracts the exact
+				// same redirect_uri via its internal credsfile parser.
+				var capturedAuthCodeURL string
+				errStop := errors.New("stop after capturing authCodeURL")
+				creds, err := credentials.DetectDefault(&credentials.DetectOptions{
+					CredentialsJSON: []byte(tc.json),
+					Scopes:          []string{"https://www.googleapis.com/auth/cloud-platform"},
+					AuthHandlerOptions: &auth.AuthorizationHandlerOptions{
+						Handler: func(authCodeURL string) (string, string, error) {
+							capturedAuthCodeURL = authCodeURL
+							return "", "", errStop
+						},
+						State: "state",
+					},
+				})
+				if err != nil {
+					t.Fatalf("credentials.DetectDefault() unexpected error: %v", err)
+				}
+				_, _ = creds.Token(context.Background())
+				parsedURL, err := url.Parse(capturedAuthCodeURL)
+				if err != nil {
+					t.Fatalf("url.Parse(%q) unexpected error: %v", capturedAuthCodeURL, err)
+				}
+				if goAuthURI := parsedURL.Query().Get("redirect_uri"); got != goAuthURI {
+					t.Errorf("GetFirstRedirectURI() = %q, out of sync with credentials.DetectDefault redirect_uri %q", got, goAuthURI)
+				}
 			}
 		})
 	}
