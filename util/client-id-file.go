@@ -18,8 +18,43 @@
 package util
 
 import (
-	"golang.org/x/oauth2/google"
+	"encoding/json"
+	"errors"
+	"fmt"
 )
+
+type clientCredConfig struct {
+	ClientID     string   `json:"client_id"`
+	ClientSecret string   `json:"client_secret"`
+	RedirectURIs []string `json:"redirect_uris"`
+	AuthURI      string   `json:"auth_uri"`
+	TokenURI     string   `json:"token_uri"`
+}
+
+type clientCredentialsFile struct {
+	Web       *clientCredConfig `json:"web"`
+	Installed *clientCredConfig `json:"installed"`
+}
+
+func parseClientCreds(data []byte) (*clientCredConfig, error) {
+	var f clientCredentialsFile
+	if err := json.Unmarshal(data, &f); err != nil {
+		return nil, err
+	}
+	var c *clientCredConfig
+	switch {
+	case f.Web != nil:
+		c = f.Web
+	case f.Installed != nil:
+		c = f.Installed
+	default:
+		return nil, fmt.Errorf("oauth2l: no client credentials found")
+	}
+	if len(c.RedirectURIs) < 1 {
+		return nil, errors.New("oauth2l: missing redirect URL in the client_credentials.json")
+	}
+	return c, nil
+}
 
 // IsValidOauthClientIdFile determines if a valid OAuth Client ID file can be created
 // from a credentials json file.
@@ -33,7 +68,7 @@ func IsValidOauthClientIdFile(credentialsJSON string) (isValidCredFile bool) {
 	}
 
 	data := []byte(credentialsJSON)
-	_, err := google.ConfigFromJSON(data)
+	_, err := parseClientCreds(data)
 	return err == nil
 }
 
@@ -45,10 +80,10 @@ func IsValidOauthClientIdFile(credentialsJSON string) (isValidCredFile bool) {
 // Returns err: if unable to process the credentialsJSON file.
 func GetFirstRedirectURI(credentialsJSON string) (firstRedirectURI string, err error) {
 	data := []byte(credentialsJSON)
-	credentials, err := google.ConfigFromJSON(data)
+	credentials, err := parseClientCreds(data)
 	if err != nil {
 		return "", err
 	}
 
-	return credentials.RedirectURL, nil
+	return credentials.RedirectURIs[0], nil
 }
