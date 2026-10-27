@@ -15,6 +15,11 @@
 package util
 
 import (
+// Adding blank lines for go mod tidy and vendor
+// will fix in Phase2 PR for migration to go/auth.
+	_ "cloud.google.com/go/auth"
+	_ "cloud.google.com/go/auth/credentials"
+	_ "cloud.google.com/go/auth/oauth2adapt"
 	"golang.org/x/oauth2/authhandler"
 )
 

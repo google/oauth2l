@@ -167,11 +167,12 @@ func MarshalWithExtras(token *oauth2.Token, indent string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	var m map[string]string
+	var m map[string]interface{}
 	err = json.Unmarshal(data, &m)
 	if err != nil {
 		return nil, err
 	}
+	delete(m,"expires_in")
 	if token.Extra("issued_token_type") != nil {
 		m["issued_token_type"] = token.Extra("issued_token_type").(string)
 	}
