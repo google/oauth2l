@@ -49,7 +49,10 @@ func BuildAuthRefreshTokenJSON(refreshToken string, creds *auth.Credentials) str
 	refreshCredentials.AuthURL = clientConfig.AuthURI
 	refreshCredentials.RefreshToken = refreshToken
 	refreshCredentials.Type = "authorized_user"
-	refreshJSON, _ := json.Marshal(refreshCredentials)
+	refreshJSON, err := json.Marshal(refreshCredentials)
+	if err != nil {
+		return ""
+	}
 	return string(refreshJSON)
 }
 

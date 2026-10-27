@@ -20,10 +20,9 @@ package util
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 )
 
-type clientCredConfig struct {
+type clientCredentialsConfig struct {
 	ClientID     string   `json:"client_id"`
 	ClientSecret string   `json:"client_secret"`
 	RedirectURIs []string `json:"redirect_uris"`
@@ -31,24 +30,26 @@ type clientCredConfig struct {
 	TokenURI     string   `json:"token_uri"`
 }
 
+// clientCredentialsFile mirrors cloud.google.com/go/auth/internal/credsfile.ClientCredentialsFile,
+// which is internal to cloud.google.com/go/auth and not importable; kept in sync by hand.
 type clientCredentialsFile struct {
-	Web       *clientCredConfig `json:"web"`
-	Installed *clientCredConfig `json:"installed"`
+	Web       *clientCredentialsConfig `json:"web"`
+	Installed *clientCredentialsConfig `json:"installed"`
 }
 
-func parseClientCreds(data []byte) (*clientCredConfig, error) {
+func parseClientCreds(data []byte) (*clientCredentialsConfig, error) {
 	var f clientCredentialsFile
 	if err := json.Unmarshal(data, &f); err != nil {
 		return nil, err
 	}
-	var c *clientCredConfig
+	var c *clientCredentialsConfig
 	switch {
 	case f.Web != nil:
 		c = f.Web
 	case f.Installed != nil:
 		c = f.Installed
 	default:
-		return nil, fmt.Errorf("oauth2l: no client credentials found")
+		return nil, errors.New("oauth2l: no client credentials found")
 	}
 	if len(c.RedirectURIs) < 1 {
 		return nil, errors.New("oauth2l: missing redirect URL in the client_credentials.json")

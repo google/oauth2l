@@ -1,5 +1,5 @@
 //
-// Copyright 2020 Google Inc.
+// Copyright 2026 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,9 +12,13 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-package util
+package util_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/google/oauth2l/util"
+)
 
 const (
 	testInstalledClientIDJSON = `{
@@ -43,10 +47,39 @@ const (
   }
 }`
 
+	testBothWebAndInstalledClientIDJSON = `{
+  "web": {
+    "client_id": "web-client.apps.googleusercontent.com",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "client_secret": "websecret",
+    "redirect_uris": [
+      "http://localhost:8080/web-callback"
+    ]
+  },
+  "installed": {
+    "client_id": "144169.apps.googleusercontent.com",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "http://localhost:8080/token",
+    "client_secret": "awesomesecret",
+    "redirect_uris": [
+      "urn:ietf:wg:oauth:2.0:oob"
+    ]
+  }
+}`
+
 	testMissingRedirectURIsJSON = `{
   "installed": {
     "client_id": "144169.apps.googleusercontent.com",
     "client_secret": "awesomesecret"
+  }
+}`
+
+	testEmptyRedirectURIsJSON = `{
+  "installed": {
+    "client_id": "144169.apps.googleusercontent.com",
+    "client_secret": "awesomesecret",
+    "redirect_uris": []
   }
 }`
 
@@ -74,6 +107,11 @@ func TestIsValidOauthClientIdFile(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "both web and installed present",
+			json: testBothWebAndInstalledClientIDJSON,
+			want: true,
+		},
+		{
 			name: "empty string",
 			json: "",
 			want: false,
@@ -89,6 +127,11 @@ func TestIsValidOauthClientIdFile(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "empty redirect_uris slice",
+			json: testEmptyRedirectURIsJSON,
+			want: false,
+		},
+		{
 			name: "non-client credentials JSON",
 			json: testServiceAccountJSON,
 			want: false,
@@ -97,7 +140,7 @@ func TestIsValidOauthClientIdFile(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := IsValidOauthClientIdFile(tc.json); got != tc.want {
+			if got := util.IsValidOauthClientIdFile(tc.json); got != tc.want {
 				t.Errorf("IsValidOauthClientIdFile() = %v, want %v", got, tc.want)
 			}
 		})
@@ -124,6 +167,12 @@ func TestGetFirstRedirectURI(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "both web and installed present prefers web",
+			json:    testBothWebAndInstalledClientIDJSON,
+			wantURI: "http://localhost:8080/web-callback",
+			wantErr: false,
+		},
+		{
 			name:    "invalid JSON returns error",
 			json:    "{not-json",
 			wantURI: "",
@@ -132,6 +181,12 @@ func TestGetFirstRedirectURI(t *testing.T) {
 		{
 			name:    "missing redirect_uris returns error",
 			json:    testMissingRedirectURIsJSON,
+			wantURI: "",
+			wantErr: true,
+		},
+		{
+			name:    "empty redirect_uris slice returns error",
+			json:    testEmptyRedirectURIsJSON,
 			wantURI: "",
 			wantErr: true,
 		},
@@ -145,7 +200,7 @@ func TestGetFirstRedirectURI(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := GetFirstRedirectURI(tc.json)
+			got, err := util.GetFirstRedirectURI(tc.json)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("GetFirstRedirectURI() error = %v, wantErr %v", err, tc.wantErr)
 			}
