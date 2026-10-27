@@ -15,11 +15,11 @@
 package util
 
 import (
-	"cloud.google.com/go/auth"
-	// Blank imports for go mod tidy and vendor; will be imported directly in subsequent migration PRs.
+	// Blank import for go mod tidy and vendor; will be imported directly in util/fetch.go.
 	_ "cloud.google.com/go/auth/credentials"
-	_ "cloud.google.com/go/auth/oauth2adapt"
 	"golang.org/x/oauth2/authhandler"
+
+	"cloud.google.com/go/auth"
 )
 
 var AuthTypeOAuth = "oauth"
@@ -53,9 +53,10 @@ type Settings struct {
 	// Deprecated: Use GoogleAuthHandler instead.
 	AuthHandler authhandler.AuthorizationHandler
 	// GoogleAuthHandler is the cloud.google.com/go/auth AuthorizationHandler
-	// used for 3-legged OAuth flow.
+	// used for 3-legged OAuth flow. It takes precedence over AuthHandler when
+	// both are set.
 	GoogleAuthHandler auth.AuthorizationHandler
-	// State is a unique string used with AuthHandler.
+	// State is a unique string used with GoogleAuthHandler (or the deprecated AuthHandler).
 	State string
 	// Indicates that STS token exchange should be performed.
 	Sts bool

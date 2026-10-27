@@ -44,8 +44,9 @@ func Get3LOAuthHandler(state string, consentSettings ConsentPageSettings,
 	}
 }
 
-// 3LO authorization handler. Determines what algorithm to use
-// to get the authorization code.
+// Get3LOAuthorizationHandler returns a 3LO authorization handler for
+// golang.org/x/oauth2/authhandler. Determines what algorithm to use to get
+// the authorization code.
 //
 // Note that the "state" parameter is used to prevent CSRF attacks.
 //
