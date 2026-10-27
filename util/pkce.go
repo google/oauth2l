@@ -18,20 +18,34 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 
+	"cloud.google.com/go/auth"
 	"github.com/google/uuid"
 	"golang.org/x/oauth2/authhandler"
 )
 
-// GeneratePKCEParams generates a unique PKCE challenge and verifier combination,
+// GeneratePKCEOptions generates a unique PKCE challenge and verifier combination,
 // using UUID, SHA256 encryption, and base64 URL encoding with no padding.
-func GeneratePKCEParams() *authhandler.PKCEParams {
+func GeneratePKCEOptions() *auth.PKCEOptions {
 	verifier := uuid.New().String()
 	sha := sha256.Sum256([]byte(verifier))
 	challenge := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(sha[:])
 
-	return &authhandler.PKCEParams{
+	return &auth.PKCEOptions{
 		Challenge:       challenge,
 		ChallengeMethod: "S256",
 		Verifier:        verifier,
+	}
+}
+
+// GeneratePKCEParams generates a unique PKCE challenge and verifier combination,
+// using UUID, SHA256 encryption, and base64 URL encoding with no padding.
+//
+// Deprecated: Use GeneratePKCEOptions instead.
+func GeneratePKCEParams() *authhandler.PKCEParams {
+	opts := GeneratePKCEOptions()
+	return &authhandler.PKCEParams{
+		Challenge:       opts.Challenge,
+		ChallengeMethod: opts.ChallengeMethod,
+		Verifier:        opts.Verifier,
 	}
 }

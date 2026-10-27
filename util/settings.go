@@ -15,9 +15,8 @@
 package util
 
 import (
-// Adding blank lines for go mod tidy and vendor
-// will fix in Phase2 PR for migration to go/auth.
-	_ "cloud.google.com/go/auth"
+	"cloud.google.com/go/auth"
+	// Blank imports for go mod tidy and vendor; will be imported directly in subsequent migration PRs.
 	_ "cloud.google.com/go/auth/credentials"
 	_ "cloud.google.com/go/auth/oauth2adapt"
 	"golang.org/x/oauth2/authhandler"
@@ -50,7 +49,12 @@ type Settings struct {
 	// billing charges.
 	QuotaProject string
 	// AuthHandler is the AuthorizationHandler used for 3-legged OAuth flow.
+	//
+	// Deprecated: Use GoogleAuthHandler instead.
 	AuthHandler authhandler.AuthorizationHandler
+	// GoogleAuthHandler is the cloud.google.com/go/auth AuthorizationHandler
+	// used for 3-legged OAuth flow.
+	GoogleAuthHandler auth.AuthorizationHandler
 	// State is a unique string used with AuthHandler.
 	State string
 	// Indicates that STS token exchange should be performed.
@@ -58,6 +62,16 @@ type Settings struct {
 	// Used for Service Account Impersonation.
 	// Exchange User access token for Service Account access token.
 	ServiceAccount string
+}
+
+func (s Settings) resolveAuthHandler() auth.AuthorizationHandler {
+	if s.GoogleAuthHandler != nil {
+		return s.GoogleAuthHandler
+	}
+	if s.AuthHandler != nil {
+		return auth.AuthorizationHandler(s.AuthHandler)
+	}
+	return nil
 }
 
 func (s Settings) GetAuthType() string {
