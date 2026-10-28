@@ -23,6 +23,9 @@ import (
 	// Blank import for go mod tidy and vendor; will be imported directly in Phase 4.
 	_ "cloud.google.com/go/auth/oauth2adapt"
 	"golang.org/x/oauth2"
+	// Temporary import to convert settings.resolveAuthHandler() for google.CredentialsParams;
+	// will be removed in the next phase (Phase 4) when google.CredentialsParams is replaced
+	// with credentials.DetectOptions.
 	"golang.org/x/oauth2/authhandler"
 	"golang.org/x/oauth2/google"
 )
