@@ -18,8 +18,45 @@
 package util
 
 import (
-	"golang.org/x/oauth2/google"
+	"encoding/json"
+	"errors"
 )
+
+type clientCredentialsConfig struct {
+	ClientID     string   `json:"client_id"`
+	ClientSecret string   `json:"client_secret"`
+	RedirectURIs []string `json:"redirect_uris"`
+	AuthURI      string   `json:"auth_uri"`
+	TokenURI     string   `json:"token_uri"`
+}
+
+// clientCredentialsFile mirrors cloud.google.com/go/auth/internal/credsfile.ClientCredentialsFile,
+// which is internal to cloud.google.com/go/auth and not importable; parity with
+// credentials.DetectDefault is verified in client-id-file_test.go.
+type clientCredentialsFile struct {
+	Web       *clientCredentialsConfig `json:"web"`
+	Installed *clientCredentialsConfig `json:"installed"`
+}
+
+func parseClientCreds(data []byte) (*clientCredentialsConfig, error) {
+	var f clientCredentialsFile
+	if err := json.Unmarshal(data, &f); err != nil {
+		return nil, err
+	}
+	var c *clientCredentialsConfig
+	switch {
+	case f.Web != nil:
+		c = f.Web
+	case f.Installed != nil:
+		c = f.Installed
+	default:
+		return nil, errors.New("oauth2l: no client credentials found")
+	}
+	if len(c.RedirectURIs) < 1 {
+		return nil, errors.New("oauth2l: missing redirect URL in the client_credentials.json")
+	}
+	return c, nil
+}
 
 // IsValidOauthClientIdFile determines if a valid OAuth Client ID file can be created
 // from a credentials json file.
@@ -33,7 +70,7 @@ func IsValidOauthClientIdFile(credentialsJSON string) (isValidCredFile bool) {
 	}
 
 	data := []byte(credentialsJSON)
-	_, err := google.ConfigFromJSON(data)
+	_, err := parseClientCreds(data)
 	return err == nil
 }
 
@@ -45,10 +82,10 @@ func IsValidOauthClientIdFile(credentialsJSON string) (isValidCredFile bool) {
 // Returns err: if unable to process the credentialsJSON file.
 func GetFirstRedirectURI(credentialsJSON string) (firstRedirectURI string, err error) {
 	data := []byte(credentialsJSON)
-	credentials, err := google.ConfigFromJSON(data)
+	credentials, err := parseClientCreds(data)
 	if err != nil {
 		return "", err
 	}
 
-	return credentials.RedirectURL, nil
+	return credentials.RedirectURIs[0], nil
 }
