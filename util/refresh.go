@@ -17,6 +17,8 @@ package util
 import (
 	"encoding/json"
 
+	"cloud.google.com/go/auth"
+	"cloud.google.com/go/auth/oauth2adapt"
 	"golang.org/x/oauth2/google"
 )
 
@@ -29,24 +31,36 @@ type refreshCredentialsJSON struct {
 	Type         string `json:"type,omitempty"`
 }
 
-// BuildRefreshTokenJSON attempts to construct a gcloud refresh token JSON
-// using a refreshToken and an OAuth Client ID Credentials object.
+// BuildAuthRefreshTokenJSON attempts to construct a gcloud refresh token JSON
+// using a refreshToken and an OAuth Client ID auth.Credentials object.
 // Empty string is returned if this is not possible.
-func BuildRefreshTokenJSON(refreshToken string, creds *google.Credentials) string {
-	if refreshToken == "" {
+func BuildAuthRefreshTokenJSON(refreshToken string, creds *auth.Credentials) string {
+	if refreshToken == "" || creds == nil {
 		return ""
 	}
-	oauth2Config, err := google.ConfigFromJSON(creds.JSON)
+	clientConfig, err := parseClientCreds(creds.JSON())
 	if err != nil {
 		return ""
 	}
 	var refreshCredentials refreshCredentialsJSON
-	refreshCredentials.ClientID = oauth2Config.ClientID
-	refreshCredentials.ClientSecret = oauth2Config.ClientSecret
-	refreshCredentials.TokenURL = oauth2Config.Endpoint.TokenURL
-	refreshCredentials.AuthURL = oauth2Config.Endpoint.AuthURL
+	refreshCredentials.ClientID = clientConfig.ClientID
+	refreshCredentials.ClientSecret = clientConfig.ClientSecret
+	refreshCredentials.TokenURL = clientConfig.TokenURI
+	refreshCredentials.AuthURL = clientConfig.AuthURI
 	refreshCredentials.RefreshToken = refreshToken
 	refreshCredentials.Type = "authorized_user"
-	refreshCredentialsJSON, _ := json.Marshal(refreshCredentials)
-	return string(refreshCredentialsJSON)
+	refreshJSON, err := json.Marshal(refreshCredentials)
+	if err != nil {
+		return ""
+	}
+	return string(refreshJSON)
+}
+
+// BuildRefreshTokenJSON attempts to construct a gcloud refresh token JSON
+// using a refreshToken and an OAuth Client ID Credentials object.
+// Empty string is returned if this is not possible.
+//
+// Deprecated: Use BuildAuthRefreshTokenJSON instead.
+func BuildRefreshTokenJSON(refreshToken string, creds *google.Credentials) string {
+	return BuildAuthRefreshTokenJSON(refreshToken, oauth2adapt.AuthCredentialsFromOauth2Credentials(creds))
 }
