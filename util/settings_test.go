@@ -43,6 +43,12 @@ func TestResolveAuthHandler(t *testing.T) {
 			wantState: "google-state",
 		},
 		{
+			name:      "uses GoogleAuthHandler when only GoogleAuthHandler set",
+			settings:  Settings{GoogleAuthHandler: googleHandler},
+			wantCode:  "google-code",
+			wantState: "google-state",
+		},
+		{
 			name:      "falls back to deprecated AuthHandler",
 			settings:  Settings{AuthHandler: legacyHandler},
 			wantCode:  "legacy-code",
