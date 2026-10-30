@@ -22,15 +22,16 @@ import (
 	"strings"
 	"time"
 
+	"cloud.google.com/go/auth"
 	"golang.org/x/oauth2/authhandler"
 )
 
-// 3LO authorization handler. Determines what algorithm to use
-// to get the authorization code.
+// Get3LOAuthHandler returns a 3LO authorization handler for cloud.google.com/go/auth.
+// Determines what algorithm to use to get the authorization code.
 //
 // Note that the "state" parameter is used to prevent CSRF attacks.
-func Get3LOAuthorizationHandler(state string, consentSettings ConsentPageSettings,
-	authCodeServer *AuthorizationCodeServer) authhandler.AuthorizationHandler {
+func Get3LOAuthHandler(state string, consentSettings ConsentPageSettings,
+	authCodeServer *AuthorizationCodeServer) auth.AuthorizationHandler {
 	return func(authCodeURL string) (string, string, error) {
 		decodedValue, _ := url.ParseQuery(authCodeURL)
 		redirectURL := decodedValue.Get("redirect_uri")
@@ -41,6 +42,18 @@ func Get3LOAuthorizationHandler(state string, consentSettings ConsentPageSetting
 
 		return authorization3LOOutOfBand(state, authCodeURL)
 	}
+}
+
+// Get3LOAuthorizationHandler returns a 3LO authorization handler for
+// golang.org/x/oauth2/authhandler. Determines what algorithm to use to get
+// the authorization code.
+//
+// Note that the "state" parameter is used to prevent CSRF attacks.
+//
+// Deprecated: Use Get3LOAuthHandler instead.
+func Get3LOAuthorizationHandler(state string, consentSettings ConsentPageSettings,
+	authCodeServer *AuthorizationCodeServer) authhandler.AuthorizationHandler {
+	return authhandler.AuthorizationHandler(Get3LOAuthHandler(state, consentSettings, authCodeServer))
 }
 
 // authorization3LOOutOfBand prints the authorization URL on stdout

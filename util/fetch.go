@@ -20,7 +20,13 @@ import (
 	"fmt"
 	"strings"
 
+	// Blank import for go mod tidy and vendor; will be imported directly in Phase 4.
+	_ "cloud.google.com/go/auth/oauth2adapt"
 	"golang.org/x/oauth2"
+	// Temporary import to convert settings.resolveAuthHandler() for google.CredentialsParams;
+	// will be removed in the next phase (Phase 4) when google.CredentialsParams is replaced
+	// with credentials.DetectOptions.
+	"golang.org/x/oauth2/authhandler"
 	"golang.org/x/oauth2/google"
 )
 
@@ -94,7 +100,10 @@ func FindJSONCredentials(ctx context.Context, settings *Settings) (*google.Crede
 	var params google.CredentialsParams
 	params.Scopes = strings.Split(settings.Scope, " ")
 	params.State = "state"
-	params.AuthHandler = settings.AuthHandler
+	// Convert the resolved handler back to authhandler.AuthorizationHandler and
+	// use GeneratePKCEParams() while FindJSONCredentials still constructs
+	// google.CredentialsParams; Phase 4 replaces this with FindAuthCredentials.
+	params.AuthHandler = authhandler.AuthorizationHandler(settings.resolveAuthHandler())
 	params.Subject = settings.Email
 	params.PKCE = GeneratePKCEParams()
 	if settings.CredentialsJSON != "" {

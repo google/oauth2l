@@ -15,6 +15,7 @@
 package util
 
 import (
+	"cloud.google.com/go/auth"
 	// Blank import for go mod tidy and vendor; will be imported directly in util/fetch.go.
 	_ "cloud.google.com/go/auth/credentials"
 	"golang.org/x/oauth2/authhandler"
@@ -47,14 +48,30 @@ type Settings struct {
 	// billing charges.
 	QuotaProject string
 	// AuthHandler is the AuthorizationHandler used for 3-legged OAuth flow.
+	//
+	// Deprecated: Use GoogleAuthHandler instead.
 	AuthHandler authhandler.AuthorizationHandler
-	// State is a unique string used with AuthHandler.
+	// GoogleAuthHandler is the cloud.google.com/go/auth AuthorizationHandler
+	// used for 3-legged OAuth flow. It takes precedence over AuthHandler when
+	// both are set.
+	GoogleAuthHandler auth.AuthorizationHandler
+	// State is a unique string used with GoogleAuthHandler (or the deprecated AuthHandler).
 	State string
 	// Indicates that STS token exchange should be performed.
 	Sts bool
 	// Used for Service Account Impersonation.
 	// Exchange User access token for Service Account access token.
 	ServiceAccount string
+}
+
+func (s Settings) resolveAuthHandler() auth.AuthorizationHandler {
+	if s.GoogleAuthHandler != nil {
+		return s.GoogleAuthHandler
+	}
+	if s.AuthHandler != nil {
+		return auth.AuthorizationHandler(s.AuthHandler)
+	}
+	return nil
 }
 
 func (s Settings) GetAuthType() string {
