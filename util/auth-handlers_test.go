@@ -68,6 +68,7 @@ func silenceStdout(t *testing.T) {
 }
 
 func TestGet3LOAuthHandlerLoopback(t *testing.T) {
+	silenceStdout(t)
 	fakeSrv := &fakeAuthCodeServer{
 		listening: true,
 		authCode: AuthorizationCode{
@@ -122,6 +123,8 @@ func TestGet3LOAuthHandlerLoopbackError(t *testing.T) {
 }
 
 func TestGet3LOAuthHandlerLoopbackServerNotListening(t *testing.T) {
+	// The handler prints user instructions to stdout before reporting,
+	// keep them out of the test output.
 	silenceStdout(t)
 	wantErr := errors.New("server failed to start")
 	fakeSrv := &fakeAuthCodeServer{
