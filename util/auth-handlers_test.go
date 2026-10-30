@@ -68,7 +68,6 @@ func silenceStdout(t *testing.T) {
 }
 
 func TestGet3LOAuthHandlerLoopback(t *testing.T) {
-	silenceStdout(t)
 	fakeSrv := &fakeAuthCodeServer{
 		listening: true,
 		authCode: AuthorizationCode{
