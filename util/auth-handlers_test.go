@@ -123,6 +123,7 @@ func TestGet3LOAuthHandlerLoopbackError(t *testing.T) {
 }
 
 func TestGet3LOAuthHandlerLoopbackServerNotListening(t *testing.T) {
+	silenceStdout(t)
 	wantErr := errors.New("server failed to start")
 	fakeSrv := &fakeAuthCodeServer{
 		listening: false,

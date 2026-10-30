@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"cloud.google.com/go/auth"
@@ -58,22 +59,27 @@ func parseCredentialsFileHeader(b []byte) credentialsFileHeader {
 
 // newDetectOptions builds credentials.DetectOptions from settings.
 //
+// An *http.Client stored in ctx under oauth2.HTTPClient is used for token
+// requests, as golang.org/x/oauth2/google did.
+//
 // cloud.google.com/go/auth rejects options that set both Scopes and
 // Audience, so Audience is only used for self-signed JWTs (where it takes
 // precedence over Scope); OAuth flows only use Scope. This lets callers keep
 // setting both fields (e.g. for STS token exchange) as before.
-func newDetectOptions(settings *Settings, useSelfSignedJWT bool) *credentials.DetectOptions {
+func newDetectOptions(ctx context.Context, settings *Settings, useSelfSignedJWT bool) *credentials.DetectOptions {
+	opts := &credentials.DetectOptions{Client: httpClientFromContext(ctx)}
 	if settings == nil {
-		return &credentials.DetectOptions{Scopes: []string{DefaultScope}}
+		opts.Scopes = []string{DefaultScope}
+		return opts
 	}
-	opts := &credentials.DetectOptions{
-		Subject:          settings.Email,
-		UseSelfSignedJWT: useSelfSignedJWT,
-	}
+	opts.Subject = settings.Email
+	opts.UseSelfSignedJWT = useSelfSignedJWT
 	if useSelfSignedJWT && settings.Audience != "" {
 		opts.Audience = settings.Audience
-	} else if settings.Scope != "" {
-		opts.Scopes = strings.Split(settings.Scope, " ")
+	} else {
+		// An empty Scope yields no scopes, which produces the same empty
+		// "scope" claim/parameter as the previous strings.Split("", " ").
+		opts.Scopes = strings.Fields(settings.Scope)
 	}
 	if settings.CredentialsJSON != "" {
 		opts.CredentialsJSON = []byte(settings.CredentialsJSON)
@@ -99,11 +105,24 @@ func newDetectOptions(settings *Settings, useSelfSignedJWT bool) *credentials.De
 	return opts
 }
 
+// httpClientFromContext returns the *http.Client stored in ctx under
+// oauth2.HTTPClient, or nil to use the default client.
+func httpClientFromContext(ctx context.Context) *http.Client {
+	if ctx == nil {
+		return nil
+	}
+	c, _ := ctx.Value(oauth2.HTTPClient).(*http.Client)
+	return c
+}
+
 // newCredentials returns credentials for the given settings.
-// Returns nil for API keys.
+// Returns nil for API keys (settings.APIKey set or AuthType "apikey").
 func newCredentials(ctx context.Context, settings *Settings) (*auth.Credentials, error) {
 	if settings == nil {
 		return FindAuthCredentials(ctx, nil)
+	}
+	if settings.APIKey != "" {
+		return nil, nil
 	}
 	switch settings.GetAuthType() {
 	case AuthTypeAPIKey:
@@ -111,9 +130,9 @@ func newCredentials(ctx context.Context, settings *Settings) (*auth.Credentials,
 	case AuthTypeOAuth:
 		return FindAuthCredentials(ctx, settings)
 	case AuthTypeJWT:
-		return findJWTCredentials(settings)
+		return findJWTCredentials(ctx, settings, "JWTTokenProvider")
 	default:
-		return nil, fmt.Errorf("Unsupported authentcation method: %s", settings.GetAuthType())
+		return nil, fmt.Errorf("Unsupported authentication method: %s", settings.GetAuthType())
 	}
 }
 
@@ -124,9 +143,6 @@ func newCredentials(ctx context.Context, settings *Settings) (*auth.Credentials,
 // For 3-legged OAuth flows, the refresh token (if any) is available via
 // token.MetadataString("refresh_token").
 func FetchAuthToken(ctx context.Context, settings *Settings) (*auth.Token, error) {
-	if settings != nil && settings.APIKey != "" {
-		return nil, nil
-	}
 	creds, err := newCredentials(ctx, settings)
 	if err != nil {
 		return nil, err
@@ -178,24 +194,31 @@ func OAuthJSONTokenProvider(ctx context.Context, settings *Settings) (auth.Token
 // mints self-signed JWT access tokens from service account credentials.
 // settings.Audience takes precedence over settings.Scope.
 func JWTTokenProvider(ctx context.Context, settings *Settings) (auth.TokenProvider, error) {
-	creds, err := findJWTCredentials(settings)
+	creds, err := findJWTCredentials(ctx, settings, "JWTTokenProvider")
 	if err != nil {
 		return nil, err
 	}
 	return creds, nil
 }
 
-func findJWTCredentials(settings *Settings) (*auth.Credentials, error) {
+// findJWTCredentials returns service account credentials configured for
+// self-signed JWTs. caller names the public function in validation errors.
+func findJWTCredentials(ctx context.Context, settings *Settings, caller string) (*auth.Credentials, error) {
 	if settings == nil || (settings.Audience == "" && settings.Scope == "") {
-		return nil, errors.New("Neither audience nor scope is provided for JWTTokenProvider")
+		// Capitalized to keep the message JWTTokenSource has always returned.
+		return nil, fmt.Errorf("Neither audience nor scope is provided for %s", caller)
 	}
-	creds, err := credentials.DetectDefault(newDetectOptions(settings, true))
+	creds, err := credentials.DetectDefault(newDetectOptions(ctx, settings, true))
 	if err != nil {
 		return nil, err
 	}
 	// cloud.google.com/go/auth silently ignores UseSelfSignedJWT for
 	// non-service-account credentials; keep rejecting them as before.
-	if t := parseCredentialsFileHeader(creds.JSON()).Type; t != serviceAccountCredentialsType {
+	credsJSON := creds.JSON()
+	if len(credsJSON) == 0 {
+		return nil, errors.New("self-signed JWT requires a service account key file; no JSON credentials were found")
+	}
+	if t := parseCredentialsFileHeader(credsJSON).Type; t != serviceAccountCredentialsType {
 		return nil, fmt.Errorf("self-signed JWT requires %q credentials, got %q", serviceAccountCredentialsType, t)
 	}
 	return creds, nil
@@ -204,8 +227,11 @@ func findJWTCredentials(settings *Settings) (*auth.Credentials, error) {
 // FindAuthCredentials obtains cloud.google.com/go/auth credentials from
 // settings or Application Default Credentials. If settings is nil,
 // Application Default Credentials with DefaultScope are used.
+//
+// ctx is only used to look up an *http.Client stored under
+// oauth2.HTTPClient; credentials.DetectDefault does not take a context.
 func FindAuthCredentials(ctx context.Context, settings *Settings) (*auth.Credentials, error) {
-	return credentials.DetectDefault(newDetectOptions(settings, false))
+	return credentials.DetectDefault(newDetectOptions(ctx, settings, false))
 }
 
 // Returns a token from the given settings.
@@ -229,19 +255,16 @@ func OAuthJSONTokenSource(ctx context.Context, settings *Settings) (oauth2.Token
 	if err != nil {
 		return nil, err
 	}
-	return tokenSourceFromCredentials(creds), nil
+	return tokenSourceFromCredentials(ctx, creds), nil
 }
 
 // Deprecated: Use JWTTokenProvider instead.
 func JWTTokenSource(ctx context.Context, settings *Settings) (oauth2.TokenSource, error) {
-	if settings == nil || (settings.Audience == "" && settings.Scope == "") {
-		return nil, errors.New("Neither audience nor scope is provided for JWTTokenSource")
-	}
-	creds, err := findJWTCredentials(settings)
+	creds, err := findJWTCredentials(ctx, settings, "JWTTokenSource")
 	if err != nil {
 		return nil, err
 	}
-	return tokenSourceFromCredentials(creds), nil
+	return tokenSourceFromCredentials(ctx, creds), nil
 }
 
 // FindJSONCredentials obtains credentials from settings or Application Default Credentials
@@ -253,7 +276,7 @@ func FindJSONCredentials(ctx context.Context, settings *Settings) (*google.Crede
 		return nil, err
 	}
 	c := oauth2adapt.Oauth2CredentialsFromAuthCredentials(creds)
-	c.TokenSource = tokenSourceFromCredentials(creds)
+	c.TokenSource = tokenSourceFromCredentials(ctx, creds)
 	return c, nil
 }
 
@@ -261,16 +284,23 @@ func FindJSONCredentials(ctx context.Context, settings *Settings) (*google.Crede
 // oauth2.TokenSource. Unlike oauth2adapt.TokenSourceFromTokenProvider, it
 // also populates oauth2.Token.RefreshToken so that 3LO refresh tokens are
 // preserved for legacy callers.
-func tokenSourceFromCredentials(creds *auth.Credentials) oauth2.TokenSource {
-	return &oauth2TokenSource{creds: creds}
+//
+// Tokens are fetched with ctx, matching golang.org/x/oauth2/google, whose
+// token sources were bound to the context they were created with.
+func tokenSourceFromCredentials(ctx context.Context, creds *auth.Credentials) oauth2.TokenSource {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return &oauth2TokenSource{ctx: ctx, creds: creds}
 }
 
 type oauth2TokenSource struct {
+	ctx   context.Context
 	creds *auth.Credentials
 }
 
 func (ts *oauth2TokenSource) Token() (*oauth2.Token, error) {
-	tok, err := ts.creds.Token(context.Background())
+	tok, err := ts.creds.Token(ts.ctx)
 	if err != nil {
 		return nil, oauth2Error(err)
 	}

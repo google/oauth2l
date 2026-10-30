@@ -162,7 +162,7 @@ func TestNewDetectOptions(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			opts := newDetectOptions(tc.settings, tc.useSelfSignedJWT)
+			opts := newDetectOptions(context.Background(), tc.settings, tc.useSelfSignedJWT)
 			if !reflect.DeepEqual(opts.Scopes, tc.wantScopes) {
 				t.Errorf("Scopes = %q, want %q", opts.Scopes, tc.wantScopes)
 			}
@@ -218,7 +218,7 @@ func TestNewDetectOptionsAuthHandlerOptions(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := newDetectOptions(tc.settings, false).AuthHandlerOptions
+			got := newDetectOptions(context.Background(), tc.settings, false).AuthHandlerOptions
 			if tc.wantNil {
 				if got != nil {
 					t.Errorf("AuthHandlerOptions = %+v, want nil", got)
@@ -259,7 +259,7 @@ func TestFetchAuthTokenAPIKey(t *testing.T) {
 
 func TestFetchAuthTokenUnsupportedAuthType(t *testing.T) {
 	_, err := FetchAuthToken(context.Background(), &Settings{AuthType: AuthTypeSSO})
-	if err == nil || !strings.Contains(err.Error(), "Unsupported authentcation method: sso") {
+	if err == nil || !strings.Contains(err.Error(), "Unsupported authentication method: sso") {
 		t.Errorf("FetchAuthToken() error = %v, want unsupported authentication method", err)
 	}
 }
@@ -471,5 +471,213 @@ func TestFindJSONCredentialsPreservesJSONAndProjectID(t *testing.T) {
 	}
 	if creds.TokenSource == nil {
 		t.Error("FindJSONCredentials().TokenSource = nil, want non-nil")
+	}
+}
+
+func TestNewDetectOptionsScopeFields(t *testing.T) {
+	tests := []struct {
+		scope      string
+		wantScopes []string
+	}{
+		{scope: "", wantScopes: nil},
+		{scope: "scope1  scope2 ", wantScopes: []string{"scope1", "scope2"}},
+	}
+	for _, tc := range tests {
+		opts := newDetectOptions(context.Background(), &Settings{Scope: tc.scope}, false)
+		if len(opts.Scopes) != len(tc.wantScopes) || (len(tc.wantScopes) > 0 && !reflect.DeepEqual(opts.Scopes, tc.wantScopes)) {
+			t.Errorf("newDetectOptions(Scope: %q).Scopes = %q, want %q", tc.scope, opts.Scopes, tc.wantScopes)
+		}
+	}
+}
+
+func TestNewDetectOptionsHTTPClientFromContext(t *testing.T) {
+	client := &http.Client{}
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, client)
+	if got := newDetectOptions(ctx, &Settings{Scope: "scope1"}, false).Client; got != client {
+		t.Errorf("Client = %p, want client from context %p", got, client)
+	}
+	if got := newDetectOptions(context.Background(), &Settings{Scope: "scope1"}, false).Client; got != nil {
+		t.Errorf("Client = %p, want nil without oauth2.HTTPClient in context", got)
+	}
+}
+
+// recordingTransport records the requested URLs and forwards to
+// http.DefaultTransport.
+type recordingTransport struct {
+	urls []string
+}
+
+func (rt *recordingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	rt.urls = append(rt.urls, r.URL.String())
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+func TestFetchTokenUsesHTTPClientFromContext(t *testing.T) {
+	srv := newTokenServer(t, http.StatusOK, `{"access_token": "test-access-token", "token_type": "Bearer", "expires_in": 3600}`)
+	rt := &recordingTransport{}
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	settings := &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: authorizedUserJSON(srv.URL), Scope: "scope1"}
+
+	if _, err := FetchToken(ctx, settings); err != nil {
+		t.Fatalf("FetchToken() unexpected error: %v", err)
+	}
+	if len(rt.urls) != 1 || rt.urls[0] != srv.URL {
+		t.Errorf("requests through context client = %q, want [%q]", rt.urls, srv.URL)
+	}
+}
+
+func TestOAuthJSONTokenSourceUsesContext(t *testing.T) {
+	srv := newTokenServer(t, http.StatusOK, `{"access_token": "test-access-token", "token_type": "Bearer", "expires_in": 3600}`)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	settings := &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: authorizedUserJSON(srv.URL), Scope: "scope1"}
+
+	ts, err := OAuthJSONTokenSource(ctx, settings)
+	if err != nil {
+		t.Fatalf("OAuthJSONTokenSource() unexpected error: %v", err)
+	}
+	if _, err := ts.Token(); !errors.Is(err, context.Canceled) {
+		t.Errorf("Token() with canceled context error = %v, want %v", err, context.Canceled)
+	}
+}
+
+// TestFetchAuthTokenRefreshTokenJSON checks that the refresh token JSON built
+// by BuildAuthRefreshTokenJSON is sent to the client secret's token_uri.
+func TestFetchAuthTokenRefreshTokenJSON(t *testing.T) {
+	var gotForm map[string][]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("ParseForm() unexpected error: %v", err)
+		}
+		gotForm = r.PostForm
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token": "refreshed-access-token", "token_type": "Bearer", "expires_in": 3600}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	clientSecretJSON := fmt.Sprintf(`{"installed": {
+  "client_id": "test-client.apps.googleusercontent.com",
+  "client_secret": "test-secret",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": %q,
+  "redirect_uris": ["http://localhost"]
+}}`, srv.URL)
+	creds := auth.NewCredentials(&auth.CredentialsOptions{JSON: []byte(clientSecretJSON)})
+	refreshJSON := BuildAuthRefreshTokenJSON(testRefreshToken, creds)
+	if refreshJSON == "" {
+		t.Fatal("BuildAuthRefreshTokenJSON() = \"\", want refresh token JSON")
+	}
+
+	tok, err := FetchAuthToken(context.Background(), &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: refreshJSON, Scope: "scope1"})
+	if err != nil {
+		t.Fatalf("FetchAuthToken() unexpected error: %v", err)
+	}
+	if tok.Value != "refreshed-access-token" {
+		t.Errorf("FetchAuthToken().Value = %q, want %q", tok.Value, "refreshed-access-token")
+	}
+	if got := tok.MetadataString("refresh_token"); got != testRefreshToken {
+		t.Errorf("FetchAuthToken() refresh_token = %q, want %q", got, testRefreshToken)
+	}
+	if g := gotForm["grant_type"]; len(g) != 1 || g[0] != "refresh_token" {
+		t.Errorf("grant_type = %q, want refresh_token", g)
+	}
+	if g := gotForm["refresh_token"]; len(g) != 1 || g[0] != testRefreshToken {
+		t.Errorf("refresh_token = %q, want %q", g, testRefreshToken)
+	}
+}
+
+// TestFetchAuthTokenServiceAccountEmptyScope checks that an OAuth fetch with
+// service account JSON and no scope still succeeds, sending an empty scope
+// claim as golang.org/x/oauth2 did.
+func TestFetchAuthTokenServiceAccountEmptyScope(t *testing.T) {
+	var gotScope interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("ParseForm() unexpected error: %v", err)
+		}
+		claims := jwtClaims(t, r.PostForm.Get("assertion"))
+		gotScope = claims["scope"]
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token": "sa-access-token", "token_type": "Bearer", "expires_in": 3600}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	var sa map[string]string
+	if err := json.Unmarshal([]byte(serviceAccountJSON(t)), &sa); err != nil {
+		t.Fatalf("json.Unmarshal() unexpected error: %v", err)
+	}
+	sa["token_uri"] = srv.URL
+	saJSON, err := json.Marshal(sa)
+	if err != nil {
+		t.Fatalf("json.Marshal() unexpected error: %v", err)
+	}
+
+	tok, err := FetchAuthToken(context.Background(), &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: string(saJSON)})
+	if err != nil {
+		t.Fatalf("FetchAuthToken() unexpected error: %v", err)
+	}
+	if tok.Value != "sa-access-token" {
+		t.Errorf("FetchAuthToken().Value = %q, want %q", tok.Value, "sa-access-token")
+	}
+	if gotScope != nil && gotScope != "" {
+		t.Errorf("JWT assertion scope = %v, want empty", gotScope)
+	}
+}
+
+func TestWithRefreshToken(t *testing.T) {
+	userJSON := []byte(authorizedUserJSON("http://localhost/token"))
+	tests := []struct {
+		name      string
+		tok       *auth.Token
+		credsJSON []byte
+		want      string
+	}{
+		{name: "nil token", tok: nil, credsJSON: userJSON},
+		{name: "metadata already has refresh token", tok: &auth.Token{Metadata: map[string]interface{}{"refresh_token": "existing"}}, credsJSON: userJSON, want: "existing"},
+		{name: "non authorized_user credentials", tok: &auth.Token{}, credsJSON: []byte(`{"type": "service_account", "refresh_token": "x"}`)},
+		{name: "empty credentials JSON", tok: &auth.Token{}},
+		{name: "authorized_user fills refresh token", tok: &auth.Token{Metadata: map[string]interface{}{"scope": "scope1"}}, credsJSON: userJSON, want: testRefreshToken},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var before map[string]interface{}
+			if tc.tok != nil && tc.tok.Metadata != nil {
+				before = make(map[string]interface{}, len(tc.tok.Metadata))
+				for k, v := range tc.tok.Metadata {
+					before[k] = v
+				}
+			}
+			got := withRefreshToken(tc.tok, tc.credsJSON)
+			if tc.tok == nil {
+				if got != nil {
+					t.Errorf("withRefreshToken(nil) = %+v, want nil", got)
+				}
+				return
+			}
+			if s := got.MetadataString("refresh_token"); s != tc.want {
+				t.Errorf("refresh_token = %q, want %q", s, tc.want)
+			}
+			if before != nil && !reflect.DeepEqual(tc.tok.Metadata, before) {
+				t.Errorf("input token metadata mutated: got %v, want %v", tc.tok.Metadata, before)
+			}
+		})
+	}
+}
+
+func TestFindJWTCredentialsNoJSON(t *testing.T) {
+	// Point ADC at nothing so only a JSON-less source could be found; on
+	// machines without GCE metadata this returns a "could not find default
+	// credentials" error instead, which is also acceptable here.
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("APPDATA", t.TempDir())
+	t.Setenv("CLOUDSDK_CONFIG", t.TempDir())
+	t.Setenv("GCE_METADATA_HOST", "")
+	_, err := JWTTokenProvider(context.Background(), &Settings{AuthType: AuthTypeJWT, Audience: "aud"})
+	if err == nil {
+		t.Fatal("JWTTokenProvider() without credentials error = nil, want error")
+	}
+	if strings.Contains(err.Error(), `got ""`) {
+		t.Errorf("JWTTokenProvider() error = %v, want a message that does not report an empty type", err)
 	}
 }
