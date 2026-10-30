@@ -39,6 +39,8 @@ type CacheKey struct {
 	Scope string
 	// The audience field for JWT auth and UAT
 	Audience string
+	// Whether a Google-signed ID token was requested for JWT auth
+	IdToken bool `json:",omitempty"`
 	// The email used for SSO and domain-wide delegation.
 	Email string
 	// The Google API key
@@ -140,6 +142,7 @@ func createKey(settings *Settings) CacheKey {
 		CredentialsJSON: credentialsJSON,
 		Scope:           settings.Scope,
 		Audience:        settings.Audience,
+		IdToken:         settings.IdToken,
 		Email:           settings.Email,
 		APIKey:          settings.APIKey,
 		QuotaProject:    settings.QuotaProject,
