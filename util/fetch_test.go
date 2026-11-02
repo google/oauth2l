@@ -88,7 +88,7 @@ func serviceAccountJSON(t *testing.T) string {
 }
 
 // jwtClaims decodes the (unverified) claims of a JWT.
-func jwtClaims(t *testing.T, token string) map[string]interface{} {
+func jwtClaims(t *testing.T, token string) map[string]any {
 	t.Helper()
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -98,7 +98,7 @@ func jwtClaims(t *testing.T, token string) map[string]interface{} {
 	if err != nil {
 		t.Fatalf("decoding JWT claims: %v", err)
 	}
-	var claims map[string]interface{}
+	var claims map[string]any
 	if err := json.Unmarshal(b, &claims); err != nil {
 		t.Fatalf("unmarshaling JWT claims: %v", err)
 	}
@@ -116,51 +116,50 @@ func TestNewDetectOptions(t *testing.T) {
 		wantSubject      string
 	}{
 		{
-			name:       "nil settings use DefaultScope",
-			settings:   nil,
+			name:       "nil_settings_use_default_scope",
 			wantScopes: []string{DefaultScope},
 		},
 		{
-			name:       "OAuth splits space-delimited scopes",
+			name:       "oauth_splits_space_delimited_scopes",
 			settings:   &Settings{Scope: "scope1 scope2"},
 			wantScopes: []string{"scope1", "scope2"},
 		},
 		{
-			name:       "OAuth ignores audience when both scope and audience set",
+			name:       "oauth_ignores_audience_when_both_scope_and_audience_set",
 			settings:   &Settings{Scope: "scope1", Audience: "https://sts.googleapis.com"},
 			wantScopes: []string{"scope1"},
 		},
 		{
-			name:             "JWT prefers audience over scope",
+			name:             "jwt_prefers_audience_over_scope",
 			settings:         &Settings{Scope: "scope1", Audience: "https://example.googleapis.com/"},
 			useSelfSignedJWT: true,
 			wantAudience:     "https://example.googleapis.com/",
 		},
 		{
-			name:             "JWT falls back to scope",
+			name:             "jwt_falls_back_to_scope",
 			settings:         &Settings{Scope: "scope1"},
 			useSelfSignedJWT: true,
 			wantScopes:       []string{"scope1"},
 		},
 		{
-			name:         "authorized_user token_uri forwarded to TokenURL",
+			name:         "authorized_user_token_uri_forwarded_to_token_url",
 			settings:     &Settings{Scope: "scope1", CredentialsJSON: authorizedUserJSON("http://localhost:8080/token")},
 			wantScopes:   []string{"scope1"},
 			wantTokenURL: "http://localhost:8080/token",
 		},
 		{
-			name:       "token_uri of other credential types is not forwarded",
+			name:       "token_uri_of_other_credential_types_not_forwarded",
 			settings:   &Settings{Scope: "scope1", CredentialsJSON: `{"type": "service_account", "token_uri": "http://localhost:8080/token"}`},
 			wantScopes: []string{"scope1"},
 		},
 		{
-			name:        "email used as subject for OAuth",
+			name:        "email_used_as_subject_for_oauth",
 			settings:    &Settings{Scope: "scope1", Email: "user@example.com"},
 			wantScopes:  []string{"scope1"},
 			wantSubject: "user@example.com",
 		},
 		{
-			name:             "email ignored for self-signed JWT",
+			name:             "email_ignored_for_self_signed_jwt",
 			settings:         &Settings{Audience: "https://example.googleapis.com/", Email: "user@example.com"},
 			useSelfSignedJWT: true,
 			wantAudience:     "https://example.googleapis.com/",
@@ -169,7 +168,7 @@ func TestNewDetectOptions(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			opts := newDetectOptions(context.Background(), tc.settings, tc.useSelfSignedJWT)
+			opts := newDetectOptions(t.Context(), tc.settings, tc.useSelfSignedJWT)
 			if !reflect.DeepEqual(opts.Scopes, tc.wantScopes) {
 				t.Errorf("Scopes = %q, want %q", opts.Scopes, tc.wantScopes)
 			}
@@ -205,18 +204,18 @@ func TestNewDetectOptionsAuthHandlerOptions(t *testing.T) {
 		wantState string
 	}{
 		{
-			name:     "no handler leaves AuthHandlerOptions unset",
+			name:     "no_handler_leaves_auth_handler_options_unset",
 			settings: &Settings{Scope: "scope1"},
 			wantNil:  true,
 		},
 		{
-			name:      "GoogleAuthHandler with default state",
+			name:      "google_auth_handler_with_default_state",
 			settings:  &Settings{Scope: "scope1", GoogleAuthHandler: handler},
 			wantCode:  "code",
 			wantState: defaultAuthState,
 		},
 		{
-			name:      "deprecated AuthHandler with custom state",
+			name:      "deprecated_auth_handler_with_custom_state",
 			settings:  &Settings{Scope: "scope1", AuthHandler: legacyHandler, State: "custom-state"},
 			wantCode:  "legacy-code",
 			wantState: "custom-state",
@@ -225,7 +224,7 @@ func TestNewDetectOptionsAuthHandlerOptions(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := newDetectOptions(context.Background(), tc.settings, false).AuthHandlerOptions
+			got := newDetectOptions(t.Context(), tc.settings, false).AuthHandlerOptions
 			if tc.wantNil {
 				if got != nil {
 					t.Errorf("AuthHandlerOptions = %+v, want nil", got)
@@ -253,11 +252,11 @@ func TestFetchAuthTokenAPIKey(t *testing.T) {
 		{APIKey: "my-api-key"},
 		{AuthType: AuthTypeAPIKey},
 	} {
-		tok, err := FetchAuthToken(context.Background(), s)
+		tok, err := FetchAuthToken(t.Context(), s)
 		if err != nil || tok != nil {
 			t.Errorf("FetchAuthToken(%+v) = (%v, %v), want (nil, nil)", s, tok, err)
 		}
-		oauth2Tok, err := FetchToken(context.Background(), s)
+		oauth2Tok, err := FetchToken(t.Context(), s)
 		if err != nil || oauth2Tok != nil {
 			t.Errorf("FetchToken(%+v) = (%v, %v), want (nil, nil)", s, oauth2Tok, err)
 		}
@@ -265,7 +264,7 @@ func TestFetchAuthTokenAPIKey(t *testing.T) {
 }
 
 func TestFetchAuthTokenUnsupportedAuthType(t *testing.T) {
-	_, err := FetchAuthToken(context.Background(), &Settings{AuthType: AuthTypeSSO})
+	_, err := FetchAuthToken(t.Context(), &Settings{AuthType: AuthTypeSSO})
 	if err == nil || !strings.Contains(err.Error(), "Unsupported authentication method: sso") {
 		t.Errorf("FetchAuthToken() error = %v, want unsupported authentication method", err)
 	}
@@ -278,12 +277,12 @@ func TestFetchAuthTokenAuthorizedUser(t *testing.T) {
 		wantRefreshToken string
 	}{
 		{
-			name:             "refresh token kept from credentials when omitted in response",
+			name:             "refresh_token_kept_from_credentials_when_omitted_in_response",
 			response:         `{"access_token": "test-access-token", "token_type": "Bearer", "expires_in": 3600, "scope": "scope1", "id_token": "test-id-token"}`,
 			wantRefreshToken: testRefreshToken,
 		},
 		{
-			name:             "rotated refresh token from response is used",
+			name:             "rotated_refresh_token_from_response_is_used",
 			response:         `{"access_token": "test-access-token", "token_type": "Bearer", "expires_in": 3600, "scope": "scope1", "id_token": "test-id-token", "refresh_token": "rotated-refresh-token"}`,
 			wantRefreshToken: "rotated-refresh-token",
 		},
@@ -298,7 +297,7 @@ func TestFetchAuthTokenAuthorizedUser(t *testing.T) {
 				Scope:           "scope1",
 			}
 
-			tok, err := FetchAuthToken(context.Background(), settings)
+			tok, err := FetchAuthToken(t.Context(), settings)
 			if err != nil {
 				t.Fatalf("FetchAuthToken() unexpected error: %v", err)
 			}
@@ -310,11 +309,11 @@ func TestFetchAuthTokenAuthorizedUser(t *testing.T) {
 			}
 
 			// The deprecated wrappers expose the same token via golang.org/x/oauth2.
-			oauth2Tok, err := FetchToken(context.Background(), settings)
+			oauth2Tok, err := FetchToken(t.Context(), settings)
 			if err != nil {
 				t.Fatalf("FetchToken() unexpected error: %v", err)
 			}
-			ts, err := OAuthJSONTokenSource(context.Background(), settings)
+			ts, err := OAuthJSONTokenSource(t.Context(), settings)
 			if err != nil {
 				t.Fatalf("OAuthJSONTokenSource() unexpected error: %v", err)
 			}
@@ -337,7 +336,7 @@ func TestFetchAuthTokenAuthorizedUser(t *testing.T) {
 					t.Errorf("MarshalWithExtras(%s()) unexpected error: %v", name, err)
 					continue
 				}
-				var m map[string]interface{}
+				var m map[string]any
 				if err := json.Unmarshal(data, &m); err != nil {
 					t.Errorf("json.Unmarshal(MarshalWithExtras(%s())) unexpected error: %v", name, err)
 				} else if m["refresh_token"] != tc.wantRefreshToken {
@@ -356,13 +355,13 @@ func TestFetchTokenRetrieveError(t *testing.T) {
 		Scope:           "scope1",
 	}
 
-	_, err := FetchAuthToken(context.Background(), settings)
+	_, err := FetchAuthToken(t.Context(), settings)
 	var authErr *auth.Error
 	if !errors.As(err, &authErr) {
 		t.Fatalf("FetchAuthToken() error = %v, want *auth.Error", err)
 	}
 
-	_, err = FetchToken(context.Background(), settings)
+	_, err = FetchToken(t.Context(), settings)
 	var retrieveErr *oauth2.RetrieveError
 	if !errors.As(err, &retrieveErr) {
 		t.Fatalf("FetchToken() error = %v, want *oauth2.RetrieveError in chain", err)
@@ -371,7 +370,7 @@ func TestFetchTokenRetrieveError(t *testing.T) {
 		t.Errorf("RetrieveError.ErrorCode = %q, want %q", retrieveErr.ErrorCode, "invalid_grant")
 	}
 
-	ts, err := OAuthJSONTokenSource(context.Background(), settings)
+	ts, err := OAuthJSONTokenSource(t.Context(), settings)
 	if err != nil {
 		t.Fatalf("OAuthJSONTokenSource() unexpected error: %v", err)
 	}
@@ -391,12 +390,12 @@ func TestJWTTokenProvider(t *testing.T) {
 		wantScope    string
 	}{
 		{
-			name:         "audience takes precedence over scope",
+			name:         "audience_takes_precedence_over_scope",
 			settings:     &Settings{AuthType: AuthTypeJWT, CredentialsJSON: saJSON, Audience: "https://pubsub.googleapis.com/", Scope: "scope1"},
 			wantAudience: "https://pubsub.googleapis.com/",
 		},
 		{
-			name:      "scope only with email set keeps service account as sub",
+			name:      "scope_only_with_email_set_keeps_service_account_as_sub",
 			settings:  &Settings{AuthType: AuthTypeJWT, CredentialsJSON: saJSON, Scope: "scope1 scope2", Email: "user@example.com"},
 			wantScope: "scope1 scope2",
 		},
@@ -404,7 +403,7 @@ func TestJWTTokenProvider(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			tok, err := FetchAuthToken(context.Background(), tc.settings)
+			tok, err := FetchAuthToken(t.Context(), tc.settings)
 			if err != nil {
 				t.Fatalf("FetchAuthToken() unexpected error: %v", err)
 			}
@@ -425,7 +424,7 @@ func TestJWTTokenProvider(t *testing.T) {
 				t.Errorf("JWT sub = %q, want service account email", got)
 			}
 
-			ts, err := JWTTokenSource(context.Background(), tc.settings)
+			ts, err := JWTTokenSource(t.Context(), tc.settings)
 			if err != nil {
 				t.Fatalf("JWTTokenSource() unexpected error: %v", err)
 			}
@@ -438,12 +437,12 @@ func TestJWTTokenProvider(t *testing.T) {
 
 func TestJWTTokenProviderErrors(t *testing.T) {
 	saJSON := serviceAccountJSON(t)
-	t.Run("neither audience nor scope preserves caller name", func(t *testing.T) {
+	t.Run("neither_audience_nor_scope_preserves_caller_name", func(t *testing.T) {
 		settings := &Settings{AuthType: AuthTypeJWT, CredentialsJSON: saJSON}
 		wantProviderErr := "Neither audience nor scope is provided for JWTTokenProvider"
 		for name, fn := range map[string]func() error{
-			"JWTTokenProvider": func() error { _, err := JWTTokenProvider(context.Background(), settings); return err },
-			"FetchAuthToken":   func() error { _, err := FetchAuthToken(context.Background(), settings); return err },
+			"JWTTokenProvider": func() error { _, err := JWTTokenProvider(t.Context(), settings); return err },
+			"FetchAuthToken":   func() error { _, err := FetchAuthToken(t.Context(), settings); return err },
 		} {
 			if err := fn(); err == nil || err.Error() != wantProviderErr {
 				t.Errorf("%s() error = %v, want %q", name, err, wantProviderErr)
@@ -451,8 +450,8 @@ func TestJWTTokenProviderErrors(t *testing.T) {
 		}
 		wantSourceErr := "Neither audience nor scope is provided for JWTTokenSource"
 		for name, fn := range map[string]func() error{
-			"JWTTokenSource": func() error { _, err := JWTTokenSource(context.Background(), settings); return err },
-			"FetchToken":     func() error { _, err := FetchToken(context.Background(), settings); return err },
+			"JWTTokenSource": func() error { _, err := JWTTokenSource(t.Context(), settings); return err },
+			"FetchToken":     func() error { _, err := FetchToken(t.Context(), settings); return err },
 		} {
 			if err := fn(); err == nil || err.Error() != wantSourceErr {
 				t.Errorf("%s() error = %v, want %q", name, err, wantSourceErr)
@@ -460,13 +459,13 @@ func TestJWTTokenProviderErrors(t *testing.T) {
 		}
 	})
 
-	t.Run("non service account credentials", func(t *testing.T) {
+	t.Run("non_service_account_credentials", func(t *testing.T) {
 		settings := &Settings{AuthType: AuthTypeJWT, CredentialsJSON: authorizedUserJSON("http://localhost/token"), Audience: "aud"}
 		wantErr := `self-signed JWT requires "service_account" credentials, got "authorized_user"`
-		if _, err := JWTTokenProvider(context.Background(), settings); err == nil || !strings.Contains(err.Error(), wantErr) {
+		if _, err := JWTTokenProvider(t.Context(), settings); err == nil || !strings.Contains(err.Error(), wantErr) {
 			t.Errorf("JWTTokenProvider() error = %v, want error containing %q", err, wantErr)
 		}
-		if _, err := JWTTokenSource(context.Background(), settings); err == nil || !strings.Contains(err.Error(), wantErr) {
+		if _, err := JWTTokenSource(t.Context(), settings); err == nil || !strings.Contains(err.Error(), wantErr) {
 			t.Errorf("JWTTokenSource() error = %v, want error containing %q", err, wantErr)
 		}
 	})
@@ -480,7 +479,7 @@ func TestFetchAuthTokenADCAuthorizedUserTokenURI(t *testing.T) {
 	}
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", credsFile)
 
-	tok, err := FetchAuthToken(context.Background(), &Settings{AuthType: AuthTypeOAuth, Scope: "scope1"})
+	tok, err := FetchAuthToken(t.Context(), &Settings{AuthType: AuthTypeOAuth, Scope: "scope1"})
 	if err != nil {
 		t.Fatalf("FetchAuthToken(ADC) unexpected error: %v", err)
 	}
@@ -488,7 +487,7 @@ func TestFetchAuthTokenADCAuthorizedUserTokenURI(t *testing.T) {
 		t.Errorf("FetchAuthToken(ADC) = (%q, %q), want (adc-access-token, %q)", tok.Value, tok.MetadataString("refresh_token"), testRefreshToken)
 	}
 
-	nilTok, err := FetchToken(context.Background(), nil)
+	nilTok, err := FetchToken(t.Context(), nil)
 	if err != nil {
 		t.Fatalf("FetchToken(nil) unexpected error: %v", err)
 	}
@@ -509,7 +508,7 @@ func TestFetchAuthTokenADCAuthorizedUserTokenURI(t *testing.T) {
 	t.Setenv("HOME", homeDir)
 	t.Setenv("APPDATA", homeDir)
 
-	wellKnownTok, err := FetchAuthToken(context.Background(), nil)
+	wellKnownTok, err := FetchAuthToken(t.Context(), nil)
 	if err != nil {
 		t.Fatalf("FetchAuthToken(well-known ADC) unexpected error: %v", err)
 	}
@@ -522,7 +521,7 @@ func TestFindJSONCredentialsPreservesJSONAndProjectID(t *testing.T) {
 	saJSON := serviceAccountJSON(t)
 	settings := &Settings{CredentialsJSON: saJSON, Scope: "scope1"}
 
-	authCreds, err := FindAuthCredentials(context.Background(), settings)
+	authCreds, err := FindAuthCredentials(t.Context(), settings)
 	if err != nil {
 		t.Fatalf("FindAuthCredentials() unexpected error: %v", err)
 	}
@@ -530,7 +529,7 @@ func TestFindJSONCredentialsPreservesJSONAndProjectID(t *testing.T) {
 		t.Errorf("FindAuthCredentials().JSON() = %s, want %s", authCreds.JSON(), saJSON)
 	}
 
-	creds, err := FindJSONCredentials(context.Background(), settings)
+	creds, err := FindJSONCredentials(t.Context(), settings)
 	if err != nil {
 		t.Fatalf("FindJSONCredentials() unexpected error: %v", err)
 	}
@@ -550,11 +549,11 @@ func TestNewDetectOptionsScopeFields(t *testing.T) {
 		scope      string
 		wantScopes []string
 	}{
-		{scope: "", wantScopes: nil},
+		{scope: ""},
 		{scope: "scope1  scope2 ", wantScopes: []string{"scope1", "scope2"}},
 	}
 	for _, tc := range tests {
-		opts := newDetectOptions(context.Background(), &Settings{Scope: tc.scope}, false)
+		opts := newDetectOptions(t.Context(), &Settings{Scope: tc.scope}, false)
 		if len(opts.Scopes) != len(tc.wantScopes) || (len(tc.wantScopes) > 0 && !reflect.DeepEqual(opts.Scopes, tc.wantScopes)) {
 			t.Errorf("newDetectOptions(Scope: %q).Scopes = %q, want %q", tc.scope, opts.Scopes, tc.wantScopes)
 		}
@@ -563,11 +562,11 @@ func TestNewDetectOptionsScopeFields(t *testing.T) {
 
 func TestNewDetectOptionsHTTPClientFromContext(t *testing.T) {
 	client := &http.Client{}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, client)
+	ctx := context.WithValue(t.Context(), oauth2.HTTPClient, client)
 	if got := newDetectOptions(ctx, &Settings{Scope: "scope1"}, false).Client; got != client {
 		t.Errorf("Client = %p, want client from context %p", got, client)
 	}
-	if got := newDetectOptions(context.Background(), &Settings{Scope: "scope1"}, false).Client; got != nil {
+	if got := newDetectOptions(t.Context(), &Settings{Scope: "scope1"}, false).Client; got != nil {
 		t.Errorf("Client = %p, want nil without oauth2.HTTPClient in context", got)
 	}
 }
@@ -586,7 +585,7 @@ func (rt *recordingTransport) RoundTrip(r *http.Request) (*http.Response, error)
 func TestFetchTokenUsesHTTPClientFromContext(t *testing.T) {
 	srv := newTokenServer(t, http.StatusOK, `{"access_token": "test-access-token", "token_type": "Bearer", "expires_in": 3600}`)
 	rt := &recordingTransport{}
-	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: rt})
+	ctx := context.WithValue(t.Context(), oauth2.HTTPClient, &http.Client{Transport: rt})
 	settings := &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: authorizedUserJSON(srv.URL), Scope: "scope1"}
 
 	if _, err := FetchToken(ctx, settings); err != nil {
@@ -599,7 +598,7 @@ func TestFetchTokenUsesHTTPClientFromContext(t *testing.T) {
 
 func TestOAuthJSONTokenSourceUsesContext(t *testing.T) {
 	srv := newTokenServer(t, http.StatusOK, `{"access_token": "test-access-token", "token_type": "Bearer", "expires_in": 3600}`)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	settings := &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: authorizedUserJSON(srv.URL), Scope: "scope1"}
 
@@ -639,7 +638,7 @@ func TestFetchAuthTokenRefreshTokenJSON(t *testing.T) {
 		t.Fatal("BuildAuthRefreshTokenJSON() = \"\", want refresh token JSON")
 	}
 
-	tok, err := FetchAuthToken(context.Background(), &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: refreshJSON, Scope: "scope1"})
+	tok, err := FetchAuthToken(t.Context(), &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: refreshJSON, Scope: "scope1"})
 	if err != nil {
 		t.Fatalf("FetchAuthToken() unexpected error: %v", err)
 	}
@@ -661,7 +660,7 @@ func TestFetchAuthTokenRefreshTokenJSON(t *testing.T) {
 // service account JSON and no scope still succeeds, sending an empty scope
 // claim as golang.org/x/oauth2 did.
 func TestFetchAuthTokenServiceAccountEmptyScope(t *testing.T) {
-	var gotScope interface{}
+	var gotScope any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
 			t.Errorf("ParseForm() unexpected error: %v", err)
@@ -683,7 +682,7 @@ func TestFetchAuthTokenServiceAccountEmptyScope(t *testing.T) {
 		t.Fatalf("json.Marshal() unexpected error: %v", err)
 	}
 
-	tok, err := FetchAuthToken(context.Background(), &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: string(saJSON)})
+	tok, err := FetchAuthToken(t.Context(), &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: string(saJSON)})
 	if err != nil {
 		t.Fatalf("FetchAuthToken() unexpected error: %v", err)
 	}
@@ -703,17 +702,17 @@ func TestWithRefreshToken(t *testing.T) {
 		credsJSON []byte
 		want      string
 	}{
-		{name: "nil token", tok: nil, credsJSON: userJSON},
-		{name: "metadata already has refresh token", tok: &auth.Token{Metadata: map[string]interface{}{"refresh_token": "existing"}}, credsJSON: userJSON, want: "existing"},
-		{name: "non authorized_user credentials", tok: &auth.Token{}, credsJSON: []byte(`{"type": "service_account", "refresh_token": "x"}`)},
-		{name: "empty credentials JSON", tok: &auth.Token{}},
-		{name: "authorized_user fills refresh token", tok: &auth.Token{Metadata: map[string]interface{}{"scope": "scope1"}}, credsJSON: userJSON, want: testRefreshToken},
+		{name: "nil_token", credsJSON: userJSON},
+		{name: "metadata_already_has_refresh_token", tok: &auth.Token{Metadata: map[string]any{"refresh_token": "existing"}}, credsJSON: userJSON, want: "existing"},
+		{name: "non_authorized_user_credentials", tok: &auth.Token{}, credsJSON: []byte(`{"type": "service_account", "refresh_token": "x"}`)},
+		{name: "empty_credentials_json", tok: &auth.Token{}},
+		{name: "authorized_user_fills_refresh_token", tok: &auth.Token{Metadata: map[string]any{"scope": "scope1"}}, credsJSON: userJSON, want: testRefreshToken},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			var before map[string]interface{}
+			var before map[string]any
 			if tc.tok != nil && tc.tok.Metadata != nil {
-				before = make(map[string]interface{}, len(tc.tok.Metadata))
+				before = make(map[string]any, len(tc.tok.Metadata))
 				for k, v := range tc.tok.Metadata {
 					before[k] = v
 				}
@@ -744,7 +743,7 @@ func TestFindJWTCredentialsNoJSON(t *testing.T) {
 	t.Setenv("APPDATA", t.TempDir())
 	t.Setenv("CLOUDSDK_CONFIG", t.TempDir())
 	t.Setenv("GCE_METADATA_HOST", "")
-	_, err := JWTTokenProvider(context.Background(), &Settings{AuthType: AuthTypeJWT, Audience: "aud"})
+	_, err := JWTTokenProvider(t.Context(), &Settings{AuthType: AuthTypeJWT, Audience: "aud"})
 	if err == nil {
 		t.Fatal("JWTTokenProvider() without credentials error = nil, want error")
 	}
