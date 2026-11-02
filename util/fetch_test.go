@@ -495,6 +495,27 @@ func TestFetchAuthTokenADCAuthorizedUserTokenURI(t *testing.T) {
 	if nilTok.AccessToken != "adc-access-token" || nilTok.RefreshToken != testRefreshToken {
 		t.Errorf("FetchToken(nil) = (%q, %q), want (adc-access-token, %q)", nilTok.AccessToken, nilTok.RefreshToken, testRefreshToken)
 	}
+
+	// Well-known gcloud ADC path when GOOGLE_APPLICATION_CREDENTIALS is unset.
+	homeDir := t.TempDir()
+	gcloudDir := homeDir + "/.config/gcloud"
+	if err := os.MkdirAll(gcloudDir, 0700); err != nil {
+		t.Fatalf("os.MkdirAll() unexpected error: %v", err)
+	}
+	if err := os.WriteFile(gcloudDir+"/application_default_credentials.json", []byte(authorizedUserJSON(srv.URL)), 0600); err != nil {
+		t.Fatalf("os.WriteFile() unexpected error: %v", err)
+	}
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+	t.Setenv("HOME", homeDir)
+	t.Setenv("APPDATA", homeDir)
+
+	wellKnownTok, err := FetchAuthToken(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("FetchAuthToken(well-known ADC) unexpected error: %v", err)
+	}
+	if wellKnownTok.Value != "adc-access-token" || wellKnownTok.MetadataString("refresh_token") != testRefreshToken {
+		t.Errorf("FetchAuthToken(well-known ADC) = (%q, %q), want (adc-access-token, %q)", wellKnownTok.Value, wellKnownTok.MetadataString("refresh_token"), testRefreshToken)
+	}
 }
 
 func TestFindJSONCredentialsPreservesJSONAndProjectID(t *testing.T) {

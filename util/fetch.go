@@ -20,9 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 
 	"cloud.google.com/go/auth"
@@ -40,8 +37,6 @@ const defaultAuthState = "state"
 const (
 	authorizedUserCredentialsType = "authorized_user"
 	serviceAccountCredentialsType = "service_account"
-	googleAppCredsEnvVar          = "GOOGLE_APPLICATION_CREDENTIALS"
-	adcWellKnownFileName          = "application_default_credentials.json"
 	jwtTokenProviderName          = "JWTTokenProvider"
 	jwtTokenSourceName            = "JWTTokenSource"
 )
@@ -64,27 +59,6 @@ func parseCredentialsFileHeader(b []byte) credentialsFileHeader {
 	return h
 }
 
-// adcTokenURL returns any custom "token_uri" from an "authorized_user"
-// Application Default Credentials file when settings.CredentialsJSON is empty.
-func adcTokenURL() string {
-	var filename string
-	if env := os.Getenv(googleAppCredsEnvVar); env != "" {
-		filename = env
-	} else if runtime.GOOS == "windows" {
-		filename = filepath.Join(os.Getenv("APPDATA"), "gcloud", adcWellKnownFileName)
-	} else {
-		filename = filepath.Join(GuessUnixHomeDir(), ".config", "gcloud", adcWellKnownFileName)
-	}
-	b, err := os.ReadFile(filename)
-	if err != nil {
-		return ""
-	}
-	if h := parseCredentialsFileHeader(b); h.Type == authorizedUserCredentialsType {
-		return h.TokenURI
-	}
-	return ""
-}
-
 // newDetectOptions builds credentials.DetectOptions from settings.
 //
 // An *http.Client stored in ctx under oauth2.HTTPClient is used for token
@@ -98,7 +72,6 @@ func newDetectOptions(ctx context.Context, settings *Settings, useSelfSignedJWT 
 	opts := &credentials.DetectOptions{Client: httpClientFromContext(ctx)}
 	if settings == nil {
 		opts.Scopes = []string{DefaultScope}
-		opts.TokenURL = adcTokenURL()
 		return opts
 	}
 	if !useSelfSignedJWT {
@@ -121,8 +94,6 @@ func newDetectOptions(ctx context.Context, settings *Settings, useSelfSignedJWT 
 		if h := parseCredentialsFileHeader(opts.CredentialsJSON); h.Type == authorizedUserCredentialsType {
 			opts.TokenURL = h.TokenURI
 		}
-	} else if !useSelfSignedJWT {
-		opts.TokenURL = adcTokenURL()
 	}
 	if handler := settings.resolveAuthHandler(); handler != nil {
 		state := settings.State
@@ -273,7 +244,23 @@ func findJWTCredentials(ctx context.Context, settings *Settings, caller string) 
 // ctx is only used to look up an *http.Client stored under
 // oauth2.HTTPClient; credentials.DetectDefault does not take a context.
 func FindAuthCredentials(ctx context.Context, settings *Settings) (*auth.Credentials, error) {
-	return credentials.DetectDefault(newDetectOptions(ctx, settings, false))
+	opts := newDetectOptions(ctx, settings, false)
+	creds, err := credentials.DetectDefault(opts)
+	if err != nil {
+		return nil, err
+	}
+	// When ADC loaded an "authorized_user" file from disk, forward any
+	// custom "token_uri" from the JSON that DetectDefault loaded (since
+	// cloud.google.com/go/auth ignores "token_uri" in "authorized_user"
+	// files unless DetectOptions.TokenURL is set).
+	if opts.TokenURL == "" {
+		if h := parseCredentialsFileHeader(creds.JSON()); h.Type == authorizedUserCredentialsType && h.TokenURI != "" {
+			opts.CredentialsJSON = creds.JSON()
+			opts.TokenURL = h.TokenURI
+			return credentials.DetectDefault(opts)
+		}
+	}
+	return creds, nil
 }
 
 // FetchToken returns a token from the given settings.
