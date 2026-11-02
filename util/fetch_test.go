@@ -29,6 +29,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"cloud.google.com/go/auth"
@@ -199,14 +200,15 @@ func TestNewDetectOptionsAuthHandlerOptions(t *testing.T) {
 	tests := []struct {
 		name      string
 		settings  *Settings
-		wantNil   bool
+		wantErr   error
 		wantCode  string
 		wantState string
 	}{
 		{
-			name:     "no_handler_leaves_auth_handler_options_unset",
-			settings: &Settings{Scope: "scope1"},
-			wantNil:  true,
+			name:      "no_handler_uses_placeholder_handler",
+			settings:  &Settings{Scope: "scope1"},
+			wantErr:   errNoAuthHandler,
+			wantState: defaultAuthState,
 		},
 		{
 			name:      "google_auth_handler_with_default_state",
@@ -225,16 +227,14 @@ func TestNewDetectOptionsAuthHandlerOptions(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := newDetectOptions(t.Context(), tc.settings, false).AuthHandlerOptions
-			if tc.wantNil {
-				if got != nil {
-					t.Errorf("AuthHandlerOptions = %+v, want nil", got)
-				}
-				return
-			}
 			if got == nil || got.Handler == nil {
 				t.Fatal("AuthHandlerOptions.Handler = nil, want non-nil")
 			}
-			if code, _, _ := got.Handler(""); code != tc.wantCode {
+			code, _, err := got.Handler("")
+			if !errors.Is(err, tc.wantErr) {
+				t.Errorf("Handler() error = %v, want %v", err, tc.wantErr)
+			}
+			if code != tc.wantCode {
 				t.Errorf("Handler() code = %q, want %q", code, tc.wantCode)
 			}
 			if got.State != tc.wantState {
@@ -749,5 +749,200 @@ func TestFindJWTCredentialsNoJSON(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), `got ""`) {
 		t.Errorf("JWTTokenProvider() error = %v, want a message that does not report an empty type", err)
+	}
+}
+
+// fakeTokenProvider returns a fixed token.
+type fakeTokenProvider struct {
+	tok *auth.Token
+}
+
+func (p fakeTokenProvider) Token(context.Context) (*auth.Token, error) {
+	return p.tok, nil
+}
+
+// TestTokenSourceFromCredentialsComputeExtras checks that the deprecated
+// wrappers expose the golang.org/x/oauth2/google compute token extras, which
+// google.golang.org/api reads (e.g. for DirectPath).
+func TestTokenSourceFromCredentialsComputeExtras(t *testing.T) {
+	creds := auth.NewCredentials(&auth.CredentialsOptions{
+		TokenProvider: fakeTokenProvider{tok: &auth.Token{
+			Value: "test-access-token",
+			Type:  "Bearer",
+			Metadata: map[string]interface{}{
+				"auth.google.tokenSource":    "compute-metadata",
+				"auth.google.serviceAccount": "default",
+			},
+		}},
+	})
+
+	got, err := tokenSourceFromCredentials(t.Context(), creds).Token()
+	if err != nil {
+		t.Fatalf("Token() unexpected error: %v", err)
+	}
+	for key, want := range map[string]string{
+		"oauth2.google.tokenSource":    "compute-metadata",
+		"oauth2.google.serviceAccount": "default",
+		"auth.google.tokenSource":      "compute-metadata",
+	} {
+		if v := got.Extra(key); v != want {
+			t.Errorf("Token().Extra(%q) = %v, want %q", key, v, want)
+		}
+	}
+}
+
+// TestTokenSourceFromCredentialsFlattensFormValues checks that single-valued
+// []string metadata (from form-encoded token responses) is exposed as plain
+// strings, as golang.org/x/oauth2 did.
+func TestTokenSourceFromCredentialsFlattensFormValues(t *testing.T) {
+	cached := &auth.Token{
+		Value: "test-access-token",
+		Type:  "Bearer",
+		Metadata: map[string]interface{}{
+			"refresh_token": []string{"form-refresh-token"},
+			"id_token":      []string{"form-id-token"},
+			"scope":         []string{"scope1 scope2"},
+			"multi":         []string{"a", "b"},
+		},
+	}
+	creds := auth.NewCredentials(&auth.CredentialsOptions{TokenProvider: fakeTokenProvider{tok: cached}})
+
+	got, err := tokenSourceFromCredentials(t.Context(), creds).Token()
+	if err != nil {
+		t.Fatalf("Token() unexpected error: %v", err)
+	}
+	if got.RefreshToken != "form-refresh-token" {
+		t.Errorf("Token().RefreshToken = %q, want %q", got.RefreshToken, "form-refresh-token")
+	}
+	if v := got.Extra("id_token"); v != "form-id-token" {
+		t.Errorf("Token().Extra(%q) = %#v, want %q", "id_token", v, "form-id-token")
+	}
+	if v, ok := got.Extra("multi").([]string); !ok || len(v) != 2 {
+		t.Errorf("Token().Extra(%q) = %#v, want []string{\"a\", \"b\"}", "multi", got.Extra("multi"))
+	}
+	if _, err := MarshalWithExtras(got, ""); err != nil {
+		t.Errorf("MarshalWithExtras() unexpected error: %v", err)
+	}
+	if _, ok := cached.Metadata["id_token"].([]string); !ok {
+		t.Errorf("cached token metadata was modified: %#v", cached.Metadata)
+	}
+}
+
+// TestFetchTokenFormEncodedResponse checks a form-encoded token endpoint
+// end to end through FetchToken and MarshalWithExtras.
+func TestFetchTokenFormEncodedResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+		fmt.Fprint(w, "access_token=test-access-token&token_type=Bearer&expires_in=3600&refresh_token=new-refresh-token&id_token=form-id-token")
+	}))
+	t.Cleanup(srv.Close)
+	settings := &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: authorizedUserJSON(srv.URL), Scope: "scope1"}
+
+	tok, err := FetchToken(t.Context(), settings)
+	if err != nil {
+		t.Fatalf("FetchToken() unexpected error: %v", err)
+	}
+	if tok.AccessToken != "test-access-token" {
+		t.Errorf("FetchToken().AccessToken = %q, want %q", tok.AccessToken, "test-access-token")
+	}
+	if tok.RefreshToken != "new-refresh-token" {
+		t.Errorf("FetchToken().RefreshToken = %q, want %q", tok.RefreshToken, "new-refresh-token")
+	}
+	b, err := MarshalWithExtras(tok, "")
+	if err != nil {
+		t.Fatalf("MarshalWithExtras() unexpected error: %v", err)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatalf("json.Unmarshal(MarshalWithExtras()) unexpected error: %v", err)
+	}
+	if m["id_token"] != "form-id-token" {
+		t.Errorf("MarshalWithExtras() id_token = %#v, want %q", m["id_token"], "form-id-token")
+	}
+}
+
+func TestNewDetectOptionsForRefreshTiming(t *testing.T) {
+	settings := &Settings{Scope: "scope1"}
+
+	legacy := newDetectOptionsFor(t.Context(), settings, false, legacyCredentialsOptions)
+	if legacy.EarlyTokenRefresh != legacyEarlyTokenRefresh || !legacy.DisableAsyncRefresh {
+		t.Errorf("legacy options: EarlyTokenRefresh = %v, DisableAsyncRefresh = %v, want %v, true",
+			legacy.EarlyTokenRefresh, legacy.DisableAsyncRefresh, legacyEarlyTokenRefresh)
+	}
+	current := newDetectOptionsFor(t.Context(), settings, false, authCredentialsOptions)
+	if current.EarlyTokenRefresh != 0 || current.DisableAsyncRefresh {
+		t.Errorf("auth options: EarlyTokenRefresh = %v, DisableAsyncRefresh = %v, want library defaults (0, false)",
+			current.EarlyTokenRefresh, current.DisableAsyncRefresh)
+	}
+}
+
+// TestOAuthJSONTokenSourceLegacyRefreshTiming checks that a token that
+// expires in 60 seconds is reused, as with golang.org/x/oauth2 (10s early
+// refresh), instead of being refreshed (cloud.google.com/go/auth defaults to
+// 225s).
+func TestOAuthJSONTokenSourceLegacyRefreshTiming(t *testing.T) {
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token": "test-access-token", "token_type": "Bearer", "expires_in": 60}`)
+	}))
+	t.Cleanup(srv.Close)
+	settings := &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: authorizedUserJSON(srv.URL), Scope: "scope1"}
+
+	ts, err := OAuthJSONTokenSource(t.Context(), settings)
+	if err != nil {
+		t.Fatalf("OAuthJSONTokenSource() unexpected error: %v", err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := ts.Token(); err != nil {
+			t.Fatalf("Token() call %d unexpected error: %v", i, err)
+		}
+	}
+	if got := requests.Load(); got != 1 {
+		t.Errorf("token requests = %d, want 1", got)
+	}
+}
+
+func clientSecretJSON(tokenURI string) string {
+	return fmt.Sprintf(`{
+  "installed": {
+    "client_id": "test-client.apps.googleusercontent.com",
+    "client_secret": "test-secret",
+    "redirect_uris": ["http://localhost"],
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": %q
+  }
+}`, tokenURI)
+}
+
+// TestClientSecretWithoutAuthHandler checks that client secret files can be
+// loaded without an authorization handler (as with golang.org/x/oauth2), and
+// that fetching a token then fails with errNoAuthHandler instead of panicking.
+func TestClientSecretWithoutAuthHandler(t *testing.T) {
+	credsJSON := clientSecretJSON("https://oauth2.googleapis.com/token")
+	settings := &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: credsJSON, Scope: "scope1"}
+
+	creds, err := FindJSONCredentials(t.Context(), settings)
+	if err != nil {
+		t.Fatalf("FindJSONCredentials() unexpected error: %v", err)
+	}
+	if string(creds.JSON) != credsJSON {
+		t.Errorf("FindJSONCredentials().JSON = %s, want %s", creds.JSON, credsJSON)
+	}
+	if _, err := creds.TokenSource.Token(); !errors.Is(err, errNoAuthHandler) {
+		t.Errorf("FindJSONCredentials().TokenSource.Token() error = %v, want %v", err, errNoAuthHandler)
+	}
+
+	authCreds, err := FindAuthCredentials(t.Context(), settings)
+	if err != nil {
+		t.Fatalf("FindAuthCredentials() unexpected error: %v", err)
+	}
+	if _, err := authCreds.Token(t.Context()); !errors.Is(err, errNoAuthHandler) {
+		t.Errorf("FindAuthCredentials().Token() error = %v, want %v", err, errNoAuthHandler)
+	}
+
+	if _, err := FetchToken(t.Context(), settings); !errors.Is(err, errNoAuthHandler) {
+		t.Errorf("FetchToken() error = %v, want %v", err, errNoAuthHandler)
 	}
 }
