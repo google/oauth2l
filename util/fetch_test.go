@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -153,10 +154,16 @@ func TestNewDetectOptions(t *testing.T) {
 			wantScopes: []string{"scope1"},
 		},
 		{
-			name:        "email used as subject",
+			name:        "email used as subject for OAuth",
 			settings:    &Settings{Scope: "scope1", Email: "user@example.com"},
 			wantScopes:  []string{"scope1"},
 			wantSubject: "user@example.com",
+		},
+		{
+			name:             "email ignored for self-signed JWT",
+			settings:         &Settings{Audience: "https://example.googleapis.com/", Email: "user@example.com"},
+			useSelfSignedJWT: true,
+			wantAudience:     "https://example.googleapis.com/",
 		},
 	}
 
@@ -363,6 +370,16 @@ func TestFetchTokenRetrieveError(t *testing.T) {
 	if retrieveErr.ErrorCode != "invalid_grant" {
 		t.Errorf("RetrieveError.ErrorCode = %q, want %q", retrieveErr.ErrorCode, "invalid_grant")
 	}
+
+	ts, err := OAuthJSONTokenSource(context.Background(), settings)
+	if err != nil {
+		t.Fatalf("OAuthJSONTokenSource() unexpected error: %v", err)
+	}
+	_, err = ts.Token()
+	var tsRetrieveErr *oauth2.RetrieveError
+	if !errors.As(err, &tsRetrieveErr) || tsRetrieveErr.ErrorCode != "invalid_grant" {
+		t.Errorf("OAuthJSONTokenSource().Token() error = %v, want *oauth2.RetrieveError with invalid_grant", err)
+	}
 }
 
 func TestJWTTokenProvider(t *testing.T) {
@@ -379,8 +396,8 @@ func TestJWTTokenProvider(t *testing.T) {
 			wantAudience: "https://pubsub.googleapis.com/",
 		},
 		{
-			name:      "scope only",
-			settings:  &Settings{AuthType: AuthTypeJWT, CredentialsJSON: saJSON, Scope: "scope1 scope2"},
+			name:      "scope only with email set keeps service account as sub",
+			settings:  &Settings{AuthType: AuthTypeJWT, CredentialsJSON: saJSON, Scope: "scope1 scope2", Email: "user@example.com"},
 			wantScope: "scope1 scope2",
 		},
 	}
@@ -404,6 +421,9 @@ func TestJWTTokenProvider(t *testing.T) {
 			if got, _ := claims["iss"].(string); got != "test-sa@test-project.iam.gserviceaccount.com" {
 				t.Errorf("JWT iss = %q, want service account email", got)
 			}
+			if got, _ := claims["sub"].(string); got != "test-sa@test-project.iam.gserviceaccount.com" {
+				t.Errorf("JWT sub = %q, want service account email", got)
+			}
 
 			ts, err := JWTTokenSource(context.Background(), tc.settings)
 			if err != nil {
@@ -418,32 +438,62 @@ func TestJWTTokenProvider(t *testing.T) {
 
 func TestJWTTokenProviderErrors(t *testing.T) {
 	saJSON := serviceAccountJSON(t)
-	tests := []struct {
-		name     string
-		settings *Settings
-		wantErr  string
-	}{
-		{
-			name:     "neither audience nor scope",
-			settings: &Settings{AuthType: AuthTypeJWT, CredentialsJSON: saJSON},
-			wantErr:  "Neither audience nor scope is provided",
-		},
-		{
-			name:     "non service account credentials",
-			settings: &Settings{AuthType: AuthTypeJWT, CredentialsJSON: authorizedUserJSON("http://localhost/token"), Audience: "aud"},
-			wantErr:  `self-signed JWT requires "service_account" credentials, got "authorized_user"`,
-		},
+	t.Run("neither audience nor scope preserves caller name", func(t *testing.T) {
+		settings := &Settings{AuthType: AuthTypeJWT, CredentialsJSON: saJSON}
+		wantProviderErr := "Neither audience nor scope is provided for JWTTokenProvider"
+		for name, fn := range map[string]func() error{
+			"JWTTokenProvider": func() error { _, err := JWTTokenProvider(context.Background(), settings); return err },
+			"FetchAuthToken":   func() error { _, err := FetchAuthToken(context.Background(), settings); return err },
+		} {
+			if err := fn(); err == nil || err.Error() != wantProviderErr {
+				t.Errorf("%s() error = %v, want %q", name, err, wantProviderErr)
+			}
+		}
+		wantSourceErr := "Neither audience nor scope is provided for JWTTokenSource"
+		for name, fn := range map[string]func() error{
+			"JWTTokenSource": func() error { _, err := JWTTokenSource(context.Background(), settings); return err },
+			"FetchToken":     func() error { _, err := FetchToken(context.Background(), settings); return err },
+		} {
+			if err := fn(); err == nil || err.Error() != wantSourceErr {
+				t.Errorf("%s() error = %v, want %q", name, err, wantSourceErr)
+			}
+		}
+	})
+
+	t.Run("non service account credentials", func(t *testing.T) {
+		settings := &Settings{AuthType: AuthTypeJWT, CredentialsJSON: authorizedUserJSON("http://localhost/token"), Audience: "aud"}
+		wantErr := `self-signed JWT requires "service_account" credentials, got "authorized_user"`
+		if _, err := JWTTokenProvider(context.Background(), settings); err == nil || !strings.Contains(err.Error(), wantErr) {
+			t.Errorf("JWTTokenProvider() error = %v, want error containing %q", err, wantErr)
+		}
+		if _, err := JWTTokenSource(context.Background(), settings); err == nil || !strings.Contains(err.Error(), wantErr) {
+			t.Errorf("JWTTokenSource() error = %v, want error containing %q", err, wantErr)
+		}
+	})
+}
+
+func TestFetchAuthTokenADCAuthorizedUserTokenURI(t *testing.T) {
+	srv := newTokenServer(t, http.StatusOK, `{"access_token": "adc-access-token", "token_type": "Bearer", "expires_in": 3600}`)
+	credsFile := t.TempDir() + "/adc.json"
+	if err := os.WriteFile(credsFile, []byte(authorizedUserJSON(srv.URL)), 0600); err != nil {
+		t.Fatalf("os.WriteFile() unexpected error: %v", err)
+	}
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", credsFile)
+
+	tok, err := FetchAuthToken(context.Background(), &Settings{AuthType: AuthTypeOAuth, Scope: "scope1"})
+	if err != nil {
+		t.Fatalf("FetchAuthToken(ADC) unexpected error: %v", err)
+	}
+	if tok.Value != "adc-access-token" || tok.MetadataString("refresh_token") != testRefreshToken {
+		t.Errorf("FetchAuthToken(ADC) = (%q, %q), want (adc-access-token, %q)", tok.Value, tok.MetadataString("refresh_token"), testRefreshToken)
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if _, err := JWTTokenProvider(context.Background(), tc.settings); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-				t.Errorf("JWTTokenProvider() error = %v, want error containing %q", err, tc.wantErr)
-			}
-			if _, err := JWTTokenSource(context.Background(), tc.settings); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-				t.Errorf("JWTTokenSource() error = %v, want error containing %q", err, tc.wantErr)
-			}
-		})
+	nilTok, err := FetchToken(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("FetchToken(nil) unexpected error: %v", err)
+	}
+	if nilTok.AccessToken != "adc-access-token" || nilTok.RefreshToken != testRefreshToken {
+		t.Errorf("FetchToken(nil) = (%q, %q), want (adc-access-token, %q)", nilTok.AccessToken, nilTok.RefreshToken, testRefreshToken)
 	}
 }
 
