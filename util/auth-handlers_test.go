@@ -90,7 +90,7 @@ func TestGet3LOAuthHandlerLoopback(t *testing.T) {
 		t.Fatalf("Get3LOAuthHandler() unexpected error = %v", err)
 	}
 	if !fakeSrv.waitedConsent {
-		t.Error("expected WaitForConsentPageToReturnControl to be called")
+		t.Errorf("Get3LOAuthHandler() waitedConsent = %v, want true", fakeSrv.waitedConsent)
 	}
 	if code != "loopback-code" || state != "loopback-state" {
 		t.Errorf("Get3LOAuthHandler() = (%q, %q), want (%q, %q)", code, state, "loopback-code", "loopback-state")
@@ -115,7 +115,7 @@ func TestGet3LOAuthHandlerLoopbackError(t *testing.T) {
 
 	_, _, err := handler(authURL)
 	if !fakeSrv.waitedConsent {
-		t.Error("expected WaitForConsentPageToReturnControl to be called")
+		t.Errorf("Get3LOAuthHandler() waitedConsent = %v, want true", fakeSrv.waitedConsent)
 	}
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Get3LOAuthHandler() error = %v, want %v", err, wantErr)
@@ -123,6 +123,9 @@ func TestGet3LOAuthHandlerLoopbackError(t *testing.T) {
 }
 
 func TestGet3LOAuthHandlerLoopbackServerNotListening(t *testing.T) {
+	// The handler prints user instructions to stdout before reporting,
+	// keep them out of the test output.
+	silenceStdout(t)
 	wantErr := errors.New("server failed to start")
 	fakeSrv := &fakeAuthCodeServer{
 		listening: false,
@@ -139,7 +142,7 @@ func TestGet3LOAuthHandlerLoopbackServerNotListening(t *testing.T) {
 
 	_, _, err := handler(authURL)
 	if fakeSrv.waitedConsent {
-		t.Error("did not expect WaitForConsentPageToReturnControl to be called when server is not listening")
+		t.Errorf("Get3LOAuthHandler() waitedConsent = %v, want false", fakeSrv.waitedConsent)
 	}
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Get3LOAuthHandler() error = %v, want %v", err, wantErr)

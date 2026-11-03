@@ -24,7 +24,7 @@ import (
 )
 
 // GeneratePKCEOptions generates a unique PKCE challenge and verifier combination,
-// using UUID, SHA256 encryption, and base64 URL encoding with no padding.
+// using UUID, SHA-256 hashing, and base64 URL encoding with no padding.
 func GeneratePKCEOptions() *auth.PKCEOptions {
 	verifier := uuid.New().String()
 	sha := sha256.Sum256([]byte(verifier))
@@ -38,7 +38,7 @@ func GeneratePKCEOptions() *auth.PKCEOptions {
 }
 
 // GeneratePKCEParams generates a unique PKCE challenge and verifier combination,
-// using UUID, SHA256 encryption, and base64 URL encoding with no padding.
+// using UUID, SHA-256 hashing, and base64 URL encoding with no padding.
 //
 // Deprecated: Use GeneratePKCEOptions instead.
 func GeneratePKCEParams() *authhandler.PKCEParams {

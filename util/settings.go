@@ -16,8 +16,6 @@ package util
 
 import (
 	"cloud.google.com/go/auth"
-	// Blank import for go mod tidy and vendor; will be imported directly in util/fetch.go.
-	_ "cloud.google.com/go/auth/credentials"
 	"golang.org/x/oauth2/authhandler"
 )
 
