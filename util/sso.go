@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"cloud.google.com/go/auth"
 	"golang.org/x/oauth2"
 )
 
@@ -26,8 +27,8 @@ const (
 	defaultCli = "/google/data/ro/teams/oneplatform/sso"
 )
 
-// Fetches and returns OAuth access token using SSO CLI.
-func SSOFetch(cli string, email string, scope string) (*oauth2.Token, error) {
+// SSOAuthFetch fetches and returns an OAuth access token using SSO CLI.
+func SSOAuthFetch(cli string, email string, scope string) (*auth.Token, error) {
 	if cli == "" {
 		cli = defaultCli
 	}
@@ -39,9 +40,22 @@ func SSOFetch(cli string, email string, scope string) (*oauth2.Token, error) {
 	if err != nil {
 		return nil, err
 	}
-	accessToken := out.String()
-	token := oauth2.Token{}
-	token.AccessToken = accessToken
-	token.TokenType = "Bearer"
-	return &token, nil
+	return &auth.Token{
+		Value: out.String(),
+		Type:  "Bearer",
+	}, nil
+}
+
+// Fetches and returns OAuth access token using SSO CLI.
+//
+// Deprecated: Use SSOAuthFetch instead.
+func SSOFetch(cli string, email string, scope string) (*oauth2.Token, error) {
+	token, err := SSOAuthFetch(cli, email, scope)
+	if err != nil {
+		return nil, err
+	}
+	return &oauth2.Token{
+		AccessToken: token.Value,
+		TokenType:   token.Type,
+	}, nil
 }
