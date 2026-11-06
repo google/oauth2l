@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"strings"
 
+	"cloud.google.com/go/auth"
 	"golang.org/x/oauth2"
 )
 
@@ -32,14 +33,16 @@ import (
 // TODO (andyzhao): Replace with https://sts.googleapis.com/v1/token when ready.
 const StsURL = "https://securetoken.googleapis.com/v1alpha2/identitybindingtoken"
 
+var stsEndpointURL = StsURL
+
 // tokenJSON is the struct representing the HTTP response from STS
 type tokenJSON struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
 }
 
-// Exchanges an OAuth Access Token to an Sts token with base64 encoded claims
-func StsExchange(accessToken string, encodedClaims string) (*oauth2.Token, error) {
+// StsAuthExchange exchanges an OAuth Access Token for an STS token with base64 encoded claims.
+func StsAuthExchange(accessToken string, encodedClaims string) (*auth.Token, error) {
 	v := url.Values{
 		"grant_type":           {"urn:ietf:params:oauth:grant-type:token-exchange"},
 		"subject_token_type":   {"urn:ietf:params:oauth:token-type:access_token"},
@@ -47,7 +50,7 @@ func StsExchange(accessToken string, encodedClaims string) (*oauth2.Token, error
 		"subject_token":        {accessToken},
 	}
 
-	req, err := http.NewRequest("POST", StsURL, strings.NewReader(v.Encode()))
+	req, err := http.NewRequest("POST", stsEndpointURL, strings.NewReader(v.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -71,12 +74,28 @@ func StsExchange(accessToken string, encodedClaims string) (*oauth2.Token, error
 	if err = json.Unmarshal(body, &tj); err != nil {
 		return nil, err
 	}
-	token := oauth2.Token{}
-	token.AccessToken = tj.AccessToken
-	token.TokenType = tj.TokenType
-	var raw map[string]interface{}
+	var raw map[string]any
 	json.Unmarshal(body, &raw)
-	return token.WithExtra(raw), nil
+	return &auth.Token{
+		Value:    tj.AccessToken,
+		Type:     tj.TokenType,
+		Metadata: raw,
+	}, nil
+}
+
+// Exchanges an OAuth Access Token to an Sts token with base64 encoded claims
+//
+// Deprecated: Use StsAuthExchange instead.
+func StsExchange(accessToken string, encodedClaims string) (*oauth2.Token, error) {
+	token, err := StsAuthExchange(accessToken, encodedClaims)
+	if err != nil {
+		return nil, err
+	}
+	t := &oauth2.Token{
+		AccessToken: token.Value,
+		TokenType:   token.Type,
+	}
+	return t.WithExtra(token.Metadata), nil
 }
 
 // claimsJSON is the struct representing supported STS claims

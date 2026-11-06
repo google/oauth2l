@@ -25,11 +25,14 @@ import (
 	"strings"
 	"time"
 
+	"cloud.google.com/go/auth"
 	"golang.org/x/oauth2"
 )
 
 // IamServiceAccountAccessTokenURL is used for generating accesss token for a Service Account.
 const IamServiceAccountAccessTokenURL = "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/%s:generateAccessToken"
+
+var iamAccessTokenURL = IamServiceAccountAccessTokenURL
 
 // iamTokenJSON is the struct representing the HTTP response from IAM
 type iamTokenJSON struct {
@@ -37,16 +40,16 @@ type iamTokenJSON struct {
 	ExpireTime  string `json:"expireTime"`
 }
 
-// GenerateServiceAccountAccessToken generates a Service Account access token using a User access
+// GenerateServiceAccountAuthToken generates a Service Account access token using a User access
 // token approved for at least one of the following scopes:
 // * https://www.googleapis.com/auth/iam
 // * https://www.googleapis.com/auth/cloud-platform
-func GenerateServiceAccountAccessToken(accessToken string, serviceAccount string, scope string) (*oauth2.Token, error) {
+func GenerateServiceAccountAuthToken(accessToken string, serviceAccount string, scope string) (*auth.Token, error) {
 	form := url.Values{}
 	for _, s := range strings.Split(scope, " ") {
 		form.Add("scope", s)
 	}
-	req, err := http.NewRequest("POST", fmt.Sprintf(IamServiceAccountAccessTokenURL, serviceAccount), strings.NewReader(form.Encode()))
+	req, err := http.NewRequest("POST", fmt.Sprintf(iamAccessTokenURL, serviceAccount), strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -70,10 +73,30 @@ func GenerateServiceAccountAccessToken(accessToken string, serviceAccount string
 	if err = json.Unmarshal(body, &itj); err != nil {
 		return nil, err
 	}
-	token := oauth2.Token{}
-	token.AccessToken = itj.AccessToken
-	token.Expiry, _ = time.Parse(time.RFC3339, itj.ExpireTime)
-	var raw map[string]interface{}
+	expiry, _ := time.Parse(time.RFC3339, itj.ExpireTime)
+	var raw map[string]any
 	json.Unmarshal(body, &raw)
-	return token.WithExtra(raw), nil
+	return &auth.Token{
+		Value:    itj.AccessToken,
+		Expiry:   expiry,
+		Metadata: raw,
+	}, nil
+}
+
+// GenerateServiceAccountAccessToken generates a Service Account access token using a User access
+// token approved for at least one of the following scopes:
+// * https://www.googleapis.com/auth/iam
+// * https://www.googleapis.com/auth/cloud-platform
+//
+// Deprecated: Use GenerateServiceAccountAuthToken instead.
+func GenerateServiceAccountAccessToken(accessToken string, serviceAccount string, scope string) (*oauth2.Token, error) {
+	token, err := GenerateServiceAccountAuthToken(accessToken, serviceAccount, scope)
+	if err != nil {
+		return nil, err
+	}
+	t := &oauth2.Token{
+		AccessToken: token.Value,
+		Expiry:      token.Expiry,
+	}
+	return t.WithExtra(token.Metadata), nil
 }
