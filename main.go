@@ -394,18 +394,18 @@ func main() {
 			}
 
 			// 3LO or 2LO depending on the credential type.
-			// For 2LO flow AuthHandler, State and ConsentPageSettings are not needed.
+			// For 2LO flow GoogleAuthHandler, State and ConsentPageSettings are not needed.
 			settings = &util.Settings{
-				CredentialsJSON: json,
-				Scope:           parseScopes(scopes),
-				AuthHandler:     util.Get3LOAuthorizationHandler(defaultState, consentPageSettings, &authCodeServer),
-				State:           defaultState,
-				Audience:        audience,
-				QuotaProject:    quotaProject,
-				Sts:             sts,
-				ServiceAccount:  serviceAccount,
-				Email:           email,
-				AuthType:        util.AuthTypeOAuth,
+				CredentialsJSON:   json,
+				Scope:             parseScopes(scopes),
+				GoogleAuthHandler: util.Get3LOAuthHandler(defaultState, consentPageSettings, &authCodeServer),
+				State:             defaultState,
+				Audience:          audience,
+				QuotaProject:      quotaProject,
+				Sts:               sts,
+				ServiceAccount:    serviceAccount,
+				Email:             email,
+				AuthType:          util.AuthTypeOAuth,
 			}
 		}
 
