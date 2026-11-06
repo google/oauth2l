@@ -225,7 +225,7 @@ func withRefreshToken(tok *auth.Token, credsJSON []byte) *auth.Token {
 }
 
 func withFallbackRefreshToken(tok *auth.Token, refreshToken string) *auth.Token {
-	if tok == nil || refreshToken == "" || tok.MetadataString("refresh_token") != "" {
+	if tok == nil || refreshToken == "" || hasRefreshToken(tok.Metadata) {
 		return tok
 	}
 	// Copy the token and metadata so the cached token is not mutated.
@@ -237,6 +237,19 @@ func withFallbackRefreshToken(tok *auth.Token, refreshToken string) *auth.Token 
 	tok2 := *tok
 	tok2.Metadata = metadata
 	return &tok2
+}
+
+// hasRefreshToken reports whether metadata holds a non-empty "refresh_token".
+// Form-encoded token responses store values as []string, which
+// auth.Token.MetadataString does not read, so both forms are checked.
+func hasRefreshToken(metadata map[string]interface{}) bool {
+	switch v := metadata["refresh_token"].(type) {
+	case string:
+		return v != ""
+	case []string:
+		return len(v) > 0 && v[0] != ""
+	}
+	return false
 }
 
 // OAuthJSONTokenProvider returns a cloud.google.com/go/auth token provider
