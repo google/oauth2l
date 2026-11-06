@@ -88,20 +88,32 @@ func serviceAccountJSON(t *testing.T) string {
 	return string(b)
 }
 
-// jwtClaims decodes the (unverified) claims of a JWT.
-func jwtClaims(t *testing.T, token string) map[string]any {
-	t.Helper()
+// decodeJWTClaims decodes the (unverified) claims of a JWT. Unlike jwtClaims,
+// it does not use *testing.T, so it is safe to call from non-test goroutines
+// such as httptest handlers.
+func decodeJWTClaims(token string) (map[string]any, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		t.Fatalf("token %q is not a JWT", token)
+		return nil, fmt.Errorf("token %q is not a JWT", token)
 	}
 	b, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		t.Fatalf("decoding JWT claims: %v", err)
+		return nil, fmt.Errorf("decoding JWT claims: %w", err)
 	}
 	var claims map[string]any
 	if err := json.Unmarshal(b, &claims); err != nil {
-		t.Fatalf("unmarshaling JWT claims: %v", err)
+		return nil, fmt.Errorf("unmarshaling JWT claims: %w", err)
+	}
+	return claims, nil
+}
+
+// jwtClaims decodes the (unverified) claims of a JWT. It must only be called
+// from the test goroutine.
+func jwtClaims(t *testing.T, token string) map[string]any {
+	t.Helper()
+	claims, err := decodeJWTClaims(token)
+	if err != nil {
+		t.Fatal(err)
 	}
 	return claims
 }
@@ -662,10 +674,19 @@ func TestFetchAuthTokenRefreshTokenJSON(t *testing.T) {
 func TestFetchAuthTokenServiceAccountEmptyScope(t *testing.T) {
 	var gotScope any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// This runs on the server goroutine, so report problems with
+		// t.Errorf and an HTTP error rather than t.Fatal.
 		if err := r.ParseForm(); err != nil {
 			t.Errorf("ParseForm() unexpected error: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
-		claims := jwtClaims(t, r.PostForm.Get("assertion"))
+		claims, err := decodeJWTClaims(r.PostForm.Get("assertion"))
+		if err != nil {
+			t.Errorf("decodeJWTClaims(assertion) unexpected error: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		gotScope = claims["scope"]
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"access_token": "sa-access-token", "token_type": "Bearer", "expires_in": 3600}`)
@@ -944,5 +965,70 @@ func TestClientSecretWithoutAuthHandler(t *testing.T) {
 
 	if _, err := FetchToken(t.Context(), settings); !errors.Is(err, errNoAuthHandler) {
 		t.Errorf("FetchToken() error = %v, want %v", err, errNoAuthHandler)
+	}
+}
+
+// TestFetchAuthTokenFormEncodedRefreshToken checks that FetchAuthToken keeps
+// a refresh token returned in a form-encoded token response (stored as
+// []string) instead of replacing it with the one from the credentials JSON,
+// and still falls back to that one when the response omits it.
+func TestFetchAuthTokenFormEncodedRefreshToken(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want any
+	}{
+		{
+			name: "rotated_refresh_token_is_kept",
+			body: "access_token=test-access-token&token_type=Bearer&expires_in=3600&refresh_token=rotated-refresh-token",
+			want: []string{"rotated-refresh-token"},
+		},
+		{
+			name: "missing_refresh_token_falls_back_to_credentials",
+			body: "access_token=test-access-token&token_type=Bearer&expires_in=3600",
+			want: testRefreshToken,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+				fmt.Fprint(w, tc.body)
+			}))
+			t.Cleanup(srv.Close)
+			settings := &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: authorizedUserJSON(srv.URL), Scope: "scope1"}
+
+			tok, err := FetchAuthToken(t.Context(), settings)
+			if err != nil {
+				t.Fatalf("FetchAuthToken() unexpected error: %v", err)
+			}
+			if got := tok.Metadata["refresh_token"]; !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("FetchAuthToken().Metadata[%q] = %#v, want %#v", "refresh_token", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestHasRefreshToken(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata map[string]any
+		want     bool
+	}{
+		{name: "nil_metadata"},
+		{name: "missing", metadata: map[string]any{"id_token": "x"}},
+		{name: "string", metadata: map[string]any{"refresh_token": "rt"}, want: true},
+		{name: "empty_string", metadata: map[string]any{"refresh_token": ""}},
+		{name: "string_slice", metadata: map[string]any{"refresh_token": []string{"rt"}}, want: true},
+		{name: "empty_string_slice", metadata: map[string]any{"refresh_token": []string{}}},
+		{name: "slice_of_empty_string", metadata: map[string]any{"refresh_token": []string{""}}},
+		{name: "other_type", metadata: map[string]any{"refresh_token": 42}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hasRefreshToken(tc.metadata); got != tc.want {
+				t.Errorf("hasRefreshToken(%v) = %v, want %v", tc.metadata, got, tc.want)
+			}
+		})
 	}
 }
