@@ -212,44 +212,48 @@ func FetchAuthToken(ctx context.Context, settings *Settings) (*auth.Token, error
 	return withRefreshToken(tok, creds.JSON()), nil
 }
 
-// withRefreshToken returns tok with its "refresh_token" metadata set from
-// "authorized_user" credentials JSON when the token response omitted it,
-// matching golang.org/x/oauth2, which keeps the refresh token on refreshed
-// tokens. Other tokens are returned unchanged.
+// withRefreshToken returns a copy of tok with single-valued []string metadata
+// entries (from form-encoded token responses) normalized to strings so
+// tok.MetadataString works as documented, and with "refresh_token" falling
+// back to the one in "authorized_user" credentials JSON when the token
+// response omitted it (matching golang.org/x/oauth2, which keeps the refresh
+// token on refreshed tokens). The cached tok is not modified.
 func withRefreshToken(tok *auth.Token, credsJSON []byte) *auth.Token {
-	h := parseCredentialsFileHeader(credsJSON)
-	if h.Type != authorizedUserCredentialsType {
-		return tok
+	var refreshToken string
+	if h := parseCredentialsFileHeader(credsJSON); h.Type == authorizedUserCredentialsType {
+		refreshToken = h.RefreshToken
 	}
-	return withFallbackRefreshToken(tok, h.RefreshToken)
+	return withFallbackRefreshToken(tok, refreshToken)
 }
 
+// withFallbackRefreshToken returns a copy of tok whose metadata has:
+//   - single-valued []string entries (from form-encoded token responses)
+//     normalized to plain strings, as url.Values.Get returned them and as
+//     auth.Token.MetadataString expects;
+//   - "refresh_token" falling back to refreshToken when the token response
+//     omitted it, as golang.org/x/oauth2 kept the refresh token on refreshed
+//     tokens.
+//
+// The cached tok is not modified.
 func withFallbackRefreshToken(tok *auth.Token, refreshToken string) *auth.Token {
-	if tok == nil || refreshToken == "" || hasRefreshToken(tok.Metadata) {
+	if tok == nil || (len(tok.Metadata) == 0 && refreshToken == "") {
 		return tok
 	}
-	// Copy the token and metadata so the cached token is not mutated.
 	metadata := make(map[string]interface{}, len(tok.Metadata)+1)
 	for k, v := range tok.Metadata {
+		if vs, ok := v.([]string); ok && len(vs) == 1 {
+			v = vs[0]
+		}
 		metadata[k] = v
 	}
-	metadata["refresh_token"] = refreshToken
+	if refreshToken != "" {
+		if s, _ := metadata["refresh_token"].(string); s == "" {
+			metadata["refresh_token"] = refreshToken
+		}
+	}
 	tok2 := *tok
 	tok2.Metadata = metadata
 	return &tok2
-}
-
-// hasRefreshToken reports whether metadata holds a non-empty "refresh_token".
-// Form-encoded token responses store values as []string, which
-// auth.Token.MetadataString does not read, so both forms are checked.
-func hasRefreshToken(metadata map[string]interface{}) bool {
-	switch v := metadata["refresh_token"].(type) {
-	case string:
-		return v != ""
-	case []string:
-		return len(v) > 0 && v[0] != ""
-	}
-	return false
 }
 
 // OAuthJSONTokenProvider returns a cloud.google.com/go/auth token provider
@@ -422,37 +426,7 @@ func (p *ctxTokenProvider) Token(context.Context) (*auth.Token, error) {
 	if err != nil {
 		return nil, err
 	}
-	return legacyAuthToken(tok, p.refreshToken), nil
-}
-
-// legacyAuthToken returns a copy of tok whose metadata matches what
-// golang.org/x/oauth2 exposed via oauth2.Token.Extra:
-//   - single-valued []string entries (from form-encoded token responses)
-//     become plain strings, as url.Values.Get returned them;
-//   - "refresh_token" falls back to refreshToken when the token response
-//     omitted it, as golang.org/x/oauth2 kept the refresh token on refreshed
-//     tokens.
-//
-// The cached tok is not modified.
-func legacyAuthToken(tok *auth.Token, refreshToken string) *auth.Token {
-	if tok == nil {
-		return nil
-	}
-	metadata := make(map[string]interface{}, len(tok.Metadata)+1)
-	for k, v := range tok.Metadata {
-		if vs, ok := v.([]string); ok && len(vs) == 1 {
-			v = vs[0]
-		}
-		metadata[k] = v
-	}
-	if refreshToken != "" {
-		if s, _ := metadata["refresh_token"].(string); s == "" {
-			metadata["refresh_token"] = refreshToken
-		}
-	}
-	tok2 := *tok
-	tok2.Metadata = metadata
-	return &tok2
+	return withFallbackRefreshToken(tok, p.refreshToken), nil
 }
 
 // refreshTokenSource copies Extra("refresh_token") into

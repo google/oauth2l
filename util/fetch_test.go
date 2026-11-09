@@ -717,6 +717,7 @@ func TestFetchAuthTokenServiceAccountEmptyScope(t *testing.T) {
 
 func TestWithRefreshToken(t *testing.T) {
 	userJSON := []byte(authorizedUserJSON("http://localhost/token"))
+	installedJSON := []byte(clientSecretJSON("http://localhost/token"))
 	tests := []struct {
 		name      string
 		tok       *auth.Token
@@ -728,6 +729,9 @@ func TestWithRefreshToken(t *testing.T) {
 		{name: "non_authorized_user_credentials", tok: &auth.Token{}, credsJSON: []byte(`{"type": "service_account", "refresh_token": "x"}`)},
 		{name: "empty_credentials_json", tok: &auth.Token{}},
 		{name: "authorized_user_fills_refresh_token", tok: &auth.Token{Metadata: map[string]any{"scope": "scope1"}}, credsJSON: userJSON, want: testRefreshToken},
+		{name: "form_encoded_refresh_token_on_authorized_user", tok: &auth.Token{Metadata: map[string]any{"refresh_token": []string{"rotated"}}}, credsJSON: userJSON, want: "rotated"},
+		{name: "form_encoded_empty_refresh_token_falls_back", tok: &auth.Token{Metadata: map[string]any{"refresh_token": []string{""}}}, credsJSON: userJSON, want: testRefreshToken},
+		{name: "form_encoded_refresh_token_on_client_secret", tok: &auth.Token{Metadata: map[string]any{"refresh_token": []string{"3lo-rt"}}}, credsJSON: installedJSON, want: "3lo-rt"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -968,25 +972,36 @@ func TestClientSecretWithoutAuthHandler(t *testing.T) {
 	}
 }
 
-// TestFetchAuthTokenFormEncodedRefreshToken checks that FetchAuthToken keeps
-// a refresh token returned in a form-encoded token response (stored as
-// []string) instead of replacing it with the one from the credentials JSON,
-// and still falls back to that one when the response omits it.
+// TestFetchAuthTokenFormEncodedRefreshToken checks that FetchAuthToken
+// normalizes form-encoded []string metadata to string so
+// tok.MetadataString("refresh_token") returns the refresh token for both
+// authorized_user and 3LO client secret flows, while still falling back to the
+// refresh token in authorized_user credentials JSON when the response omits it.
 func TestFetchAuthTokenFormEncodedRefreshToken(t *testing.T) {
 	tests := []struct {
-		name string
-		body string
-		want any
+		name            string
+		body            string
+		useClientSecret bool
+		wantRefresh     string
+		wantIDToken     string
 	}{
 		{
-			name: "rotated_refresh_token_is_kept",
-			body: "access_token=test-access-token&token_type=Bearer&expires_in=3600&refresh_token=rotated-refresh-token",
-			want: []string{"rotated-refresh-token"},
+			name:        "rotated_refresh_token_is_kept",
+			body:        "access_token=test-access-token&token_type=Bearer&expires_in=3600&refresh_token=rotated-refresh-token&id_token=form-id-token",
+			wantRefresh: "rotated-refresh-token",
+			wantIDToken: "form-id-token",
 		},
 		{
-			name: "missing_refresh_token_falls_back_to_credentials",
-			body: "access_token=test-access-token&token_type=Bearer&expires_in=3600",
-			want: testRefreshToken,
+			name:        "missing_refresh_token_falls_back_to_credentials",
+			body:        "access_token=test-access-token&token_type=Bearer&expires_in=3600",
+			wantRefresh: testRefreshToken,
+		},
+		{
+			name:            "3lo_client_secret_form_encoded_refresh_token",
+			body:            "access_token=test-access-token&token_type=Bearer&expires_in=3600&refresh_token=3lo-form-refresh-token&id_token=3lo-form-id-token",
+			useClientSecret: true,
+			wantRefresh:     "3lo-form-refresh-token",
+			wantIDToken:     "3lo-form-id-token",
 		},
 	}
 	for _, tc := range tests {
@@ -996,38 +1011,29 @@ func TestFetchAuthTokenFormEncodedRefreshToken(t *testing.T) {
 				fmt.Fprint(w, tc.body)
 			}))
 			t.Cleanup(srv.Close)
-			settings := &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: authorizedUserJSON(srv.URL), Scope: "scope1"}
+
+			settings := &Settings{
+				AuthType:        AuthTypeOAuth,
+				CredentialsJSON: authorizedUserJSON(srv.URL),
+				Scope:           "scope1",
+			}
+			if tc.useClientSecret {
+				settings.CredentialsJSON = clientSecretJSON(srv.URL)
+				settings.State = "state"
+				settings.GoogleAuthHandler = func(authCodeURL string) (string, string, error) {
+					return "auth-code", "state", nil
+				}
+			}
 
 			tok, err := FetchAuthToken(t.Context(), settings)
 			if err != nil {
 				t.Fatalf("FetchAuthToken() unexpected error: %v", err)
 			}
-			if got := tok.Metadata["refresh_token"]; !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("FetchAuthToken().Metadata[%q] = %#v, want %#v", "refresh_token", got, tc.want)
+			if got := tok.MetadataString("refresh_token"); got != tc.wantRefresh {
+				t.Errorf("FetchAuthToken().MetadataString(%q) = %q, want %q", "refresh_token", got, tc.wantRefresh)
 			}
-		})
-	}
-}
-
-func TestHasRefreshToken(t *testing.T) {
-	tests := []struct {
-		name     string
-		metadata map[string]any
-		want     bool
-	}{
-		{name: "nil_metadata"},
-		{name: "missing", metadata: map[string]any{"id_token": "x"}},
-		{name: "string", metadata: map[string]any{"refresh_token": "rt"}, want: true},
-		{name: "empty_string", metadata: map[string]any{"refresh_token": ""}},
-		{name: "string_slice", metadata: map[string]any{"refresh_token": []string{"rt"}}, want: true},
-		{name: "empty_string_slice", metadata: map[string]any{"refresh_token": []string{}}},
-		{name: "slice_of_empty_string", metadata: map[string]any{"refresh_token": []string{""}}},
-		{name: "other_type", metadata: map[string]any{"refresh_token": 42}},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := hasRefreshToken(tc.metadata); got != tc.want {
-				t.Errorf("hasRefreshToken(%v) = %v, want %v", tc.metadata, got, tc.want)
+			if got := tok.MetadataString("id_token"); got != tc.wantIDToken {
+				t.Errorf("FetchAuthToken().MetadataString(%q) = %q, want %q", "id_token", got, tc.wantIDToken)
 			}
 		})
 	}
