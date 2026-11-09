@@ -39,7 +39,7 @@ RUN apk --no-cache upgrade && \
       "openssl>=3.5.8-r0" \
       "libcrypto3>=3.5.8-r0" \
       "libssl3>=3.5.8-r0" \
-      "zlib>=1.3.2-r1" \
+      "zlib>=1.4-r0" \
       "brotli-libs>=1.2.1-r0" \
       "musl>=1.2.6-r3" && \
     update-ca-certificates
