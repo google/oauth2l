@@ -53,7 +53,7 @@ type CacheKey struct {
 	ServiceAccount string
 }
 
-// cachedTokenJSON is the JSON wire format for cached and printed tokens,
+// cachedTokenJSON is the JSON wire format for unmarshaling cached tokens,
 // matching golang.org/x/oauth2.Token so existing ~/.oauth2l cache files and
 // JSON CLI outputs remain compatible.
 type cachedTokenJSON struct {
@@ -64,6 +64,7 @@ type cachedTokenJSON struct {
 }
 
 // LookupAuthCache looks up a cached auth.Token for the given settings.
+// It returns (nil, nil) when caching is disabled or the key is not present.
 func LookupAuthCache(settings *Settings) (*auth.Token, error) {
 	if CacheLocation == "" {
 		return nil, nil
@@ -76,7 +77,10 @@ func LookupAuthCache(settings *Settings) (*auth.Token, error) {
 	if err != nil {
 		return nil, err
 	}
-	val := cache[string(key)]
+	val, ok := cache[string(key)]
+	if !ok || len(val) == 0 {
+		return nil, nil
+	}
 	return UnmarshalAuthTokenWithExtras(val)
 }
 
@@ -202,20 +206,17 @@ func MarshalAuthTokenWithExtras(token *auth.Token, indent string) ([]byte, error
 	if token == nil {
 		return json.MarshalIndent(nil, "", indent)
 	}
-	wire := cachedTokenJSON{
-		AccessToken:  token.Value,
-		TokenType:    token.Type,
-		RefreshToken: tokenMetadataString(token, "refresh_token"),
-		Expiry:       token.Expiry,
+	// Note: "expiry" is always set (even when zero) to match encoding/json's
+	// behavior on golang.org/x/oauth2.Token's non-pointer Expiry time.Time field.
+	m := map[string]any{
+		"access_token": token.Value,
+		"expiry":       token.Expiry,
 	}
-	data, err := json.Marshal(wire)
-	if err != nil {
-		return nil, err
+	if token.Type != "" {
+		m["token_type"] = token.Type
 	}
-	var m map[string]any
-	err = json.Unmarshal(data, &m)
-	if err != nil {
-		return nil, err
+	if rt := tokenMetadataString(token, "refresh_token"); rt != "" {
+		m["refresh_token"] = rt
 	}
 	for _, k := range []string{"issued_token_type", "id_token", "scope"} {
 		if v, ok := tokenMetadataExtraString(token, k); ok {
@@ -246,6 +247,12 @@ func UnmarshalAuthTokenWithExtras(data []byte) (*auth.Token, error) {
 	if err != nil {
 		return nil, err
 	}
+	delete(extra, "access_token")
+	delete(extra, "token_type")
+	delete(extra, "expiry")
+	if len(extra) == 0 {
+		extra = nil
+	}
 	return &auth.Token{
 		Value:    wire.AccessToken,
 		Type:     wire.TokenType,
@@ -267,8 +274,9 @@ func UnmarshalWithExtras(data []byte) (*oauth2.Token, error) {
 }
 
 // tokenMetadataString returns the string value for key in tok.Metadata,
-// supporting both string values (from JSON token responses) and single-element
-// []string values (from form-encoded token responses).
+// supporting string values (from JSON token responses), single-element
+// []string values (from form-encoded token responses), and []any values
+// (from unmarshaled JSON arrays).
 func tokenMetadataString(tok *auth.Token, key string) string {
 	v, _ := tokenMetadataExtraString(tok, key)
 	return v
@@ -284,6 +292,12 @@ func tokenMetadataExtraString(tok *auth.Token, key string) (string, bool) {
 	case []string:
 		if len(v) > 0 {
 			return v[0], true
+		}
+	case []any:
+		if len(v) > 0 {
+			if str, ok := v[0].(string); ok {
+				return str, true
+			}
 		}
 	}
 	return "", false
@@ -304,8 +318,17 @@ func oauth2TokenFromAuthToken(token *auth.Token) *oauth2.Token {
 	if token.Metadata != nil {
 		extra := make(map[string]any, len(token.Metadata))
 		for k, v := range token.Metadata {
-			if vs, ok := v.([]string); ok && len(vs) == 1 {
-				v = vs[0]
+			switch vs := v.(type) {
+			case []string:
+				if len(vs) == 1 {
+					v = vs[0]
+				}
+			case []any:
+				if len(vs) == 1 {
+					if s, ok := vs[0].(string); ok {
+						v = s
+					}
+				}
 			}
 			extra[k] = v
 		}

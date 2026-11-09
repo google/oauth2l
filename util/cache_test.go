@@ -88,6 +88,26 @@ func TestMarshalUnmarshalAuthTokenWithExtras(t *testing.T) {
 				"scope": "form-scope",
 			}),
 		},
+		{
+			name: "json_unmarshaled_any_slices",
+			authTok: &auth.Token{
+				Value:  "fake-any-access-token",
+				Type:   "Bearer",
+				Expiry: expiry,
+				Metadata: map[string]any{
+					"refresh_token": []any{"fake-any-refresh-token"},
+					"scope":         []any{"any-scope"},
+				},
+			},
+			oauth2Tok: (&oauth2.Token{
+				AccessToken:  "fake-any-access-token",
+				TokenType:    "Bearer",
+				RefreshToken: "fake-any-refresh-token",
+				Expiry:       expiry,
+			}).WithExtra(map[string]any{
+				"scope": "any-scope",
+			}),
+		},
 	}
 
 	for _, tc := range tests {
@@ -119,6 +139,11 @@ func TestMarshalUnmarshalAuthTokenWithExtras(t *testing.T) {
 			}
 			if gotRT, wantRT := unmarshaledAuth.MetadataString("refresh_token"), tc.oauth2Tok.RefreshToken; gotRT != wantRT {
 				t.Errorf("UnmarshalAuthTokenWithExtras().MetadataString(\"refresh_token\") = %q, want %q", gotRT, wantRT)
+			}
+			for _, redundantKey := range []string{"access_token", "token_type", "expiry"} {
+				if _, exists := unmarshaledAuth.Metadata[redundantKey]; exists {
+					t.Errorf("UnmarshalAuthTokenWithExtras().Metadata[%q] exists, want omitted", redundantKey)
+				}
 			}
 
 			unmarshaledOAuth2, err := UnmarshalWithExtras(gotAuthBytes)
@@ -155,9 +180,12 @@ func TestLookupAndInsertAuthCache(t *testing.T) {
 		Scope:           "https://www.googleapis.com/auth/cloud-platform",
 	}
 
-	// Cache miss returns nil token and an unmarshal error on empty value.
-	if got, err := LookupAuthCache(settings); got != nil || err == nil {
-		t.Errorf("LookupAuthCache() on empty cache = (%v, %v), want (nil, non-nil)", got, err)
+	// Cache miss returns (nil, nil).
+	if got, err := LookupAuthCache(settings); got != nil || err != nil {
+		t.Errorf("LookupAuthCache() on empty cache = (%v, %v), want (nil, nil)", got, err)
+	}
+	if got, err := LookupCache(settings); got != nil || err != nil {
+		t.Errorf("LookupCache() on empty cache = (%v, %v), want (nil, nil)", got, err)
 	}
 
 	expiry := time.Date(2026, time.November, 4, 15, 0, 0, 0, time.UTC)
