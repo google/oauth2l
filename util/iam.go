@@ -15,6 +15,7 @@
 package util
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,18 +45,24 @@ type iamTokenJSON struct {
 // token approved for at least one of the following scopes:
 // * https://www.googleapis.com/auth/iam
 // * https://www.googleapis.com/auth/cloud-platform
-func GenerateServiceAccountAuthToken(accessToken string, serviceAccount string, scope string) (*auth.Token, error) {
+func GenerateServiceAccountAuthToken(ctx context.Context, accessToken string, serviceAccount string, scope string) (*auth.Token, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	form := url.Values{}
 	for _, s := range strings.Split(scope, " ") {
 		form.Add("scope", s)
 	}
-	req, err := http.NewRequest("POST", fmt.Sprintf(iamAccessTokenURL, serviceAccount), strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf(iamAccessTokenURL, serviceAccount), strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	client := http.DefaultClient
+	if c, ok := ctx.Value(oauth2.HTTPClient).(*http.Client); ok && c != nil {
+		client = c
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -78,6 +85,7 @@ func GenerateServiceAccountAuthToken(accessToken string, serviceAccount string, 
 	json.Unmarshal(body, &raw)
 	return &auth.Token{
 		Value:    itj.AccessToken,
+		Type:     "Bearer",
 		Expiry:   expiry,
 		Metadata: raw,
 	}, nil
@@ -90,7 +98,7 @@ func GenerateServiceAccountAuthToken(accessToken string, serviceAccount string, 
 //
 // Deprecated: Use GenerateServiceAccountAuthToken instead.
 func GenerateServiceAccountAccessToken(accessToken string, serviceAccount string, scope string) (*oauth2.Token, error) {
-	token, err := GenerateServiceAccountAuthToken(accessToken, serviceAccount, scope)
+	token, err := GenerateServiceAccountAuthToken(context.Background(), accessToken, serviceAccount, scope)
 	if err != nil {
 		return nil, err
 	}

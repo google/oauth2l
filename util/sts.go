@@ -15,6 +15,7 @@
 package util
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -42,7 +43,10 @@ type tokenJSON struct {
 }
 
 // StsAuthExchange exchanges an OAuth Access Token for an STS token with base64 encoded claims.
-func StsAuthExchange(accessToken string, encodedClaims string) (*auth.Token, error) {
+func StsAuthExchange(ctx context.Context, accessToken string, encodedClaims string) (*auth.Token, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	v := url.Values{
 		"grant_type":           {"urn:ietf:params:oauth:grant-type:token-exchange"},
 		"subject_token_type":   {"urn:ietf:params:oauth:token-type:access_token"},
@@ -50,13 +54,16 @@ func StsAuthExchange(accessToken string, encodedClaims string) (*auth.Token, err
 		"subject_token":        {accessToken},
 	}
 
-	req, err := http.NewRequest("POST", stsEndpointURL, strings.NewReader(v.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "POST", stsEndpointURL, strings.NewReader(v.Encode()))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("X-Goog-Auth-Claims", encodedClaims)
 	client := http.DefaultClient
+	if c, ok := ctx.Value(oauth2.HTTPClient).(*http.Client); ok && c != nil {
+		client = c
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -87,7 +94,7 @@ func StsAuthExchange(accessToken string, encodedClaims string) (*auth.Token, err
 //
 // Deprecated: Use StsAuthExchange instead.
 func StsExchange(accessToken string, encodedClaims string) (*oauth2.Token, error) {
-	token, err := StsAuthExchange(accessToken, encodedClaims)
+	token, err := StsAuthExchange(context.Background(), accessToken, encodedClaims)
 	if err != nil {
 		return nil, err
 	}

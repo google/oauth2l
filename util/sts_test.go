@@ -1,5 +1,5 @@
 //
-// Copyright 2024 Google Inc.
+// Copyright 2026 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,9 +15,12 @@
 package util
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -45,7 +48,7 @@ func TestStsAuthExchange(t *testing.T) {
 	stsEndpointURL = srv.URL
 
 	claims := EncodeClaims(&Settings{Audience: "https://example.com", QuotaProject: "my-project"})
-	tok, err := StsAuthExchange("subject-token", claims)
+	tok, err := StsAuthExchange(t.Context(), "subject-token", claims)
 	if err != nil {
 		t.Fatalf("StsAuthExchange() unexpected error: %v", err)
 	}
@@ -73,4 +76,47 @@ func TestStsAuthExchange(t *testing.T) {
 	if got := legacyTok.Extra("issued_token_type"); got != wantIssuedType {
 		t.Errorf("StsExchange().Extra(\"issued_token_type\") = %v, want %q", got, wantIssuedType)
 	}
+}
+
+func TestStsAuthExchangeErrors(t *testing.T) {
+	t.Run("non_2xx_status", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":"invalid_request"}`)
+		}))
+		t.Cleanup(srv.Close)
+
+		origURL := stsEndpointURL
+		t.Cleanup(func() { stsEndpointURL = origURL })
+		stsEndpointURL = srv.URL
+
+		_, err := StsAuthExchange(t.Context(), "subject-token", "")
+		if err == nil || !strings.Contains(err.Error(), "invalid_request") {
+			t.Errorf("StsAuthExchange() error = %v, want error containing %q", err, "invalid_request")
+		}
+	})
+
+	t.Run("invalid_json_response", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, `not-json`)
+		}))
+		t.Cleanup(srv.Close)
+
+		origURL := stsEndpointURL
+		t.Cleanup(func() { stsEndpointURL = origURL })
+		stsEndpointURL = srv.URL
+
+		if _, err := StsAuthExchange(t.Context(), "subject-token", ""); err == nil {
+			t.Error("StsAuthExchange() error = nil, want non-nil JSON error")
+		}
+	})
+
+	t.Run("canceled_context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		if _, err := StsAuthExchange(ctx, "subject-token", ""); !errors.Is(err, context.Canceled) {
+			t.Errorf("StsAuthExchange() error = %v, want %v", err, context.Canceled)
+		}
+	})
 }

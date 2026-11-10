@@ -1,5 +1,5 @@
 //
-// Copyright 2024 Google Inc.
+// Copyright 2026 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,10 +15,13 @@
 package util
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -48,7 +51,7 @@ func TestGenerateServiceAccountAuthToken(t *testing.T) {
 	})
 	iamAccessTokenURL = srv.URL + "/v1/projects/-/serviceAccounts/%s:generateAccessToken"
 
-	tok, err := GenerateServiceAccountAuthToken("source-token", "sa@project.iam.gserviceaccount.com", "scope1 scope2")
+	tok, err := GenerateServiceAccountAuthToken(t.Context(), "source-token", "sa@project.iam.gserviceaccount.com", "scope1 scope2")
 	if err != nil {
 		t.Fatalf("GenerateServiceAccountAuthToken() unexpected error: %v", err)
 	}
@@ -65,6 +68,9 @@ func TestGenerateServiceAccountAuthToken(t *testing.T) {
 	if tok.Value != "impersonated-token" {
 		t.Errorf("GenerateServiceAccountAuthToken().Value = %q, want %q", tok.Value, "impersonated-token")
 	}
+	if tok.Type != "Bearer" {
+		t.Errorf("GenerateServiceAccountAuthToken().Type = %q, want %q", tok.Type, "Bearer")
+	}
 	wantExpiry := time.Date(2026, time.November, 4, 18, 0, 0, 0, time.UTC)
 	if !tok.Expiry.Equal(wantExpiry) {
 		t.Errorf("GenerateServiceAccountAuthToken().Expiry = %v, want %v", tok.Expiry, wantExpiry)
@@ -74,7 +80,50 @@ func TestGenerateServiceAccountAuthToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateServiceAccountAccessToken() unexpected error: %v", err)
 	}
-	if legacyTok.AccessToken != "impersonated-token" || !legacyTok.Expiry.Equal(wantExpiry) {
-		t.Errorf("GenerateServiceAccountAccessToken() = %+v, want AccessToken=%q Expiry=%v", legacyTok, "impersonated-token", wantExpiry)
+	if legacyTok.AccessToken != "impersonated-token" || legacyTok.TokenType != "" || !legacyTok.Expiry.Equal(wantExpiry) {
+		t.Errorf("GenerateServiceAccountAccessToken() = %+v, want AccessToken=%q TokenType=\"\" Expiry=%v", legacyTok, "impersonated-token", wantExpiry)
 	}
+}
+
+func TestGenerateServiceAccountAuthTokenErrors(t *testing.T) {
+	t.Run("non_2xx_status", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprint(w, `{"error":{"message":"permission denied"}}`)
+		}))
+		t.Cleanup(srv.Close)
+
+		origURL := iamAccessTokenURL
+		t.Cleanup(func() { iamAccessTokenURL = origURL })
+		iamAccessTokenURL = srv.URL + "/%s"
+
+		_, err := GenerateServiceAccountAuthToken(t.Context(), "source-token", "sa@project.iam.gserviceaccount.com", "scope1")
+		if err == nil || !strings.Contains(err.Error(), "permission denied") {
+			t.Errorf("GenerateServiceAccountAuthToken() error = %v, want error containing %q", err, "permission denied")
+		}
+	})
+
+	t.Run("invalid_json_response", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, `not-json`)
+		}))
+		t.Cleanup(srv.Close)
+
+		origURL := iamAccessTokenURL
+		t.Cleanup(func() { iamAccessTokenURL = origURL })
+		iamAccessTokenURL = srv.URL + "/%s"
+
+		if _, err := GenerateServiceAccountAuthToken(t.Context(), "source-token", "sa@project.iam.gserviceaccount.com", "scope1"); err == nil {
+			t.Error("GenerateServiceAccountAuthToken() error = nil, want non-nil JSON error")
+		}
+	})
+
+	t.Run("canceled_context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		if _, err := GenerateServiceAccountAuthToken(ctx, "source-token", "sa@project.iam.gserviceaccount.com", "scope1"); !errors.Is(err, context.Canceled) {
+			t.Errorf("GenerateServiceAccountAuthToken() error = %v, want %v", err, context.Canceled)
+		}
+	})
 }

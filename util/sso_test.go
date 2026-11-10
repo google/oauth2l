@@ -1,5 +1,5 @@
 //
-// Copyright 2024 Google Inc.
+// Copyright 2026 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,5 +37,14 @@ func TestSSOAuthFetch(t *testing.T) {
 	}
 	if legacyTok.AccessToken != wantValue || legacyTok.TokenType != "Bearer" {
 		t.Errorf("SSOFetch() = %+v, want AccessToken=%q TokenType=%q", legacyTok, wantValue, "Bearer")
+	}
+}
+
+func TestSSOAuthFetchError(t *testing.T) {
+	if _, err := SSOAuthFetch("false", "user@example.com", "scope1"); err == nil {
+		t.Error("SSOAuthFetch(\"false\") error = nil, want non-nil")
+	}
+	if _, err := SSOFetch("false", "user@example.com", "scope1"); err == nil {
+		t.Error("SSOFetch(\"false\") error = nil, want non-nil")
 	}
 }
