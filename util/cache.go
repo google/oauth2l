@@ -88,16 +88,22 @@ func LookupAuthCache(settings *Settings) (*auth.Token, error) {
 //
 // Deprecated: Use LookupAuthCache instead.
 func LookupCache(settings *Settings) (*oauth2.Token, error) {
+	if CacheLocation == "" {
+		return nil, nil
+	}
 	token, err := LookupAuthCache(settings)
 	if err != nil {
 		return nil, err
+	}
+	if token == nil {
+		return UnmarshalWithExtras(nil)
 	}
 	return oauth2TokenFromAuthToken(token), nil
 }
 
 // InsertAuthCache inserts the given auth.Token into the cache for settings.
 func InsertAuthCache(settings *Settings, token *auth.Token) error {
-	if CacheLocation == "" {
+	if CacheLocation == "" || token == nil {
 		return nil
 	}
 	var cache, err = loadCache()
@@ -247,12 +253,6 @@ func UnmarshalAuthTokenWithExtras(data []byte) (*auth.Token, error) {
 	if err != nil {
 		return nil, err
 	}
-	delete(extra, "access_token")
-	delete(extra, "token_type")
-	delete(extra, "expiry")
-	if len(extra) == 0 {
-		extra = nil
-	}
 	return &auth.Token{
 		Value:    wire.AccessToken,
 		Type:     wire.TokenType,
@@ -344,7 +344,7 @@ func authTokenFromOAuth2Token(token *oauth2.Token) *auth.Token {
 		return nil
 	}
 	metadata := make(map[string]any)
-	for _, k := range []string{"refresh_token", "issued_token_type", "id_token", "scope"} {
+	for _, k := range []string{"issued_token_type", "id_token", "scope"} {
 		if v, ok := token.Extra(k).(string); ok {
 			metadata[k] = v
 		}

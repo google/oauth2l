@@ -1,5 +1,5 @@
 //
-// Copyright 2024 Google Inc.
+// Copyright 2026 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ func TestMarshalUnmarshalAuthTokenWithExtras(t *testing.T) {
 		authTok   *auth.Token
 		oauth2Tok *oauth2.Token
 		indent    string
+		wantJSON  string
 	}{
 		{
 			name: "with_extras_and_refresh_token",
@@ -58,6 +59,15 @@ func TestMarshalUnmarshalAuthTokenWithExtras(t *testing.T) {
 				"scope":             "scope1 scope2",
 			}),
 			indent: "  ",
+			wantJSON: "{\n" +
+				"  \"access_token\": \"fake-access-token\",\n" +
+				"  \"expiry\": \"2026-11-04T12:00:00Z\",\n" +
+				"  \"id_token\": \"fake-id-token\",\n" +
+				"  \"issued_token_type\": \"urn:ietf:params:oauth:token-type:access_token\",\n" +
+				"  \"refresh_token\": \"fake-refresh-token\",\n" +
+				"  \"scope\": \"scope1 scope2\",\n" +
+				"  \"token_type\": \"Bearer\"\n" +
+				"}",
 		},
 		{
 			name: "zero_expiry_and_empty_type",
@@ -67,6 +77,10 @@ func TestMarshalUnmarshalAuthTokenWithExtras(t *testing.T) {
 			oauth2Tok: &oauth2.Token{
 				AccessToken: "iam-token",
 			},
+			wantJSON: "{\n" +
+				"\"access_token\": \"iam-token\",\n" +
+				"\"expiry\": \"0001-01-01T00:00:00Z\"\n" +
+				"}",
 		},
 		{
 			name: "form_encoded_metadata_slices",
@@ -87,6 +101,13 @@ func TestMarshalUnmarshalAuthTokenWithExtras(t *testing.T) {
 			}).WithExtra(map[string]any{
 				"scope": "form-scope",
 			}),
+			wantJSON: "{\n" +
+				"\"access_token\": \"fake-form-access-token\",\n" +
+				"\"expiry\": \"2026-11-04T12:00:00Z\",\n" +
+				"\"refresh_token\": \"fake-form-refresh-token\",\n" +
+				"\"scope\": \"form-scope\",\n" +
+				"\"token_type\": \"Bearer\"\n" +
+				"}",
 		},
 		{
 			name: "json_unmarshaled_any_slices",
@@ -107,6 +128,33 @@ func TestMarshalUnmarshalAuthTokenWithExtras(t *testing.T) {
 			}).WithExtra(map[string]any{
 				"scope": "any-scope",
 			}),
+			wantJSON: "{\n" +
+				"\"access_token\": \"fake-any-access-token\",\n" +
+				"\"expiry\": \"2026-11-04T12:00:00Z\",\n" +
+				"\"refresh_token\": \"fake-any-refresh-token\",\n" +
+				"\"scope\": \"any-scope\",\n" +
+				"\"token_type\": \"Bearer\"\n" +
+				"}",
+		},
+		{
+			name: "oauth2_extra_refresh_token_ignored_when_field_empty",
+			authTok: &auth.Token{
+				Value:  "fake-access-token",
+				Type:   "Bearer",
+				Expiry: expiry,
+			},
+			oauth2Tok: (&oauth2.Token{
+				AccessToken: "fake-access-token",
+				TokenType:   "Bearer",
+				Expiry:      expiry,
+			}).WithExtra(map[string]any{
+				"refresh_token": "extra-only-refresh-token",
+			}),
+			wantJSON: "{\n" +
+				"\"access_token\": \"fake-access-token\",\n" +
+				"\"expiry\": \"2026-11-04T12:00:00Z\",\n" +
+				"\"token_type\": \"Bearer\"\n" +
+				"}",
 		},
 	}
 
@@ -116,12 +164,15 @@ func TestMarshalUnmarshalAuthTokenWithExtras(t *testing.T) {
 			if err != nil {
 				t.Fatalf("MarshalAuthTokenWithExtras() unexpected error: %v", err)
 			}
+			if string(gotAuthBytes) != tc.wantJSON {
+				t.Errorf("MarshalAuthTokenWithExtras() = %s, want %s", gotAuthBytes, tc.wantJSON)
+			}
 			gotOAuth2Bytes, err := MarshalWithExtras(tc.oauth2Tok, tc.indent)
 			if err != nil {
 				t.Fatalf("MarshalWithExtras() unexpected error: %v", err)
 			}
-			if string(gotAuthBytes) != string(gotOAuth2Bytes) {
-				t.Errorf("MarshalAuthTokenWithExtras() = %s, want %s", gotAuthBytes, gotOAuth2Bytes)
+			if string(gotOAuth2Bytes) != tc.wantJSON {
+				t.Errorf("MarshalWithExtras() = %s, want %s", gotOAuth2Bytes, tc.wantJSON)
 			}
 
 			unmarshaledAuth, err := UnmarshalAuthTokenWithExtras(gotAuthBytes)
@@ -140,11 +191,6 @@ func TestMarshalUnmarshalAuthTokenWithExtras(t *testing.T) {
 			if gotRT, wantRT := unmarshaledAuth.MetadataString("refresh_token"), tc.oauth2Tok.RefreshToken; gotRT != wantRT {
 				t.Errorf("UnmarshalAuthTokenWithExtras().MetadataString(\"refresh_token\") = %q, want %q", gotRT, wantRT)
 			}
-			for _, redundantKey := range []string{"access_token", "token_type", "expiry"} {
-				if _, exists := unmarshaledAuth.Metadata[redundantKey]; exists {
-					t.Errorf("UnmarshalAuthTokenWithExtras().Metadata[%q] exists, want omitted", redundantKey)
-				}
-			}
 
 			unmarshaledOAuth2, err := UnmarshalWithExtras(gotAuthBytes)
 			if err != nil {
@@ -158,6 +204,9 @@ func TestMarshalUnmarshalAuthTokenWithExtras(t *testing.T) {
 			}
 			if unmarshaledOAuth2.RefreshToken != tc.oauth2Tok.RefreshToken {
 				t.Errorf("UnmarshalWithExtras().RefreshToken = %q, want %q", unmarshaledOAuth2.RefreshToken, tc.oauth2Tok.RefreshToken)
+			}
+			if got := unmarshaledOAuth2.Extra("access_token"); got != tc.oauth2Tok.AccessToken {
+				t.Errorf("UnmarshalWithExtras().Extra(\"access_token\") = %v, want %q", got, tc.oauth2Tok.AccessToken)
 			}
 			for _, k := range []string{"issued_token_type", "id_token", "scope"} {
 				if got, want := unmarshaledOAuth2.Extra(k), tc.oauth2Tok.Extra(k); !reflect.DeepEqual(got, want) {
@@ -180,12 +229,24 @@ func TestLookupAndInsertAuthCache(t *testing.T) {
 		Scope:           "https://www.googleapis.com/auth/cloud-platform",
 	}
 
-	// Cache miss returns (nil, nil).
+	// Cache miss returns (nil, nil) for LookupAuthCache and (nil, non-nil) for
+	// deprecated LookupCache (matching legacy behavior).
 	if got, err := LookupAuthCache(settings); got != nil || err != nil {
 		t.Errorf("LookupAuthCache() on empty cache = (%v, %v), want (nil, nil)", got, err)
 	}
-	if got, err := LookupCache(settings); got != nil || err != nil {
-		t.Errorf("LookupCache() on empty cache = (%v, %v), want (nil, nil)", got, err)
+	if got, err := LookupCache(settings); got != nil || err == nil {
+		t.Errorf("LookupCache() on empty cache = (%v, %v), want (nil, non-nil)", got, err)
+	}
+
+	// Inserting a nil token is a no-op and must not poison the cache with "null".
+	if err := InsertAuthCache(settings, nil); err != nil {
+		t.Fatalf("InsertAuthCache(nil) unexpected error: %v", err)
+	}
+	if err := InsertCache(settings, nil); err != nil {
+		t.Fatalf("InsertCache(nil) unexpected error: %v", err)
+	}
+	if got, err := LookupAuthCache(settings); got != nil || err != nil {
+		t.Errorf("LookupAuthCache() after inserting nil = (%v, %v), want (nil, nil)", got, err)
 	}
 
 	expiry := time.Date(2026, time.November, 4, 15, 0, 0, 0, time.UTC)
