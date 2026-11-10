@@ -88,20 +88,32 @@ func serviceAccountJSON(t *testing.T) string {
 	return string(b)
 }
 
-// jwtClaims decodes the (unverified) claims of a JWT.
-func jwtClaims(t *testing.T, token string) map[string]any {
-	t.Helper()
+// decodeJWTClaims decodes the (unverified) claims of a JWT. Unlike jwtClaims,
+// it does not use *testing.T, so it is safe to call from non-test goroutines
+// such as httptest handlers.
+func decodeJWTClaims(token string) (map[string]any, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		t.Fatalf("token %q is not a JWT", token)
+		return nil, fmt.Errorf("token %q is not a JWT", token)
 	}
 	b, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		t.Fatalf("decoding JWT claims: %v", err)
+		return nil, fmt.Errorf("decoding JWT claims: %w", err)
 	}
 	var claims map[string]any
 	if err := json.Unmarshal(b, &claims); err != nil {
-		t.Fatalf("unmarshaling JWT claims: %v", err)
+		return nil, fmt.Errorf("unmarshaling JWT claims: %w", err)
+	}
+	return claims, nil
+}
+
+// jwtClaims decodes the (unverified) claims of a JWT. It must only be called
+// from the test goroutine.
+func jwtClaims(t *testing.T, token string) map[string]any {
+	t.Helper()
+	claims, err := decodeJWTClaims(token)
+	if err != nil {
+		t.Fatal(err)
 	}
 	return claims
 }
@@ -662,10 +674,19 @@ func TestFetchAuthTokenRefreshTokenJSON(t *testing.T) {
 func TestFetchAuthTokenServiceAccountEmptyScope(t *testing.T) {
 	var gotScope any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// This runs on the server goroutine, so report problems with
+		// t.Errorf and an HTTP error rather than t.Fatal.
 		if err := r.ParseForm(); err != nil {
 			t.Errorf("ParseForm() unexpected error: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
-		claims := jwtClaims(t, r.PostForm.Get("assertion"))
+		claims, err := decodeJWTClaims(r.PostForm.Get("assertion"))
+		if err != nil {
+			t.Errorf("decodeJWTClaims(assertion) unexpected error: %v", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		gotScope = claims["scope"]
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"access_token": "sa-access-token", "token_type": "Bearer", "expires_in": 3600}`)
@@ -696,6 +717,7 @@ func TestFetchAuthTokenServiceAccountEmptyScope(t *testing.T) {
 
 func TestWithRefreshToken(t *testing.T) {
 	userJSON := []byte(authorizedUserJSON("http://localhost/token"))
+	installedJSON := []byte(clientSecretJSON("http://localhost/token"))
 	tests := []struct {
 		name      string
 		tok       *auth.Token
@@ -707,6 +729,9 @@ func TestWithRefreshToken(t *testing.T) {
 		{name: "non_authorized_user_credentials", tok: &auth.Token{}, credsJSON: []byte(`{"type": "service_account", "refresh_token": "x"}`)},
 		{name: "empty_credentials_json", tok: &auth.Token{}},
 		{name: "authorized_user_fills_refresh_token", tok: &auth.Token{Metadata: map[string]any{"scope": "scope1"}}, credsJSON: userJSON, want: testRefreshToken},
+		{name: "form_encoded_refresh_token_on_authorized_user", tok: &auth.Token{Metadata: map[string]any{"refresh_token": []string{"rotated"}}}, credsJSON: userJSON, want: "rotated"},
+		{name: "form_encoded_empty_refresh_token_falls_back", tok: &auth.Token{Metadata: map[string]any{"refresh_token": []string{""}}}, credsJSON: userJSON, want: testRefreshToken},
+		{name: "form_encoded_refresh_token_on_client_secret", tok: &auth.Token{Metadata: map[string]any{"refresh_token": []string{"3lo-rt"}}}, credsJSON: installedJSON, want: "3lo-rt"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -944,5 +969,72 @@ func TestClientSecretWithoutAuthHandler(t *testing.T) {
 
 	if _, err := FetchToken(t.Context(), settings); !errors.Is(err, errNoAuthHandler) {
 		t.Errorf("FetchToken() error = %v, want %v", err, errNoAuthHandler)
+	}
+}
+
+// TestFetchAuthTokenFormEncodedRefreshToken checks that FetchAuthToken
+// normalizes form-encoded []string metadata to string so
+// tok.MetadataString("refresh_token") returns the refresh token for both
+// authorized_user and 3LO client secret flows, while still falling back to the
+// refresh token in authorized_user credentials JSON when the response omits it.
+func TestFetchAuthTokenFormEncodedRefreshToken(t *testing.T) {
+	tests := []struct {
+		name            string
+		body            string
+		useClientSecret bool
+		wantRefresh     string
+		wantIDToken     string
+	}{
+		{
+			name:        "rotated_refresh_token_is_kept",
+			body:        "access_token=test-access-token&token_type=Bearer&expires_in=3600&refresh_token=rotated-refresh-token&id_token=form-id-token",
+			wantRefresh: "rotated-refresh-token",
+			wantIDToken: "form-id-token",
+		},
+		{
+			name:        "missing_refresh_token_falls_back_to_credentials",
+			body:        "access_token=test-access-token&token_type=Bearer&expires_in=3600",
+			wantRefresh: testRefreshToken,
+		},
+		{
+			name:            "3lo_client_secret_form_encoded_refresh_token",
+			body:            "access_token=test-access-token&token_type=Bearer&expires_in=3600&refresh_token=3lo-form-refresh-token&id_token=3lo-form-id-token",
+			useClientSecret: true,
+			wantRefresh:     "3lo-form-refresh-token",
+			wantIDToken:     "3lo-form-id-token",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
+				fmt.Fprint(w, tc.body)
+			}))
+			t.Cleanup(srv.Close)
+
+			settings := &Settings{
+				AuthType:        AuthTypeOAuth,
+				CredentialsJSON: authorizedUserJSON(srv.URL),
+				Scope:           "scope1",
+			}
+			if tc.useClientSecret {
+				settings.CredentialsJSON = clientSecretJSON(srv.URL)
+				settings.State = "state"
+				settings.GoogleAuthHandler = func(authCodeURL string) (string, string, error) {
+					return "auth-code", "state", nil
+				}
+			}
+
+			tok, err := FetchAuthToken(t.Context(), settings)
+			if err != nil {
+				t.Fatalf("FetchAuthToken() unexpected error: %v", err)
+			}
+			if got := tok.MetadataString("refresh_token"); got != tc.wantRefresh {
+				t.Errorf("FetchAuthToken().MetadataString(%q) = %q, want %q", "refresh_token", got, tc.wantRefresh)
+			}
+			if got := tok.MetadataString("id_token"); got != tc.wantIDToken {
+				t.Errorf("FetchAuthToken().MetadataString(%q) = %q, want %q", "id_token", got, tc.wantIDToken)
+			}
+		})
 	}
 }
