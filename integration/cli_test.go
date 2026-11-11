@@ -230,6 +230,12 @@ func TestCLI(t *testing.T) {
 			false,
 		},
 		{
+			"fetch; jwt; id_token; no audience",
+			[]string{"fetch", "--type", "jwt", "--id_token", "--scope", "cloud-platform"},
+			"no-audience-id-token.golden",
+			false,
+		},
+		{
 			"fetch; sso; no email",
 			[]string{"fetch", "--type", "sso"},
 			"no-email.golden",
@@ -302,6 +308,42 @@ func Test3LOFlow(t *testing.T) {
 			"fetch; 3lo; openid scopes",
 			[]string{"fetch", "--scope", "openid,profile,email", "--credentials", "integration/fixtures/fake-client-secrets.json", "--cache", ""},
 			"fetch-3lo-openid.golden",
+			false,
+		},
+		{
+			"fetch; 3lo; id_token",
+			[]string{"fetch", "--id_token", "--credentials", "integration/fixtures/fake-client-secrets-idtoken.json", "--cache", ""},
+			"fetch-3lo-id-token.golden",
+			false,
+		},
+		{
+			"fetch; 3lo; id_token; none returned",
+			[]string{"fetch", "--id_token", "--credentials", "integration/fixtures/fake-client-secrets.json", "--cache", ""},
+			"fetch-3lo-no-id-token.golden",
+			false,
+		},
+		{
+			"fetch; 3lo; id_token; audience",
+			[]string{"fetch", "--id_token", "--audience", "https://hello.a.run.app", "--credentials", "integration/fixtures/fake-client-secrets-idtoken.json", "--cache", ""},
+			"id-token-audience-user.golden",
+			false,
+		},
+		{
+			"fetch; 2lo; id_token; no audience",
+			[]string{"fetch", "--id_token", "--credentials", "integration/fixtures/fake-service-account.json", "--cache", ""},
+			"id-token-no-audience-sa.golden",
+			false,
+		},
+		{
+			"fetch; id_token; impersonation; no audience",
+			[]string{"fetch", "--id_token", "--impersonate-service-account", "sa@example.iam.gserviceaccount.com", "--credentials", "integration/fixtures/fake-client-secrets.json", "--cache", ""},
+			"no-audience-id-token.golden",
+			false,
+		},
+		{
+			"fetch; id_token; sts",
+			[]string{"fetch", "--id_token", "--sts", "--credentials", "integration/fixtures/fake-client-secrets.json", "--cache", ""},
+			"id-token-sts.golden",
 			false,
 		},
 		{
@@ -755,6 +797,12 @@ func MockTokenApi(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, response)
 }
 
+func MockIdTokenApi(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	response := readFile("integration/fixtures/mock-idtoken-response.json")
+	fmt.Fprint(w, response)
+}
+
 func MockExpiredTokenApi(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	response := readFile("integration/fixtures/mock-expired-token-response.json")
@@ -795,6 +843,7 @@ func TestMain(m *testing.M) {
 		mux := http.NewServeMux()
 		server := http.Server{Addr: "localhost:8080", Handler: mux}
 		mux.HandleFunc("/token", MockTokenApi)
+		mux.HandleFunc("/idtoken", MockIdTokenApi)
 		mux.HandleFunc("/expiredtoken", MockExpiredTokenApi)
 		mux.HandleFunc("/curl", MockCurlApi)
 		if err := server.ListenAndServe(); err != nil {

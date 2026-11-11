@@ -31,6 +31,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"cloud.google.com/go/auth"
 	"golang.org/x/oauth2"
@@ -1034,6 +1035,117 @@ func TestFetchAuthTokenFormEncodedRefreshToken(t *testing.T) {
 			}
 			if got := tok.MetadataString("id_token"); got != tc.wantIDToken {
 				t.Errorf("FetchAuthToken().MetadataString(%q) = %q, want %q", "id_token", got, tc.wantIDToken)
+			}
+		})
+	}
+}
+
+// fakeIDToken returns an unsigned JWT with the given audience and expiry.
+func fakeIDToken(aud string, exp int64) string {
+	enc := base64.RawURLEncoding.EncodeToString
+	return enc([]byte(`{"alg":"RS256","typ":"JWT"}`)) + "." +
+		enc([]byte(fmt.Sprintf(`{"aud":%q,"exp":%d}`, aud, exp))) + ".sig"
+}
+
+// serviceAccountJSONWithTokenURI returns serviceAccountJSON with token_uri
+// set to tokenURI.
+func serviceAccountJSONWithTokenURI(t *testing.T, tokenURI string) string {
+	t.Helper()
+	var m map[string]string
+	if err := json.Unmarshal([]byte(serviceAccountJSON(t)), &m); err != nil {
+		t.Fatal(err)
+	}
+	m["token_uri"] = tokenURI
+	b, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func TestFetchAuthTokenIDTokenServiceAccount(t *testing.T) {
+	const audience = "https://hello.a.run.app"
+	exp := time.Now().Add(time.Hour).Unix()
+	idToken := fakeIDToken(audience, exp)
+	var gotAudience atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if claims, err := decodeJWTClaims(r.FormValue("assertion")); err == nil {
+			gotAudience.Store(claims["target_audience"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"id_token": %q}`, idToken)
+	}))
+	t.Cleanup(srv.Close)
+	saJSON := serviceAccountJSONWithTokenURI(t, srv.URL)
+
+	for _, authType := range []string{AuthTypeJWT, AuthTypeOAuth} {
+		t.Run(authType, func(t *testing.T) {
+			settings := &Settings{AuthType: authType, CredentialsJSON: saJSON, Audience: audience, Scope: "openid email", IdToken: true}
+			tok, err := FetchAuthToken(t.Context(), settings)
+			if err != nil {
+				t.Fatalf("FetchAuthToken() unexpected error: %v", err)
+			}
+			if got := gotAudience.Load(); got != audience {
+				t.Errorf("target_audience = %v, want %q", got, audience)
+			}
+			if tok.Value != idToken || tok.Type != "Bearer" || tok.Expiry.Unix() != exp {
+				t.Errorf("FetchAuthToken() = %+v, want Bearer ID token expiring at %d", tok, exp)
+			}
+			if got := tok.MetadataString("id_token"); got != idToken {
+				t.Errorf("FetchAuthToken().MetadataString(%q) = %q, want %q", "id_token", got, idToken)
+			}
+
+			legacy, err := FetchToken(t.Context(), settings)
+			if err != nil {
+				t.Fatalf("FetchToken() unexpected error: %v", err)
+			}
+			if legacy.AccessToken != idToken || legacy.Extra("id_token") != idToken {
+				t.Errorf("FetchToken() = %+v, want ID token", legacy)
+			}
+		})
+	}
+}
+
+func TestFetchAuthTokenIDTokenAuthorizedUser(t *testing.T) {
+	idToken := fakeIDToken("test-client.apps.googleusercontent.com", time.Now().Add(time.Hour).Unix())
+	srv := newTokenServer(t, http.StatusOK, fmt.Sprintf(`{"access_token": "ya29.test", "token_type": "Bearer", "expires_in": 3600, "id_token": %q}`, idToken))
+	settings := &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: authorizedUserJSON(srv.URL), Scope: "openid email", IdToken: true}
+	tok, err := FetchAuthToken(t.Context(), settings)
+	if err != nil {
+		t.Fatalf("FetchAuthToken() unexpected error: %v", err)
+	}
+	if got := tok.MetadataString("id_token"); got != idToken {
+		t.Errorf("FetchAuthToken().MetadataString(%q) = %q, want %q", "id_token", got, idToken)
+	}
+}
+
+func TestFetchAuthTokenIDTokenErrors(t *testing.T) {
+	saJSON := serviceAccountJSON(t)
+	tests := []struct {
+		name     string
+		settings *Settings
+		wantErr  string
+	}{
+		{
+			name:     "service_account_without_audience",
+			settings: &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: saJSON, Scope: "openid email", IdToken: true},
+			wantErr:  "Audience is required for ID token with a service account",
+		},
+		{
+			name:     "jwt_without_audience",
+			settings: &Settings{AuthType: AuthTypeJWT, CredentialsJSON: saJSON, Scope: "scope1", IdToken: true},
+			wantErr:  "Audience is required for ID token with a service account",
+		},
+		{
+			name:     "authorized_user_with_audience",
+			settings: &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: authorizedUserJSON("http://localhost/token"), Scope: "openid email", Audience: "aud", IdToken: true},
+			wantErr:  "Audience for ID token requires a service account",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := FetchAuthToken(t.Context(), tc.settings); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("FetchAuthToken() error = %v, want error containing %q", err, tc.wantErr)
 			}
 		})
 	}

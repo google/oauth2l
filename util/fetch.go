@@ -42,6 +42,10 @@ const (
 	jwtTokenSourceName            = "JWTTokenSource"
 )
 
+// idTokenURL is the default token endpoint for exchanging a self-signed JWT
+// for a Google-signed ID token.
+const idTokenURL = "https://oauth2.googleapis.com/token"
+
 // legacyEarlyTokenRefresh matches golang.org/x/oauth2's expiryDelta: tokens
 // are refreshed 10 seconds before they expire. cloud.google.com/go/auth
 // defaults to 225 seconds.
@@ -183,9 +187,26 @@ func newCredentials(ctx context.Context, settings *Settings, o credentialsOption
 	case AuthTypeAPIKey:
 		return nil, nil
 	case AuthTypeOAuth:
-		return findAuthCredentials(ctx, settings, o)
+		creds, err := findAuthCredentials(ctx, settings, o)
+		// With impersonation, the ID token is generated from the access token
+		// of these credentials.
+		if err != nil || !settings.IdToken || settings.ServiceAccount != "" {
+			return creds, err
+		}
+		// Only a service account can mint an ID token for a custom audience.
+		// User credentials return an ID token along with the access token.
+		if parseCredentialsFileHeader(creds.JSON()).Type == serviceAccountCredentialsType {
+			return findIDTokenCredentials(ctx, settings, creds.JSON())
+		} else if settings.Audience != "" {
+			return nil, errors.New("Audience for ID token requires a service account. Use --impersonate-service-account with user credentials.")
+		}
+		return creds, nil
 	case AuthTypeJWT:
-		return findJWTCredentials(ctx, settings, o)
+		creds, err := findJWTCredentials(ctx, settings, o)
+		if err != nil || !settings.IdToken {
+			return creds, err
+		}
+		return findIDTokenCredentials(ctx, settings, creds.JSON())
 	default:
 		return nil, fmt.Errorf("Unsupported authentication method: %s", settings.GetAuthType())
 	}
@@ -299,6 +320,70 @@ func findJWTCredentials(ctx context.Context, settings *Settings, o credentialsOp
 		return nil, fmt.Errorf("self-signed JWT requires %q credentials, got %q", serviceAccountCredentialsType, t)
 	}
 	return creds, nil
+}
+
+// findIDTokenCredentials returns credentials that mint Google-signed ID tokens
+// for settings.Audience from service account credentials JSON. A self-signed
+// JWT with a target_audience claim is exchanged at the token endpoint for an
+// ID token, which is returned as the token value and in the "id_token"
+// metadata.
+func findIDTokenCredentials(ctx context.Context, settings *Settings, credsJSON []byte) (*auth.Credentials, error) {
+	if settings.Audience == "" {
+		return nil, errors.New("Audience is required for ID token with a service account")
+	}
+	// Same as cloud.google.com/go/auth/credentials/idtoken, which is not used
+	// as it pulls in many dependencies.
+	var key struct {
+		ClientEmail  string `json:"client_email"`
+		PrivateKey   string `json:"private_key"`
+		PrivateKeyID string `json:"private_key_id"`
+		TokenURI     string `json:"token_uri"`
+	}
+	if err := json.Unmarshal(credsJSON, &key); err != nil {
+		return nil, err
+	}
+	if key.TokenURI == "" {
+		key.TokenURI = idTokenURL
+	}
+	tp, err := auth.New2LOTokenProvider(&auth.Options2LO{
+		Email:         key.ClientEmail,
+		PrivateKey:    []byte(key.PrivateKey),
+		PrivateKeyID:  key.PrivateKeyID,
+		TokenURL:      key.TokenURI,
+		PrivateClaims: map[string]interface{}{"target_audience": settings.Audience},
+		UseIDToken:    true,
+		Client:        httpClientFromContext(ctx),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return auth.NewCredentials(&auth.CredentialsOptions{
+		TokenProvider: auth.NewCachedTokenProvider(&idTokenProvider{tp: tp}, nil),
+		JSON:          credsJSON,
+	}), nil
+}
+
+// idTokenProvider sets the "id_token" metadata and defaults the token type to
+// "Bearer", as the ID token response has no token_type.
+type idTokenProvider struct {
+	tp auth.TokenProvider
+}
+
+func (p *idTokenProvider) Token(ctx context.Context) (*auth.Token, error) {
+	tok, err := p.tp.Token(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tok2 := *tok
+	if tok2.Type == "" {
+		tok2.Type = "Bearer"
+	}
+	tok2.Metadata = make(map[string]interface{}, len(tok.Metadata)+1)
+	for k, v := range tok.Metadata {
+		tok2.Metadata[k] = v
+	}
+	tok2.Metadata["id_token"] = tok.Value
+	return &tok2, nil
 }
 
 // FindAuthCredentials obtains cloud.google.com/go/auth credentials from
