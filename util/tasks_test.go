@@ -15,6 +15,8 @@
 package util
 
 import (
+	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -51,6 +53,33 @@ func TestIsTokenExpired(t *testing.T) {
 				t.Errorf("isTokenExpired(%+v) = %v, want %v", tc.token, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestGetCredentialTypeNilCredentials(t *testing.T) {
+	if got := getCredentialType(nil); got != "" {
+		t.Errorf("getCredentialType(nil) = %q, want \"\"", got)
+	}
+}
+
+// TestFetchTokenUsesContext checks that fetchToken passes its context to the
+// token request instead of using context.Background().
+func TestFetchTokenUsesContext(t *testing.T) {
+	srv := newTokenServer(t, http.StatusOK, `{"access_token": "fake-access-token", "token_type": "Bearer", "expires_in": 3600}`)
+	oldCacheLocation := CacheLocation
+	CacheLocation = ""
+	t.Cleanup(func() { CacheLocation = oldCacheLocation })
+	settings := &Settings{AuthType: AuthTypeOAuth, CredentialsJSON: authorizedUserJSON(srv.URL), Scope: DefaultScope}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if tok := fetchToken(ctx, settings, &TaskSettings{}); tok != nil {
+		t.Errorf("fetchToken() with a canceled context = %+v, want nil", tok)
+	}
+
+	tok := fetchToken(context.Background(), settings, &TaskSettings{})
+	if tok == nil || tok.Value != "fake-access-token" {
+		t.Errorf("fetchToken() = %+v, want token %q", tok, "fake-access-token")
 	}
 }
 

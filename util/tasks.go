@@ -75,21 +75,39 @@ type TaskSettings struct {
 // Fetches and prints the token in plain text with the given settings
 // using Google Authenticator.
 func Fetch(settings *Settings, taskSettings *TaskSettings) {
-	token := fetchToken(settings, taskSettings)
-	printToken(token, taskSettings.Format, settings)
+	FetchContext(context.Background(), settings, taskSettings)
+}
+
+// FetchContext is like Fetch, but passes ctx to the token, IAM and STS
+// requests it makes.
+func FetchContext(ctx context.Context, settings *Settings, taskSettings *TaskSettings) {
+	token := fetchToken(ctx, settings, taskSettings)
+	printToken(ctx, token, taskSettings.Format, settings)
 }
 
 // Fetches and prints the token in header format with the given settings
 // using Google Authenticator.
 func Header(settings *Settings, taskSettings *TaskSettings) {
+	HeaderContext(context.Background(), settings, taskSettings)
+}
+
+// HeaderContext is like Header, but passes ctx to the token, IAM and STS
+// requests it makes.
+func HeaderContext(ctx context.Context, settings *Settings, taskSettings *TaskSettings) {
 	taskSettings.Format = formatHeader
-	Fetch(settings, taskSettings)
+	FetchContext(ctx, settings, taskSettings)
 }
 
 // Fetches token with the given settings using Google Authenticator
 // and use the token as header to make curl request.
 func Curl(settings *Settings, taskSettings *TaskSettings) {
-	token := fetchToken(settings, taskSettings)
+	CurlContext(context.Background(), settings, taskSettings)
+}
+
+// CurlContext is like Curl, but passes ctx to the token, IAM and STS
+// requests it makes.
+func CurlContext(ctx context.Context, settings *Settings, taskSettings *TaskSettings) {
+	token := fetchToken(ctx, settings, taskSettings)
 	if token != nil {
 		header := BuildHeader(token.Type, token.Value)
 		curlcli := taskSettings.CurlCli
@@ -159,7 +177,7 @@ func getTokenInfo(token string) (string, error) {
 //
 // If STS is requested, we will perform an STS exchange
 // after the original access token has been fetched.
-func fetchToken(settings *Settings, taskSettings *TaskSettings) *auth.Token {
+func fetchToken(ctx context.Context, settings *Settings, taskSettings *TaskSettings) *auth.Token {
 	token, err := LookupAuthCache(settings)
 	tokenExpired := isTokenExpired(token)
 	if token == nil || tokenExpired {
@@ -175,7 +193,7 @@ func fetchToken(settings *Settings, taskSettings *TaskSettings) *auth.Token {
 				// If creds cannot be retrieved here, which is unexpected, we will ignore
 				// the error and let FetchAuthToken return a standardized error message
 				// in the subsequent step.
-				creds, _ := FindAuthCredentials(context.Background(), settings)
+				creds, _ := FindAuthCredentials(ctx, settings)
 				refreshTokenJSON := BuildAuthRefreshTokenJSON(tokenMetadataString(token, "refresh_token"), creds)
 				if refreshTokenJSON != "" {
 					refreshSettings := *settings // Make a shallow copy
@@ -183,21 +201,21 @@ func fetchToken(settings *Settings, taskSettings *TaskSettings) *auth.Token {
 					fetchSettings = &refreshSettings
 				}
 			}
-			token, err = FetchAuthToken(context.Background(), fetchSettings)
+			token, err = FetchAuthToken(ctx, fetchSettings)
 			if err != nil {
 				fmt.Println(err)
 				return nil
 			}
 		}
 		if settings.ServiceAccount != "" {
-			token, err = GenerateServiceAccountAuthToken(context.Background(), token.Value, settings.ServiceAccount, settings.Scope)
+			token, err = GenerateServiceAccountAuthToken(ctx, token.Value, settings.ServiceAccount, settings.Scope)
 			if err != nil {
 				fmt.Println(err)
 				return nil
 			}
 		}
 		if settings.Sts {
-			token, err = StsAuthExchange(context.Background(), token.Value, EncodeClaims(settings))
+			token, err = StsAuthExchange(ctx, token.Value, EncodeClaims(settings))
 			if err != nil {
 				fmt.Println(err)
 				return nil
@@ -218,6 +236,9 @@ func isTokenExpired(token *auth.Token) bool {
 }
 
 func getCredentialType(creds *auth.Credentials) string {
+	if creds == nil {
+		return ""
+	}
 	var m map[string]string
 	err := json.Unmarshal(creds.JSON(), &m)
 	if err != nil && m["type"] != "" {
@@ -227,7 +248,7 @@ func getCredentialType(creds *auth.Credentials) string {
 }
 
 // Prints the token with the specified format.
-func printToken(token *auth.Token, format string, settings *Settings) {
+func printToken(ctx context.Context, token *auth.Token, format string, settings *Settings) {
 	if token != nil {
 		switch format {
 		case formatBare:
@@ -239,7 +260,7 @@ func printToken(token *auth.Token, format string, settings *Settings) {
 		case formatJsonCompact:
 			printJson(token, "")
 		case formatPretty:
-			creds, err := FindAuthCredentials(context.Background(), settings)
+			creds, err := FindAuthCredentials(ctx, settings)
 			if err != nil {
 				log.Fatal(err.Error())
 			}
@@ -247,7 +268,7 @@ func printToken(token *auth.Token, format string, settings *Settings) {
 				"Access Token:\n  %s\n",
 				getCredentialType(creds), token.Value)
 		case formatRefreshToken:
-			creds, err := FindAuthCredentials(context.Background(), settings)
+			creds, err := FindAuthCredentials(ctx, settings)
 			if err != nil {
 				log.Fatal(err.Error())
 			}
