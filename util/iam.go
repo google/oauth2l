@@ -15,21 +15,24 @@
 package util
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"cloud.google.com/go/auth"
 	"golang.org/x/oauth2"
 )
 
 // IamServiceAccountAccessTokenURL is used for generating accesss token for a Service Account.
 const IamServiceAccountAccessTokenURL = "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/%s:generateAccessToken"
+
+var iamAccessTokenURL = IamServiceAccountAccessTokenURL
 
 // iamTokenJSON is the struct representing the HTTP response from IAM
 type iamTokenJSON struct {
@@ -37,30 +40,36 @@ type iamTokenJSON struct {
 	ExpireTime  string `json:"expireTime"`
 }
 
-// GenerateServiceAccountAccessToken generates a Service Account access token using a User access
+// GenerateServiceAccountAuthToken generates a Service Account access token using a User access
 // token approved for at least one of the following scopes:
 // * https://www.googleapis.com/auth/iam
 // * https://www.googleapis.com/auth/cloud-platform
-func GenerateServiceAccountAccessToken(accessToken string, serviceAccount string, scope string) (*oauth2.Token, error) {
+func GenerateServiceAccountAuthToken(ctx context.Context, accessToken string, serviceAccount string, scope string) (*auth.Token, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	form := url.Values{}
 	for _, s := range strings.Split(scope, " ") {
 		form.Add("scope", s)
 	}
-	req, err := http.NewRequest("POST", fmt.Sprintf(IamServiceAccountAccessTokenURL, serviceAccount), strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf(iamAccessTokenURL, serviceAccount), strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	client := http.DefaultClient
+	if c, ok := ctx.Value(oauth2.HTTPClient).(*http.Client); ok && c != nil {
+		client = c
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return nil, fmt.Errorf("oauth2l: GenerateServiceAccountAccessToken failed: %v", err)
+		return nil, fmt.Errorf("oauth2l: IAM token generation failed: %v", err)
 	}
 	if code := resp.StatusCode; code < 200 || code > 299 {
 		return nil, errors.New(string(body))
@@ -70,10 +79,31 @@ func GenerateServiceAccountAccessToken(accessToken string, serviceAccount string
 	if err = json.Unmarshal(body, &itj); err != nil {
 		return nil, err
 	}
-	token := oauth2.Token{}
-	token.AccessToken = itj.AccessToken
-	token.Expiry, _ = time.Parse(time.RFC3339, itj.ExpireTime)
-	var raw map[string]interface{}
+	expiry, _ := time.Parse(time.RFC3339, itj.ExpireTime)
+	var raw map[string]any
 	json.Unmarshal(body, &raw)
-	return token.WithExtra(raw), nil
+	return &auth.Token{
+		Value:    itj.AccessToken,
+		Type:     "Bearer",
+		Expiry:   expiry,
+		Metadata: raw,
+	}, nil
+}
+
+// GenerateServiceAccountAccessToken generates a Service Account access token using a User access
+// token approved for at least one of the following scopes:
+// * https://www.googleapis.com/auth/iam
+// * https://www.googleapis.com/auth/cloud-platform
+//
+// Deprecated: Use GenerateServiceAccountAuthToken instead.
+func GenerateServiceAccountAccessToken(accessToken string, serviceAccount string, scope string) (*oauth2.Token, error) {
+	token, err := GenerateServiceAccountAuthToken(context.Background(), accessToken, serviceAccount, scope)
+	if err != nil {
+		return nil, err
+	}
+	t := &oauth2.Token{
+		AccessToken: token.Value,
+		Expiry:      token.Expiry,
+	}
+	return t.WithExtra(token.Metadata), nil
 }
