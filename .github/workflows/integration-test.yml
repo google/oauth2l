@@ -27,3 +27,6 @@ jobs:
     - name: Test
       run: go test -v ./integration/...
 
+    - name: Unit Test
+      run: go test -v ./util/...
+
