@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -68,9 +67,9 @@ func GenerateServiceAccountAuthToken(ctx context.Context, accessToken string, se
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return nil, fmt.Errorf("oauth2l: GenerateServiceAccountAccessToken failed: %v", err)
+		return nil, fmt.Errorf("oauth2l: IAM token generation failed: %v", err)
 	}
 	if code := resp.StatusCode; code < 200 || code > 299 {
 		return nil, errors.New(string(body))
