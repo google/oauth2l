@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -233,6 +234,12 @@ func getInfoOptions(cmdOpts commandOptions, cmd string) infoOptions {
 }
 
 func main() {
+	// Root context for the token, IAM and STS requests. It deliberately
+	// doesn't cancel on Ctrl+C (signal.NotifyContext): the 3LO consent
+	// prompts can't observe a context, so capturing SIGINT would make Ctrl+C
+	// stop working while they wait.
+	ctx := context.Background()
+
 	// Parse command-line flags via "go-flags" library
 	parser := flags.NewParser(&opts, flags.Default)
 
@@ -246,10 +253,10 @@ func main() {
 	cmd := parser.Active.Name
 
 	// Tasks that fetch the access token.
-	fetchTasks := map[string]func(*util.Settings, *util.TaskSettings){
-		"fetch":  util.Fetch,
-		"header": util.Header,
-		"curl":   util.Curl,
+	fetchTasks := map[string]func(context.Context, *util.Settings, *util.TaskSettings){
+		"fetch":  util.FetchContext,
+		"header": util.HeaderContext,
+		"curl":   util.CurlContext,
 	}
 
 	// Tasks that verify the existing token.
@@ -394,22 +401,22 @@ func main() {
 			}
 
 			// 3LO or 2LO depending on the credential type.
-			// For 2LO flow AuthHandler, State and ConsentPageSettings are not needed.
+			// For 2LO flow GoogleAuthHandler, State and ConsentPageSettings are not needed.
 			settings = &util.Settings{
-				CredentialsJSON: json,
-				Scope:           parseScopes(scopes),
-				AuthHandler:     util.Get3LOAuthorizationHandler(defaultState, consentPageSettings, &authCodeServer),
-				State:           defaultState,
-				Audience:        audience,
-				QuotaProject:    quotaProject,
-				Sts:             sts,
-				ServiceAccount:  serviceAccount,
-				Email:           email,
-				AuthType:        util.AuthTypeOAuth,
+				CredentialsJSON:   json,
+				Scope:             parseScopes(scopes),
+				GoogleAuthHandler: util.Get3LOAuthHandler(defaultState, consentPageSettings, &authCodeServer),
+				State:             defaultState,
+				Audience:          audience,
+				QuotaProject:      quotaProject,
+				Sts:               sts,
+				ServiceAccount:    serviceAccount,
+				Email:             email,
+				AuthType:          util.AuthTypeOAuth,
 			}
 		}
 
-		task(settings, taskSettings)
+		task(ctx, settings, taskSettings)
 	} else if task, ok := infoTasks[cmd]; ok {
 		infoOpts := getInfoOptions(opts, cmd)
 		token := infoOpts.Token

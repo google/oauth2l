@@ -36,10 +36,11 @@ var DefaultScope = "https://www.googleapis.com/auth/cloud-platform"
 const defaultAuthState = "state"
 
 const (
-	authorizedUserCredentialsType = "authorized_user"
-	serviceAccountCredentialsType = "service_account"
-	jwtTokenProviderName          = "JWTTokenProvider"
-	jwtTokenSourceName            = "JWTTokenSource"
+	authorizedUserCredentialsType             = "authorized_user"
+	impersonatedServiceAccountCredentialsType = "impersonated_service_account"
+	serviceAccountCredentialsType             = "service_account"
+	jwtTokenProviderName                      = "JWTTokenProvider"
+	jwtTokenSourceName                        = "JWTTokenSource"
 )
 
 // legacyEarlyTokenRefresh matches golang.org/x/oauth2's expiryDelta: tokens
@@ -82,6 +83,26 @@ type credentialsFileHeader struct {
 	Type         string `json:"type"`
 	TokenURI     string `json:"token_uri"`
 	RefreshToken string `json:"refresh_token"`
+	// SourceCredentials is the "source_credentials" of an
+	// "impersonated_service_account" file.
+	SourceCredentials *credentialsFileHeader `json:"source_credentials"`
+}
+
+// userTokenURI returns the "token_uri" of the "authorized_user" credentials
+// in the file: the file itself, or the (possibly nested) source credentials
+// of an "impersonated_service_account" file. cloud.google.com/go/auth
+// ignores "token_uri" in "authorized_user" credentials and uses
+// DetectOptions.TokenURL instead, also for impersonation sources.
+func (h credentialsFileHeader) userTokenURI() string {
+	switch h.Type {
+	case authorizedUserCredentialsType:
+		return h.TokenURI
+	case impersonatedServiceAccountCredentialsType:
+		if h.SourceCredentials != nil {
+			return h.SourceCredentials.userTokenURI()
+		}
+	}
+	return ""
 }
 
 func parseCredentialsFileHeader(b []byte) credentialsFileHeader {
@@ -126,12 +147,12 @@ func newDetectOptions(ctx context.Context, settings *Settings, useSelfSignedJWT 
 	if settings.CredentialsJSON != "" {
 		opts.CredentialsJSON = []byte(settings.CredentialsJSON)
 		// cloud.google.com/go/auth ignores "token_uri" in "authorized_user"
-		// files and uses DetectOptions.TokenURL instead. Forward it so that
-		// custom token endpoints (e.g. the refresh token JSON built by
+		// credentials, including the source credentials of
+		// "impersonated_service_account" files, and uses
+		// DetectOptions.TokenURL instead. Forward it so that custom token
+		// endpoints (e.g. the refresh token JSON built by
 		// BuildAuthRefreshTokenJSON) keep working.
-		if h := parseCredentialsFileHeader(opts.CredentialsJSON); h.Type == authorizedUserCredentialsType {
-			opts.TokenURL = h.TokenURI
-		}
+		opts.TokenURL = parseCredentialsFileHeader(opts.CredentialsJSON).userTokenURI()
 	}
 	handler := settings.resolveAuthHandler()
 	if handler == nil {
@@ -317,14 +338,14 @@ func findAuthCredentials(ctx context.Context, settings *Settings, o credentialsO
 	if err != nil {
 		return nil, err
 	}
-	// When ADC loaded an "authorized_user" file from disk, forward any
-	// custom "token_uri" from the JSON that DetectDefault loaded (since
-	// cloud.google.com/go/auth ignores "token_uri" in "authorized_user"
-	// files unless DetectOptions.TokenURL is set).
+	// When ADC loaded an "authorized_user" or "impersonated_service_account"
+	// file from disk, forward any custom "token_uri" of its user credentials
+	// from the JSON that DetectDefault loaded (since cloud.google.com/go/auth
+	// ignores it unless DetectOptions.TokenURL is set).
 	if opts.TokenURL == "" {
-		if h := parseCredentialsFileHeader(creds.JSON()); h.Type == authorizedUserCredentialsType && h.TokenURI != "" {
+		if tokenURI := parseCredentialsFileHeader(creds.JSON()).userTokenURI(); tokenURI != "" {
 			opts.CredentialsJSON = creds.JSON()
-			opts.TokenURL = h.TokenURI
+			opts.TokenURL = tokenURI
 			return credentials.DetectDefault(opts)
 		}
 	}

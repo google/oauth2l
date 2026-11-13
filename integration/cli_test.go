@@ -769,7 +769,14 @@ func MockCurlApi(w http.ResponseWriter, r *http.Request) {
 
 // Compiles oauth2l and executes integration tests.
 // Launches a mock API server on localhost to service test requests.
+// Skipped with -short, so that "go test -short ./..." runs only unit tests.
 func TestMain(m *testing.M) {
+	flag.Parse()
+	if testing.Short() {
+		fmt.Println("skipping integration tests in -short mode")
+		os.Exit(0)
+	}
+
 	err := os.Chdir("..")
 	if err != nil {
 		fmt.Printf("could not change dir: %v", err)
