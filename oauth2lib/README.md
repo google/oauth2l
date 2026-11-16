@@ -1,14 +1,14 @@
-# oauth2llib
+# oauth2lib
 
-`oauth2llib` is a pure-Go library that builds refreshable Google credentials
+`oauth2lib` is a pure-Go library that builds refreshable Google credentials
 from inputs the caller has already resolved. It never caches, prompts, or reads
 configuration. Its first user is the Go version of `gcloud`, which passes in the
 credential JSON, scopes, token URL, IAM endpoint and RAPT, and gets back
 `*auth.Credentials` from
 [cloud.google.com/go/auth](https://github.com/googleapis/google-cloud-go/tree/main/auth).
 
-It is a separate Go module (`github.com/google/oauth2l/oauth2llib`) inside the
-oauth2l repository, released with its own tags (`oauth2llib/vX.Y.Z`). The
+It is a separate Go module (`github.com/google/oauth2l/oauth2lib`) inside the
+oauth2l repository, released with its own tags (`oauth2lib/vX.Y.Z`). The
 library is under development.
 
 ## Scope of v0.1.0
@@ -27,7 +27,7 @@ credentials, login flows, token caching, and token revocation.
 
 ## Behavior
 
-- Each `Token()` call blocks until it has a new token. oauth2llib holds no
+- Each `Token()` call blocks until it has a new token. oauth2lib holds no
   access tokens between calls and makes no retries.
 - It never reads gcloud properties, Application Default Credentials or Google
   environment variables.
@@ -44,15 +44,17 @@ credentials, login flows, token caching, and token revocation.
 
 Go gcloud builds this module both in google3 and with the standard Go
 toolchain, so the module has to stay within the versions Go gcloud already
-uses. The `oauth2llib` job in
+uses. The `oauth2lib` job in
 [integration-test.yml](../.github/workflows/integration-test.yml) runs
-[oauth2llib_compat.py](../.github/scripts/oauth2llib_compat.py) to check that:
+[oauth2lib_compat.py](../.github/scripts/oauth2lib_compat.py) to check that:
 
-- Every requirement in `go.mod` is at or below the version Go gcloud pins (for
-  example `cloud.google.com/go/auth` v0.23.0). Modules that Go gcloud does not
+- Every requirement in `go.mod` is at or below the version in Go gcloud's
+  `go.mod`, a copy of which is kept in
+  [.github/oauth2lib/gocloud.go.mod](../.github/oauth2lib/gocloud.go.mod)
+  (for example `cloud.google.com/go/auth` v0.23.0). Modules that Go gcloud does not
   use yet are allowed only if they are listed in the script as test-only.
   `replace` directives are not allowed.
-- The `go` line is at or below Go 1.27.3.
+- The `go` line is at or below the `go` line in Go gcloud's `go.mod` (Go 1.27.3).
 - Non-test code does not call APIs that google3 patches with an extra `ctx`
   parameter (`cloud.google.com/go/auth/httptransport`,
   `impersonate.NewCredentials`, `impersonate.NewIDTokenCredentials`,
@@ -62,5 +64,5 @@ uses. The `oauth2llib` job in
   `crypto/rc4`, and `golang.org/x/crypto`'s `blowfish`, `bn256`, `cast5`,
   `ed25519`, `md4`, `otr`, `ripemd160`, `tea`, `twofish`, `xtea` and `xts`).
 
-Keep everything the module needs, including test data, inside `oauth2llib/`,
+Keep everything the module needs, including test data, inside `oauth2lib/`,
 and do not add a `vendor/` directory.

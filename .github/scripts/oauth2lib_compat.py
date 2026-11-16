@@ -13,17 +13,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Checks that the oauth2llib module stays compatible with Go gcloud and google3.
+"""Checks that the oauth2lib module stays compatible with Go gcloud and google3.
 
-Go gcloud builds oauth2llib in two ways: in google3, against google3's copies
+Go gcloud builds oauth2lib in two ways: in google3, against google3's copies
 of its dependencies, and with the standard Go toolchain from Go gcloud's
-go.mod. For both builds to link the same code, oauth2llib must not require a
+go.mod. For both builds to link the same code, oauth2lib must not require a
 newer version of any module than Go gcloud uses, must build with Go gcloud's
 Go version, and must avoid APIs that google3 changes or blocks.
 
 Run from the repository root:
 
-    python3 .github/scripts/oauth2llib_compat.py
+    python3 .github/scripts/oauth2lib_compat.py
 """
 
 import json
@@ -32,54 +32,15 @@ import re
 import subprocess
 import sys
 
-MODULE_DIR = "oauth2llib"
+MODULE_DIR = "oauth2lib"
 
-# Highest Go version that Go gcloud's release build uses.
-MAX_GO_VERSION = "1.27.3"
+# Copy of Go gcloud's go.mod. Its go line is the highest Go version oauth2lib
+# may declare, and its requirements are the highest module versions oauth2lib
+# may require. Update it by copying Go gcloud's go.mod over it.
+GO_GCLOUD_GO_MOD = ".github/oauth2lib/gocloud.go.mod"
 
-# Module versions from Go gcloud's go.mod. oauth2llib may require these modules
-# at the listed version or lower. Update this list when Go gcloud upgrades.
-GO_GCLOUD_PINS = {
-    "cloud.google.com/go": "v0.123.0",
-    "cloud.google.com/go/auth": "v0.23.0",
-    "cloud.google.com/go/auth/oauth2adapt": "v0.2.8",
-    "cloud.google.com/go/compute/metadata": "v0.9.0",
-    "cloud.google.com/go/iam": "v1.12.0",
-    "cloud.google.com/go/longrunning": "v1.2.0",
-    "github.com/cespare/xxhash/v2": "v2.3.0",
-    "github.com/felixge/httpsnoop": "v1.0.4",
-    "github.com/go-logr/logr": "v1.4.3",
-    "github.com/go-logr/stdr": "v1.2.2",
-    "github.com/google/go-cmp": "v0.7.0",
-    "github.com/google/s2a-go": "v0.1.9",
-    "github.com/google/uuid": "v1.6.0",
-    "github.com/googleapis/enterprise-certificate-proxy": "v0.3.19",
-    "github.com/googleapis/gax-go/v2": "v2.24.0",
-    "go.opentelemetry.io/auto/sdk": "v1.2.1",
-    "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc": "v0.67.0",
-    "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp": "v0.67.0",
-    "go.opentelemetry.io/otel": "v1.44.0",
-    "go.opentelemetry.io/otel/metric": "v1.44.0",
-    "go.opentelemetry.io/otel/trace": "v1.44.0",
-    "golang.org/x/crypto": "v0.58.0",
-    "golang.org/x/mod": "v0.41.0",
-    "golang.org/x/net": "v0.62.0",
-    "golang.org/x/oauth2": "v0.36.0",
-    "golang.org/x/sync": "v0.24.0",
-    "golang.org/x/sys": "v0.49.0",
-    "golang.org/x/text": "v0.43.0",
-    "golang.org/x/time": "v0.15.0",
-    "golang.org/x/tools": "v0.51.0",
-    "google.golang.org/api": "v0.292.0",
-    "google.golang.org/genproto": "v0.0.0-20260715232425-e75dac1f907d",
-    "google.golang.org/genproto/googleapis/api": "v0.0.0-20260715232425-e75dac1f907d",
-    "google.golang.org/genproto/googleapis/rpc": "v0.0.0-20260803160001-6ac0973c030d",
-    "google.golang.org/grpc": "v1.83.2",
-    "google.golang.org/protobuf": "v1.36.11",
-}
-
-# Modules that Go gcloud does not use but oauth2llib may require because only
-# oauth2llib's own tests import them. The version is the highest allowed (the
+# Modules that Go gcloud does not use but oauth2lib may require because only
+# oauth2lib's own tests import them. The version is the highest allowed (the
 # version in google3).
 TEST_ONLY_MODULES = {
     "go.uber.org/goleak": "v1.3.0",
@@ -121,14 +82,23 @@ def go_version_key(version):
     return tuple(int(part) for part in re.findall(r"\d+", version))
 
 
-def check_requirements(go_mod):
+def go_mod_json(path, cwd=None):
+    """Returns `go mod edit -json` output for the go.mod file at path."""
+    out = subprocess.run(["go", "mod", "edit", "-json", path], cwd=cwd,
+                         check=True, capture_output=True, text=True).stdout
+    return json.loads(out)
+
+
+def check_requirements(go_mod, gocloud_go_mod):
     errors = []
+    max_go = gocloud_go_mod["Go"]
+    pins = {req["Path"]: req["Version"] for req in gocloud_go_mod.get("Require") or []}
     go_version = go_mod.get("Go", "")
-    if go_version_key(go_version) > go_version_key(MAX_GO_VERSION):
-        errors.append(f"go.mod: go {go_version} is newer than Go gcloud's Go {MAX_GO_VERSION}")
+    if go_version_key(go_version) > go_version_key(max_go):
+        errors.append(f"go.mod: go {go_version} is newer than Go gcloud's Go {max_go}")
     for req in go_mod.get("Require") or []:
         path, version = req["Path"], req["Version"]
-        limit = GO_GCLOUD_PINS.get(path) or TEST_ONLY_MODULES.get(path)
+        limit = pins.get(path) or TEST_ONLY_MODULES.get(path)
         if limit is None:
             errors.append(
                 f"go.mod: {path} {version} is not used by Go gcloud. Adding it needs a google3 "
@@ -159,15 +129,14 @@ def check_sources():
 
 
 def main():
-    out = subprocess.run(["go", "mod", "edit", "-json"], cwd=MODULE_DIR,
-                         check=True, capture_output=True, text=True).stdout
-    errors = check_requirements(json.loads(out)) + check_sources()
+    errors = check_requirements(go_mod_json("go.mod", cwd=MODULE_DIR),
+                                go_mod_json(GO_GCLOUD_GO_MOD)) + check_sources()
     for error in errors:
         print(f"::error::{error}")
     if errors:
         print(f"{len(errors)} compatibility problem(s) found.")
         return 1
-    print("oauth2llib is compatible with Go gcloud and google3.")
+    print("oauth2lib is compatible with Go gcloud and google3.")
     return 0
 
 

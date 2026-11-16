@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package oauth2llib
+package oauth2lib
 
 import (
 	"testing"
@@ -22,7 +22,7 @@ import (
 )
 
 // TestMain fails the package's tests if any goroutine is still running when
-// they finish, because oauth2llib must not start background goroutines.
+// they finish, because oauth2lib must not start background goroutines.
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }

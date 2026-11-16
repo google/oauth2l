@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package oauth2llib builds refreshable Google credentials from inputs the
+// Package oauth2lib builds refreshable Google credentials from inputs the
 // caller has already resolved. It never caches, prompts, or reads
 // configuration.
 //
@@ -46,7 +46,7 @@
 //   - No quota project is set. Use the credentials with your own HTTP
 //     transport, not with go/auth's httptransport or grpctransport.
 //
-// oauth2llib is a separate Go module so that it can follow the dependency
+// oauth2lib is a separate Go module so that it can follow the dependency
 // versions used by Go gcloud and google3 (for example
 // cloud.google.com/go/auth v0.23.0) independently of the oauth2l command.
-package oauth2llib
+package oauth2lib
