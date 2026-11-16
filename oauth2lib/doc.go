@@ -13,15 +13,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package oauth2lib builds refreshable Google credentials from inputs the
-// caller has already resolved. It never caches, prompts, or reads
+// Package oauth2lib will build refreshable Google credentials from inputs the
+// caller has already resolved. It is designed never to cache, prompt, or read
 // configuration.
 //
-// The caller (first, the Go version of gcloud) passes in the credential JSON,
-// scopes, token URL, IAM endpoint and RAPT, and gets back *auth.Credentials
-// from cloud.google.com/go/auth.
+// The package is under development. Its first user is the Go version of gcloud,
+// which will pass in the credential JSON, scopes, token URL, IAM endpoint and
+// RAPT, and get back *auth.Credentials from cloud.google.com/go/auth.
 //
-// Version v0.1.0 covers:
+// Planned for v0.1.0:
 //
 //   - BuildCredentials for authorized_user, service_account (OAuth and
 //     self-signed JWT) and impersonated_service_account JSON.
@@ -32,7 +32,7 @@
 //   - RefreshError, with a kind and an errors.Is sentinel for each kind
 //     except unknown.
 //
-// Behavior:
+// Planned behavior:
 //
 //   - Each Token call blocks until it has a new token. No access tokens are
 //     held between calls, and no retries are made.
@@ -46,7 +46,6 @@
 //   - No quota project is set. Use the credentials with your own HTTP
 //     transport, not with go/auth's httptransport or grpctransport.
 //
-// oauth2lib is a separate Go module so that it can follow the dependency
-// versions used by Go gcloud and google3 (for example
-// cloud.google.com/go/auth v0.23.0) independently of the oauth2l command.
+// oauth2lib is a separate Go module so that it can stay on the dependency
+// versions Go gcloud uses, independently of the oauth2l command.
 package oauth2lib

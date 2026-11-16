@@ -1,39 +1,14 @@
-// Copy of Go gcloud's go.mod (google3: //third_party/gcloud_cli/external/gcloud/go.mod).
+// Module versions used by Go gcloud, the first user of oauth2lib.
 // .github/scripts/oauth2lib_compat.py reads the go line and requirements below:
-// oauth2lib must not require any module at a newer version than listed here.
-// Update this file by copying the current Go gcloud go.mod over it, unchanged
-// below this header. In google3, oauth2lib's check_tests also compare its
-// go.mod with Go gcloud's, so this copy is an early check, not the source of truth.
-//
-// Module manifest for the Copybara export of this directory (GoB
-// gcloud-cli/gcloud). Blaze ignores it; the Kokoro release build uses it
-// read-only (cloud/sdk/component_build/kokoro/gcloud/lib/build_go_binary.sh).
-//
-// Keep the direct requirements at the versions in //third_party/golang
-// (the METADATA of each package mapped in copy.bara.sky), so the shipped
-// binary links what google3 tests. Exceptions forced upward by minimum
-// version selection: golang.org/x/net carries security fixes that
-// //third_party/golang/go_net lacks, and its requirements raise
-// golang.org/x/sys, golang.org/x/text, and (through x/text) golang.org/x/tools
-// above their //third_party/golang versions.
-//
-// To update: edit the direct requirements, then run `go mod tidy` in an
-// export (or a GoB checkout) and copy go.mod and go.sum back here. Do not
-// hand-edit go.sum or the indirect block. The Kokoro build fails if
-// `go mod tidy -diff` is non-empty.
-// LINT.IfChange(module_path)
+// oauth2lib must not declare a newer go line or require a newer version of any
+// module. Update this file when Go gcloud's dependencies change.
+
 module cloud.google.com/gcloud
 
-// LINT.ThenChange(//depot/google3/third_party/gcloud_cli/external/gcloud/internal/tools/lint/pkgpath/pkgpath.go:module_path)
-
-// The Kokoro build installs exactly this Go version and verifies it against a
-// pinned SHA-256; add the new version's checksum when changing it.
-// LINT.IfChange(go_version)
 go 1.27.3
 
-// LINT.ThenChange(//depot/google3/cloud/sdk/component_build/kokoro/gcloud/lib/go_toolchain_sha256.txt)
-
 require (
+	cloud.google.com/go/auth v0.23.0
 	cloud.google.com/go/run v1.22.0
 	github.com/ebitengine/purego v0.11.0
 	github.com/gofrs/flock v0.13.1
@@ -52,7 +27,6 @@ require (
 
 require (
 	cloud.google.com/go v0.123.0 // indirect
-	cloud.google.com/go/auth v0.23.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	cloud.google.com/go/iam v1.12.0 // indirect

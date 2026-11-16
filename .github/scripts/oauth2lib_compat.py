@@ -16,10 +16,10 @@
 """Checks that the oauth2lib module stays compatible with Go gcloud and google3.
 
 Go gcloud builds oauth2lib in two ways: in google3, against google3's copies
-of its dependencies, and with the standard Go toolchain from Go gcloud's
-go.mod. For both builds to link the same code, oauth2lib must not require a
-newer version of any module than Go gcloud uses, must build with Go gcloud's
-Go version, and must avoid APIs that google3 changes or blocks.
+of its dependencies, and with the standard Go toolchain from Go gcloud's own
+module requirements. For both builds to link the same code, oauth2lib must not
+require a newer version of any module than Go gcloud uses, must build with Go
+gcloud's Go version, and must avoid APIs that google3 changes or blocks.
 
 Run from the repository root:
 
@@ -34,45 +34,50 @@ import sys
 
 MODULE_DIR = "oauth2lib"
 
-# Copy of Go gcloud's go.mod. Its go line is the highest Go version oauth2lib
-# may declare, and its requirements are the highest module versions oauth2lib
-# may require. Update it by copying Go gcloud's go.mod over it.
+# The module versions Go gcloud uses. Its go line is the highest Go version
+# oauth2lib may declare, and its requirements are the highest module versions
+# oauth2lib may require.
 GO_GCLOUD_GO_MOD = ".github/oauth2lib/gocloud.go.mod"
 
 # Modules that Go gcloud does not use but oauth2lib may require because only
 # oauth2lib's own tests import them. The version is the highest allowed (the
-# version in google3).
+# version in google3). check_test_only_modules makes sure non-test code does
+# not depend on them.
 TEST_ONLY_MODULES = {
     "go.uber.org/goleak": "v1.3.0",
 }
 
-# APIs that google3's copy of cloud.google.com/go/auth changes (it adds a ctx
-# parameter), so code that uses them does not compile in google3, and crypto
-# packages that google3's nogo check blocks.
-FORBIDDEN_PATTERNS = [
-    (re.compile(r'"cloud\.google\.com/go/auth/httptransport"'),
-     "imports cloud.google.com/go/auth/httptransport, which google3 patches"),
-    (re.compile(r"\bimpersonate\.NewCredentials\b"),
-     "calls impersonate.NewCredentials, which google3 patches"),
-    (re.compile(r"\bimpersonate\.NewIDTokenCredentials\b"),
-     "calls impersonate.NewIDTokenCredentials, which google3 patches"),
-    (re.compile(r"\bidtoken\.NewCredentials\b"),
-     "calls idtoken.NewCredentials, which google3 patches"),
-    (re.compile(r'"crypto/(cipher|des|dsa|elliptic|ed25519|md5|rc4|rsa|sha1)"'),
-     "imports a crypto package that google3 blocks"),
-    (re.compile(r'"golang\.org/x/crypto/(blowfish|bn256|cast5|ed25519|md4|otr|ripemd160|tea|twofish|xtea|xts)"'),
-     "imports a golang.org/x/crypto package that google3 blocks"),
+# Packages that non-test code must not import: google3's copy of
+# cloud.google.com/go/auth changes httptransport (it adds a ctx parameter), and
+# google3's nogo check blocks these crypto packages.
+FORBIDDEN_IMPORTS = [
+    (re.compile(r"cloud\.google\.com/go/auth/httptransport"),
+     "google3 patches this package"),
+    (re.compile(r"crypto/(cipher|des|dsa|elliptic|ed25519|md5|rc4|rsa|sha1)"),
+     "google3 blocks this crypto package"),
+    (re.compile(r"golang\.org/x/crypto/(blowfish|bn256|cast5|ed25519|md4|otr|ripemd160|tea|twofish|xtea|xts)"),
+     "google3 blocks this crypto package"),
 ]
+
+# Functions that google3's copy of cloud.google.com/go/auth changes (it adds a
+# ctx parameter). These are matched in the source text, so calls through an
+# aliased import are not caught; google3's build still rejects them.
+PATCHED_CALLS = [
+    "impersonate.NewCredentials",
+    "impersonate.NewIDTokenCredentials",
+    "idtoken.NewCredentials",
+]
+_PATCHED_CALL_RE = re.compile(r"\b(" + "|".join(re.escape(c) for c in PATCHED_CALLS) + r")\b")
 
 
 def parse_version(version):
     """Returns a sortable key for a Go module version such as v1.2.3 or v1.2.3-rc.1."""
-    match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+.*)?", version)
+    match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?", version)
     if not match:
         raise ValueError(f"unrecognized version {version!r}")
     major, minor, patch, pre = match.groups()
     # A release sorts after any pre-release (including pseudo-versions) of the
-    # same version.
+    # same version. Numeric identifiers sort before alphanumeric ones.
     pre_key = (1,) if pre is None else (0,) + tuple(
         (0, int(part), "") if part.isdigit() else (1, 0, part) for part in pre.split("."))
     return (int(major), int(minor), int(patch), pre_key)
@@ -82,14 +87,18 @@ def go_version_key(version):
     return tuple(int(part) for part in re.findall(r"\d+", version))
 
 
+def run_go(args, cwd=MODULE_DIR):
+    return subprocess.run(["go"] + args, cwd=cwd, check=True, capture_output=True,
+                          text=True).stdout
+
+
 def go_mod_json(path, cwd=None):
     """Returns `go mod edit -json` output for the go.mod file at path."""
-    out = subprocess.run(["go", "mod", "edit", "-json", path], cwd=cwd,
-                         check=True, capture_output=True, text=True).stdout
-    return json.loads(out)
+    return json.loads(run_go(["mod", "edit", "-json", path], cwd=cwd))
 
 
 def check_requirements(go_mod, gocloud_go_mod):
+    """Reports requirements and go lines in go_mod that Go gcloud does not allow."""
     errors = []
     max_go = gocloud_go_mod["Go"]
     pins = {req["Path"]: req["Version"] for req in gocloud_go_mod.get("Require") or []}
@@ -110,27 +119,66 @@ def check_requirements(go_mod, gocloud_go_mod):
     return errors
 
 
-def check_sources():
+def check_imports(imports):
+    """Reports forbidden imports. imports maps each package to its non-test imports."""
     errors = []
-    for root, dirs, files in os.walk(MODULE_DIR):
+    for pkg, deps in sorted(imports.items()):
+        for dep in deps:
+            for pattern, reason in FORBIDDEN_IMPORTS:
+                if pattern.fullmatch(dep):
+                    errors.append(f"{pkg}: imports {dep}, which is not allowed: {reason}")
+    return errors
+
+
+def check_test_only_modules(dep_modules):
+    """Reports test-only modules that non-test code depends on."""
+    return [f"go.mod: {path} is listed as test-only, but non-test code depends on it"
+            for path in sorted(TEST_ONLY_MODULES) if path in dep_modules]
+
+
+def check_sources(root=MODULE_DIR):
+    """Reports vendor directories and calls to patched functions in non-test files."""
+    errors = []
+    for dirpath, dirs, files in os.walk(root):
         if "vendor" in dirs:
-            errors.append(f"{os.path.join(root, 'vendor')}: vendor directories are not allowed")
+            errors.append(f"{os.path.join(dirpath, 'vendor')}: vendor directories are not allowed")
             dirs.remove("vendor")
-        for name in files:
+        for name in sorted(files):
             if not name.endswith(".go") or name.endswith("_test.go"):
                 continue
-            path = os.path.join(root, name)
+            path = os.path.join(dirpath, name)
             with open(path, encoding="utf-8") as f:
                 for lineno, line in enumerate(f, 1):
-                    for pattern, reason in FORBIDDEN_PATTERNS:
-                        if pattern.search(line):
-                            errors.append(f"{path}:{lineno}: {reason}")
+                    if line.lstrip().startswith("//"):
+                        continue
+                    for call in _PATCHED_CALL_RE.findall(line):
+                        errors.append(f"{path}:{lineno}: calls {call}, which google3 patches")
     return errors
+
+
+def list_imports():
+    """Returns each package's non-test imports (go list leaves out _test.go files)."""
+    out = run_go(["list", "-f", "{{.ImportPath}}{{range .Imports}} {{.}}{{end}}", "./..."])
+    imports = {}
+    for line in out.splitlines():
+        if line.strip():
+            pkg, *deps = line.split()
+            imports[pkg] = deps
+    return imports
+
+
+def list_dep_modules():
+    """Returns the modules that non-test code depends on, directly or indirectly."""
+    out = run_go(["list", "-deps", "-f", "{{with .Module}}{{.Path}}{{end}}", "./..."])
+    return set(out.split())
 
 
 def main():
     errors = check_requirements(go_mod_json("go.mod", cwd=MODULE_DIR),
-                                go_mod_json(GO_GCLOUD_GO_MOD)) + check_sources()
+                                go_mod_json(GO_GCLOUD_GO_MOD))
+    errors += check_imports(list_imports())
+    errors += check_test_only_modules(list_dep_modules())
+    errors += check_sources()
     for error in errors:
         print(f"::error::{error}")
     if errors:

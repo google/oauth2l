@@ -34,6 +34,10 @@ jobs:
   # above do not include it.
   oauth2lib:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # The go line in oauth2lib/go.mod, and the Go version Go gcloud uses.
+        go-version: ['1.26.0', '1.27.3']
     defaults:
       run:
         working-directory: oauth2lib
@@ -45,10 +49,11 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
       with:
-        go-version: 1.27.3
+        go-version: ${{ matrix.go-version }}
         cache-dependency-path: oauth2lib/go.sum
 
     - name: Check go.mod and go.sum are tidy
+      if: matrix.go-version == '1.27.3'
       run: go mod tidy -diff
 
     - name: Vet
@@ -57,7 +62,12 @@ jobs:
     - name: Test
       run: go test -v -race ./...
 
+    - name: Compatibility check tests
+      if: matrix.go-version == '1.27.3'
+      working-directory: .
+      run: python3 -m unittest discover -s .github/scripts -p '*_test.py'
+
     - name: Go gcloud and google3 compatibility
+      if: matrix.go-version == '1.27.3'
       working-directory: .
       run: python3 .github/scripts/oauth2lib_compat.py
-
