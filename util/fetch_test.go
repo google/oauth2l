@@ -529,6 +529,109 @@ func TestFetchAuthTokenADCAuthorizedUserTokenURI(t *testing.T) {
 	}
 }
 
+func TestCredentialsFileHeaderUserTokenURI(t *testing.T) {
+	tests := []struct {
+		name string
+		json string
+		want string
+	}{
+		{name: "authorized_user", json: authorizedUserJSON("https://example.com/token"), want: "https://example.com/token"},
+		{name: "authorized_user_without_token_uri", json: `{"type": "authorized_user", "refresh_token": "rt"}`},
+		{
+			name: "impersonated_user_source",
+			json: `{"type": "impersonated_service_account", "source_credentials": ` + authorizedUserJSON("https://example.com/token") + `}`,
+			want: "https://example.com/token",
+		},
+		{
+			name: "impersonated_user_source_without_token_uri",
+			json: `{"type": "impersonated_service_account", "source_credentials": {"type": "authorized_user", "refresh_token": "rt"}}`,
+		},
+		{
+			name: "nested_impersonated_user_source",
+			json: `{"type": "impersonated_service_account", "source_credentials": {"type": "impersonated_service_account", "source_credentials": ` + authorizedUserJSON("https://example.com/token") + `}}`,
+			want: "https://example.com/token",
+		},
+		{
+			name: "impersonated_service_account_source",
+			json: `{"type": "impersonated_service_account", "source_credentials": {"type": "service_account", "token_uri": "https://example.com/token"}}`,
+		},
+		{name: "service_account", json: `{"type": "service_account", "token_uri": "https://example.com/token"}`},
+		{name: "malformed", json: `{`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parseCredentialsFileHeader([]byte(tc.json)).userTokenURI(); got != tc.want {
+				t.Errorf("userTokenURI() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestFetchAuthTokenImpersonatedSourceTokenURI checks that the "authorized_user"
+// source credentials of an "impersonated_service_account" file are refreshed
+// at their own "token_uri", as golang.org/x/oauth2 did, both when the file is
+// passed in Settings.CredentialsJSON and when ADC loads it from disk.
+func TestFetchAuthTokenImpersonatedSourceTokenURI(t *testing.T) {
+	var sourceRefreshes atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/token":
+			sourceRefreshes.Add(1)
+			fmt.Fprint(w, `{"access_token": "source-access-token", "token_type": "Bearer", "expires_in": 3600}`)
+		case strings.HasSuffix(r.URL.Path, ":generateAccessToken"):
+			if got, want := r.Header.Get("Authorization"), "Bearer source-access-token"; got != want {
+				t.Errorf("generateAccessToken Authorization header = %q, want %q", got, want)
+				http.Error(w, "unexpected source token", http.StatusUnauthorized)
+				return
+			}
+			fmt.Fprint(w, `{"accessToken": "impersonated-access-token", "expireTime": "2099-01-01T00:00:00Z"}`)
+		default:
+			t.Errorf("unexpected request to %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	impersonatedJSON := fmt.Sprintf(`{
+  "type": "impersonated_service_account",
+  "service_account_impersonation_url": %q,
+  "delegates": [],
+  "source_credentials": %s
+}`, srv.URL+"/v1/projects/-/serviceAccounts/target@test-project.iam.gserviceaccount.com:generateAccessToken", authorizedUserJSON(srv.URL+"/token"))
+
+	fetch := func(name string, settings *Settings) {
+		t.Helper()
+		before := sourceRefreshes.Load()
+		tok, err := FetchAuthToken(t.Context(), settings)
+		if err != nil {
+			t.Fatalf("FetchAuthToken(%s) unexpected error: %v", name, err)
+		}
+		if tok.Value != "impersonated-access-token" {
+			t.Errorf("FetchAuthToken(%s) = %q, want impersonated-access-token", name, tok.Value)
+		}
+		if got := sourceRefreshes.Load() - before; got != 1 {
+			t.Errorf("FetchAuthToken(%s) refreshed the source credentials at their token_uri %d times, want 1", name, got)
+		}
+	}
+	settings := &Settings{AuthType: AuthTypeOAuth, Scope: "scope1", CredentialsJSON: impersonatedJSON}
+	fetch("credentials JSON", settings)
+
+	legacyTok, err := FetchToken(t.Context(), settings)
+	if err != nil {
+		t.Fatalf("FetchToken() unexpected error: %v", err)
+	}
+	if legacyTok.AccessToken != "impersonated-access-token" {
+		t.Errorf("FetchToken() = %q, want impersonated-access-token", legacyTok.AccessToken)
+	}
+
+	credsFile := t.TempDir() + "/adc.json"
+	if err := os.WriteFile(credsFile, []byte(impersonatedJSON), 0600); err != nil {
+		t.Fatalf("os.WriteFile() unexpected error: %v", err)
+	}
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", credsFile)
+	fetch("ADC", &Settings{AuthType: AuthTypeOAuth, Scope: "scope1"})
+}
+
 func TestFindJSONCredentialsPreservesJSONAndProjectID(t *testing.T) {
 	saJSON := serviceAccountJSON(t)
 	settings := &Settings{CredentialsJSON: saJSON, Scope: "scope1"}
