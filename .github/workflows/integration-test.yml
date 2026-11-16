@@ -30,3 +30,34 @@ jobs:
     - name: Unit Test
       run: go test -v -short ./...
 
+  # oauth2llib is a separate Go module, so the root module's ./... patterns
+  # above do not include it.
+  oauth2llib:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: oauth2llib
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        persist-credentials: false
+
+    - name: Set up Go
+      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+      with:
+        go-version: 1.27.3
+        cache-dependency-path: oauth2llib/go.sum
+
+    - name: Check go.mod and go.sum are tidy
+      run: go mod tidy -diff
+
+    - name: Vet
+      run: go vet ./...
+
+    - name: Test
+      run: go test -v -race ./...
+
+    - name: Go gcloud and google3 compatibility
+      working-directory: .
+      run: python3 .github/scripts/oauth2llib_compat.py
+
