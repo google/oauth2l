@@ -73,9 +73,20 @@ func (k ErrorKind) String() string {
 var (
 	ErrReauthRequired = errors.New("oauth2lib: reauthentication required")
 	ErrAccessDenied   = errors.New("oauth2lib: access denied")
-	ErrInvalidGrant   = errors.New("oauth2lib: invalid grant")
-	ErrTransient      = errors.New("oauth2lib: transient error")
+	// ErrCAADenied matches a *RefreshError whose token endpoint response was
+	// access_denied with "Account restricted" in the description, which is
+	// how Context-Aware Access reports a blocked request. Such an error also
+	// matches ErrAccessDenied. A rejected client certificate does not match
+	// ErrCAADenied.
+	ErrCAADenied    = errors.New("oauth2lib: denied by context-aware access")
+	ErrInvalidGrant = errors.New("oauth2lib: invalid grant")
+	ErrTransient    = errors.New("oauth2lib: transient error")
 )
+
+// caaDeniedDescription is the text Python gcloud looks for to detect a
+// Context-Aware Access denial
+// (context_aware.CONTEXT_AWARE_ACCESS_DENIED_ERROR_DESCRIPTION).
+const caaDeniedDescription = "Account restricted"
 
 // RefreshError carries the token endpoint's or IAM's answer to a failed
 // request, or the network error that stopped it.
@@ -138,13 +149,19 @@ func (e *RefreshError) Is(target error) bool {
 	case KindReauthRequired:
 		return target == ErrReauthRequired
 	case KindAccessDenied:
-		return target == ErrAccessDenied
+		return target == ErrAccessDenied || (target == ErrCAADenied && e.isCAADenied())
 	case KindInvalidGrant:
 		return target == ErrInvalidGrant
 	case KindTransient:
 		return target == ErrTransient
 	}
 	return false
+}
+
+// isCAADenied reports whether e is a Context-Aware Access denial, using the
+// same check as Python gcloud's IsContextAwareAccessDeniedError.
+func (e *RefreshError) isCAADenied() bool {
+	return e.Code == "access_denied" && strings.Contains(e.Description, caaDeniedDescription)
 }
 
 // LogValue implements slog.LogValuer, with the same redaction as Error.

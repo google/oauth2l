@@ -193,6 +193,41 @@ func TestRefreshErrorIs(t *testing.T) {
 		if !errors.As(err, &re) || re.Kind != kind {
 			t.Errorf("errors.As(%v error) failed", kind)
 		}
+		if errors.Is(err, ErrCAADenied) {
+			t.Errorf("errors.Is(%v error without a CAA description, ErrCAADenied) = true, want false", kind)
+		}
+	}
+}
+
+func TestRefreshErrorIsCAADenied(t *testing.T) {
+	tests := []struct {
+		name string
+		err  *RefreshError
+		want bool
+	}{
+		{"caa", &RefreshError{Kind: KindAccessDenied, Code: "access_denied", Description: "Account restricted"}, true},
+		{"caa_longer_description", &RefreshError{Kind: KindAccessDenied, Code: "access_denied", Description: "Account restricted by policy"}, true},
+		{"access_denied_other_description", &RefreshError{Kind: KindAccessDenied, Code: "access_denied", Description: "The user denied access"}, false},
+		{"client_cert_rejected", &RefreshError{Kind: KindAccessDenied, Err: errors.New("remote error: tls: certificate required")}, false},
+		{"invalid_grant_with_text", &RefreshError{Kind: KindInvalidGrant, Code: "invalid_grant", Description: "Account restricted"}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := fmt.Errorf("wrapped: %w", tc.err)
+			if got := errors.Is(err, ErrCAADenied); got != tc.want {
+				t.Errorf("errors.Is(err, ErrCAADenied) = %v, want %v", got, tc.want)
+			}
+			if tc.want && !errors.Is(err, ErrAccessDenied) {
+				t.Error("a CAA denial must also match ErrAccessDenied")
+			}
+		})
+	}
+}
+
+func TestClassifyResponseCAADenied(t *testing.T) {
+	err := classifyResponse(http.StatusBadRequest, []byte(`{"error":"access_denied","error_description":"Account restricted"}`))
+	if !errors.Is(err, ErrCAADenied) || !errors.Is(err, ErrAccessDenied) {
+		t.Fatalf("classifyResponse() = %v, want an error matching ErrCAADenied and ErrAccessDenied", err)
 	}
 }
 
