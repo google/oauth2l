@@ -116,11 +116,11 @@ func (e *RefreshError) Error() string {
 	b.WriteString("oauth2lib: refresh failed (")
 	b.WriteString(e.Kind.String())
 	b.WriteString(")")
-	if e.Code != "" {
+	if c := sanitize(e.Code); c != "" {
 		b.WriteString(": ")
-		b.WriteString(e.Code)
-		if e.Subtype != "" {
-			b.WriteString(" (" + e.Subtype + ")")
+		b.WriteString(c)
+		if st := sanitize(e.Subtype); st != "" {
+			b.WriteString(" (" + st + ")")
 		}
 	}
 	if d := sanitize(e.Description); d != "" {
@@ -167,11 +167,11 @@ func (e *RefreshError) isCAADenied() bool {
 // LogValue implements slog.LogValuer, with the same redaction as Error.
 func (e *RefreshError) LogValue() slog.Value {
 	attrs := []slog.Attr{slog.String("kind", e.Kind.String())}
-	if e.Code != "" {
-		attrs = append(attrs, slog.String("code", e.Code))
+	if c := sanitize(e.Code); c != "" {
+		attrs = append(attrs, slog.String("code", c))
 	}
-	if e.Subtype != "" {
-		attrs = append(attrs, slog.String("subtype", e.Subtype))
+	if st := sanitize(e.Subtype); st != "" {
+		attrs = append(attrs, slog.String("subtype", st))
 	}
 	if d := sanitize(e.Description); d != "" {
 		attrs = append(attrs, slog.String("description", d))
@@ -214,16 +214,27 @@ var nonRetryableOAuthErrors = map[string]bool{
 	"unsupported_grant_type": true,
 }
 
+// retryableOAuthErrors are the OAuth error codes that report a temporary
+// server-side problem, whatever the HTTP status (google-auth's _can_retry).
+var retryableOAuthErrors = map[string]bool{
+	"internal_failure":        true,
+	"server_error":            true,
+	"temporarily_unavailable": true,
+}
+
 // classifyResponse turns a non-2xx response from the token endpoint or IAM
 // into a *RefreshError. It checks the status code before parsing the body,
-// so a 5xx, 408 or 429 is transient whatever the body says. The body may be
+// so a 5xx, 408 or 429 is transient whatever the body says. The OAuth codes
+// internal_failure, server_error and temporarily_unavailable are transient
+// too. The body may be
 // an RFC 6749 error ({"error": "...", "error_subtype": ..., "error_description": ...})
 // or a google.rpc.Status error ({"error": {"code", "message", "status"}}).
 func classifyResponse(statusCode int, body []byte) *RefreshError {
 	e := &RefreshError{Kind: KindUnknown, StatusCode: statusCode}
 	parseErrorBody(body, e)
 	switch {
-	case statusCode >= 500, statusCode == http.StatusRequestTimeout, statusCode == http.StatusTooManyRequests:
+	case statusCode >= 500, statusCode == http.StatusRequestTimeout, statusCode == http.StatusTooManyRequests,
+		retryableOAuthErrors[e.Code]:
 		e.Kind = KindTransient
 	case e.Code == "invalid_grant" && (e.Subtype == "rapt_required" || e.Subtype == "invalid_rapt"):
 		e.Kind = KindReauthRequired
@@ -237,19 +248,22 @@ func classifyResponse(statusCode int, body []byte) *RefreshError {
 
 // parseErrorBody fills e's Code, Subtype and Description from either error
 // body form. A body that is not JSON (for example a proxy's HTML page) leaves
-// them empty.
+// them empty. A field of an unexpected type is ignored without losing the
+// other fields.
 func parseErrorBody(body []byte, e *RefreshError) {
 	var raw struct {
 		Error            json.RawMessage `json:"error"`
-		ErrorSubtype     string          `json:"error_subtype"`
-		ErrorDescription string          `json:"error_description"`
+		ErrorSubtype     json.RawMessage `json:"error_subtype"`
+		ErrorDescription json.RawMessage `json:"error_description"`
 	}
 	if json.Unmarshal(body, &raw) != nil || len(raw.Error) == 0 {
 		return
 	}
 	var code string
 	if json.Unmarshal(raw.Error, &code) == nil {
-		e.Code, e.Subtype, e.Description = code, raw.ErrorSubtype, raw.ErrorDescription
+		e.Code = code
+		e.Subtype = jsonString(raw.ErrorSubtype)
+		e.Description = jsonString(raw.ErrorDescription)
 		return
 	}
 	var status struct {
@@ -259,6 +273,16 @@ func parseErrorBody(body []byte, e *RefreshError) {
 	if json.Unmarshal(raw.Error, &status) == nil {
 		e.Code, e.Description = status.Status, status.Message
 	}
+}
+
+// jsonString returns v decoded as a JSON string, or "" if v is missing or not
+// a string.
+func jsonString(v json.RawMessage) string {
+	var s string
+	if len(v) == 0 || json.Unmarshal(v, &s) != nil {
+		return ""
+	}
+	return s
 }
 
 // clientCertAlerts are the TLS alerts a server sends when it rejects the
@@ -277,14 +301,13 @@ var clientCertAlerts = []string{
 }
 
 // classifyTransportError turns an error from http.Client.Do into the error
-// that Token returns. A canceled or expired ctx returns ctx's error, not a
-// *RefreshError.
+// that Token returns. Only a canceled or expired ctx returns ctx's error
+// instead of a *RefreshError. Timeouts set elsewhere, such as
+// http.Client.Timeout or a dialer timeout, wrap context.DeadlineExceeded but
+// are transient.
 func classifyTransportError(ctx context.Context, err error) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
-	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return err
 	}
 	kind := KindTransient
 	var verifyErr *tls.CertificateVerificationError

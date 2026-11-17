@@ -162,6 +162,13 @@ func TestClassifyResponse(t *testing.T) {
 		{"HTML 400", 400, `<html>oops</html>`, KindUnknown, "", "", ""},
 		{"unknown OAuth code", 400, `{"error":"something_new"}`, KindUnknown, "something_new", "", ""},
 		{"empty body", 401, ``, KindUnknown, "", "", ""},
+		{"server_error 400", 400, `{"error":"server_error"}`, KindTransient, "server_error", "", ""},
+		{"temporarily_unavailable 400", 400, `{"error":"temporarily_unavailable"}`, KindTransient, "temporarily_unavailable", "", ""},
+		{"internal_failure 400", 400, `{"error":"internal_failure"}`, KindTransient, "internal_failure", "", ""},
+		{"non-string description", 400, `{"error":"invalid_grant","error_description":{"detail":"x"}}`,
+			KindInvalidGrant, "invalid_grant", "", ""},
+		{"non-string subtype", 400, `{"error":"invalid_grant","error_subtype":7,"error_description":"expired"}`,
+			KindInvalidGrant, "invalid_grant", "", "expired"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := classifyResponse(tc.status, []byte(tc.body))
@@ -313,8 +320,8 @@ func TestDoRequestErrorResponse(t *testing.T) {
 		t.Fatalf("doRequest() error = %v, want ErrReauthRequired", err)
 	}
 	var re *RefreshError
-	if errors.As(err, &re); re.StatusCode != 400 {
-		t.Errorf("StatusCode = %d, want 400", re.StatusCode)
+	if !errors.As(err, &re) || re.StatusCode != 400 {
+		t.Errorf("doRequest() error = %v, want a *RefreshError with StatusCode 400", err)
 	}
 }
 
@@ -411,5 +418,48 @@ func TestClassifyTransportErrorLocalAlert(t *testing.T) {
 	var re *RefreshError
 	if !errors.As(err, &re) || re.Kind != KindTransient {
 		t.Fatalf("classifyTransportError(%v) = %v, want kind %v", in, err, KindTransient)
+	}
+}
+
+func TestRefreshErrorRedactsCodeAndSubtype(t *testing.T) {
+	e := &RefreshError{
+		Kind: KindUnknown, Code: "code " + fakeAccessToken, Subtype: "sub " + fakeRefreshToken + strings.Repeat("x", 500),
+	}
+	var logged bytes.Buffer
+	slog.New(slog.NewJSONHandler(&logged, nil)).Info("refresh", "err", e)
+	for name, text := range map[string]string{"Error()": e.Error(), "slog": logged.String()} {
+		if strings.Contains(text, fakeAccessToken) || strings.Contains(text, fakeRefreshToken) {
+			t.Errorf("%s = %q, contains a token", name, text)
+		}
+		if strings.Contains(text, strings.Repeat("x", maxDescriptionLen+1)) {
+			t.Errorf("%s = %q, want Subtype shortened to %d bytes", name, text, maxDescriptionLen)
+		}
+	}
+}
+
+func TestClassifyTransportErrorTimeouts(t *testing.T) {
+	// A timeout set on the client, not the caller's context, is transient.
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(release) }) // runs before srv.Close
+	client := &http.Client{Timeout: 50 * time.Millisecond}
+	t.Cleanup(client.CloseIdleConnections)
+
+	_, err := doRequest(t.Context(), client, newPost(t, srv.URL+"/token"))
+	if !errors.Is(err, ErrTransient) {
+		t.Fatalf("doRequest() with http.Client.Timeout error = %v, want ErrTransient", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("doRequest() error = %v, want it to wrap context.DeadlineExceeded", err)
+	}
+
+	// The same error with the caller's context done returns the context error.
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if got := classifyTransportError(ctx, err); got != context.Canceled {
+		t.Errorf("classifyTransportError(canceled ctx) = %v, want context.Canceled", got)
 	}
 }
