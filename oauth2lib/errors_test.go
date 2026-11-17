@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -333,5 +334,47 @@ func TestDoRequestServerCertUntrusted(t *testing.T) {
 	}
 	if errors.Is(err, ErrTransient) {
 		t.Error("a server certificate error must not be transient")
+	}
+}
+
+func TestClassifyTransportErrorTLSAlerts(t *testing.T) {
+	tests := []struct {
+		alert uint8
+		want  ErrorKind
+	}{
+		{42, KindAccessDenied},  // bad_certificate
+		{43, KindAccessDenied},  // unsupported_certificate
+		{44, KindAccessDenied},  // certificate_revoked
+		{45, KindAccessDenied},  // certificate_expired
+		{46, KindAccessDenied},  // certificate_unknown
+		{48, KindAccessDenied},  // unknown_ca
+		{49, KindAccessDenied},  // access_denied
+		{116, KindAccessDenied}, // certificate_required
+		{40, KindTransient},     // handshake_failure
+		{80, KindTransient},     // internal_error
+	}
+	for _, tc := range tests {
+		alert := tls.AlertError(tc.alert)
+		t.Run(alert.Error(), func(t *testing.T) {
+			// crypto/tls reports a remote alert as a *net.OpError with
+			// Op "remote error" wrapping the alert.
+			in := &net.OpError{Op: "remote error", Err: alert}
+			err := classifyTransportError(t.Context(), in)
+			var re *RefreshError
+			if !errors.As(err, &re) || re.Kind != tc.want {
+				t.Fatalf("classifyTransportError(%v) = %v, want kind %v", in, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestClassifyTransportErrorLocalAlert(t *testing.T) {
+	// The same alert text sent by the client, not the server, is not a
+	// client certificate rejection.
+	in := &net.OpError{Op: "local error", Err: tls.AlertError(42)}
+	err := classifyTransportError(t.Context(), in)
+	var re *RefreshError
+	if !errors.As(err, &re) || re.Kind != KindTransient {
+		t.Fatalf("classifyTransportError(%v) = %v, want kind %v", in, err, KindTransient)
 	}
 }

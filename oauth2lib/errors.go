@@ -246,15 +246,17 @@ func parseErrorBody(body []byte, e *RefreshError) {
 
 // clientCertAlerts are the TLS alerts a server sends when it rejects the
 // client certificate (or the lack of one).
+// The text comes from tls.AlertError, so it always matches what crypto/tls
+// reports for a remote alert (RFC 8446 section 6.2).
 var clientCertAlerts = []string{
-	"bad certificate",
-	"certificate required",
-	"unknown certificate authority",
-	"certificate expired",
-	"expired certificate",
-	"unsupported certificate",
-	"certificate revoked",
-	"access denied",
+	tls.AlertError(42).Error(),  // bad_certificate
+	tls.AlertError(43).Error(),  // unsupported_certificate
+	tls.AlertError(44).Error(),  // certificate_revoked
+	tls.AlertError(45).Error(),  // certificate_expired
+	tls.AlertError(46).Error(),  // certificate_unknown
+	tls.AlertError(48).Error(),  // unknown_ca
+	tls.AlertError(49).Error(),  // access_denied
+	tls.AlertError(116).Error(), // certificate_required
 }
 
 // classifyTransportError turns an error from http.Client.Do into the error
@@ -291,7 +293,7 @@ func isClientCertAlert(err error) bool {
 	}
 	msg := err.Error()
 	for _, a := range clientCertAlerts {
-		if strings.HasSuffix(msg, "tls: "+a) {
+		if msg == a {
 			return true
 		}
 	}
