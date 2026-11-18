@@ -344,15 +344,6 @@ func classifyTransportError(ctx context.Context, err error) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	}
-	// Keep context errors that didn't come from ctx out of the chain, so
-	// errors.Is(err, context.DeadlineExceeded) or context.Canceled only
-	// matches when the caller's own context ended.
-	switch {
-	case errors.Is(err, context.DeadlineExceeded):
-		err = &timeoutError{msg: err.Error()}
-	case errors.Is(err, context.Canceled):
-		err = errors.New(err.Error())
-	}
 	kind := KindTransient
 	var verifyErr *tls.CertificateVerificationError
 	var unknownAuthority x509.UnknownAuthorityError
@@ -371,6 +362,17 @@ func classifyTransportError(ctx context.Context, err error) error {
 		kind = KindUnknown
 	case errors.As(err, &opErr) && opErr.Op == "remote error" && isClientCertAlert(opErr.Err):
 		kind = KindAccessDenied
+	}
+	// Only now keep context errors that didn't come from ctx out of the
+	// chain, so errors.Is(err, context.DeadlineExceeded) or context.Canceled
+	// only matches when the caller's own context ended. Doing this after
+	// choosing kind means an error that also wraps ErrAccessDenied or a
+	// certificate error keeps that classification.
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		err = &timeoutError{msg: err.Error()}
+	case errors.Is(err, context.Canceled):
+		err = errors.New(err.Error())
 	}
 	return &RefreshError{Kind: kind, Err: err}
 }

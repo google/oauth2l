@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -609,5 +610,39 @@ func TestSanitizeKeepsUTF8Valid(t *testing.T) {
 	}
 	if !strings.HasSuffix(got, "...") || len(got) > maxDescriptionLen+3 {
 		t.Errorf("sanitize() = %q, want it shortened to at most %d bytes plus \"...\"", got, maxDescriptionLen)
+	}
+}
+
+func TestClassifyTransportErrorKindBeforeDetachingContext(t *testing.T) {
+	// An error can wrap both a context error that didn't come from the
+	// caller's ctx and a reason not to retry. The reason must win.
+	for _, tc := range []struct {
+		name string
+		in   error
+		want ErrorKind
+	}{
+		{"deadline and ErrAccessDenied",
+			errors.Join(context.DeadlineExceeded, fmt.Errorf("ecp signer: %w", ErrAccessDenied)), KindAccessDenied},
+		{"canceled and ErrAccessDenied",
+			fmt.Errorf("signer: %w: %w", context.Canceled, ErrAccessDenied), KindAccessDenied},
+		{"deadline and server certificate error",
+			errors.Join(context.DeadlineExceeded, &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}), KindUnknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := classifyTransportError(t.Context(), tc.in)
+			var re *RefreshError
+			if !errors.As(err, &re) || re.Kind != tc.want {
+				t.Fatalf("classifyTransportError(%v) = %v, want kind %v", tc.in, err, tc.want)
+			}
+			if errors.Is(err, ErrTransient) {
+				t.Errorf("classifyTransportError(%v) = %v, must not be transient", tc.in, err)
+			}
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				t.Errorf("classifyTransportError(%v) = %v, still matches a context sentinel", tc.in, err)
+			}
+			if tc.want == KindAccessDenied && !errors.Is(err, ErrAccessDenied) {
+				t.Errorf("classifyTransportError(%v) = %v, want it to match ErrAccessDenied", tc.in, err)
+			}
+		})
 	}
 }
