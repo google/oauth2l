@@ -19,7 +19,8 @@ oauth2l repository, released with its own tags (`oauth2lib/vX.Y.Z`).
 - `Impersonate` (IAM `generateAccessToken` with delegates, scopes and lifetime)
   and `ParseImpersonatedServiceAccountJSON`.
 - `RefreshError` with a kind (reauth required, access denied, invalid grant,
-  transient, unknown) and an `errors.Is` sentinel for each kind except unknown.
+  transient, unknown) and an `errors.Is` sentinel for each kind except unknown,
+  plus `ErrCAADenied` for Context-Aware Access denials.
 
 Not planned for v0.1.0: `external_account` and
 `external_account_authorized_user` credentials, login flows, token caching, and

@@ -30,7 +30,7 @@
 //   - Impersonate (IAM generateAccessToken) and
 //     ParseImpersonatedServiceAccountJSON.
 //   - RefreshError, with a kind and an errors.Is sentinel for each kind
-//     except unknown.
+//     except unknown, plus ErrCAADenied for Context-Aware Access denials.
 //
 // Planned behavior:
 //
