@@ -201,7 +201,8 @@ func (p *userTokenProvider) parseResponse(body []byte, sentRefreshToken, rapt st
 	}
 	expiresIn, err := parseExpiresIn(resp.ExpiresIn)
 	if err != nil {
-		return nil, &RefreshError{Kind: KindUnknown, Description: err.Error()}
+		// The parse error quotes the server's expires_in value.
+		return nil, &RefreshError{Kind: KindUnknown, Description: redact(err.Error())}
 	}
 
 	metadata := map[string]interface{}{}
