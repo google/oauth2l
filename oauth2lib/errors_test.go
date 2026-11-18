@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -31,6 +32,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // fakeResponse is a canned answer from fakeServer.
@@ -121,6 +123,8 @@ var (
 	fakeAccessToken  = "ya" + "29.a0AfH6SMfakeAccessToken"
 	fakeRefreshToken = "1" + "//0gfakeRefreshToken"
 	fakeJWT          = "ey" + "JhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJl"
+	fakeClientSecret = "GOC" + "SPX-fakeClientSecret"
+	fakeEncodedRT    = "1" + "%2F%2F0gfakeRefreshToken"
 )
 
 func TestClassifyResponse(t *testing.T) {
@@ -265,7 +269,7 @@ func TestRefreshErrorText(t *testing.T) {
 func TestRefreshErrorRedaction(t *testing.T) {
 	desc := fmt.Sprintf("bad token %s, refresh %s, jwt %s", fakeAccessToken, fakeRefreshToken, fakeJWT)
 	e := &RefreshError{
-		Kind: KindUnknown, Description: desc + strings.Repeat("x", 500), StatusCode: 400,
+		Kind: KindUnknown, Description: desc + " " + strings.Repeat("x", 500), StatusCode: 400,
 		Err: fmt.Errorf("transport saw %s", fakeAccessToken),
 	}
 	var logged bytes.Buffer
@@ -423,7 +427,7 @@ func TestClassifyTransportErrorLocalAlert(t *testing.T) {
 
 func TestRefreshErrorRedactsCodeAndSubtype(t *testing.T) {
 	e := &RefreshError{
-		Kind: KindUnknown, Code: "code " + fakeAccessToken, Subtype: "sub " + fakeRefreshToken + strings.Repeat("x", 500),
+		Kind: KindUnknown, Code: "code " + fakeAccessToken, Subtype: "sub " + fakeRefreshToken + " " + strings.Repeat("x", 500),
 	}
 	var logged bytes.Buffer
 	slog.New(slog.NewJSONHandler(&logged, nil)).Info("refresh", "err", e)
@@ -452,8 +456,13 @@ func TestClassifyTransportErrorTimeouts(t *testing.T) {
 	if !errors.Is(err, ErrTransient) {
 		t.Fatalf("doRequest() with http.Client.Timeout error = %v, want ErrTransient", err)
 	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("doRequest() error = %v, want it to wrap context.DeadlineExceeded", err)
+	// A client timeout must not look like the caller's context ending.
+	if errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("doRequest() error = %v matches context.DeadlineExceeded, want it not to", err)
+	}
+	var netErr net.Error
+	if !errors.As(err, &netErr) || !netErr.Timeout() {
+		t.Errorf("doRequest() error = %v, want a net.Error with Timeout() true", err)
 	}
 
 	// The same error with the caller's context done returns the context error.
@@ -461,5 +470,144 @@ func TestClassifyTransportErrorTimeouts(t *testing.T) {
 	cancel()
 	if got := classifyTransportError(ctx, err); got != context.Canceled {
 		t.Errorf("classifyTransportError(canceled ctx) = %v, want context.Canceled", got)
+	}
+}
+
+func TestClassifyTransportErrorWrappedAccessDenied(t *testing.T) {
+	in := fmt.Errorf("ecp signer: %w", ErrAccessDenied)
+	err := classifyTransportError(t.Context(), in)
+	var re *RefreshError
+	if !errors.As(err, &re) || re.Kind != KindAccessDenied {
+		t.Fatalf("classifyTransportError(%v) = %v, want kind %v", in, err, KindAccessDenied)
+	}
+	if errors.Is(err, ErrTransient) {
+		t.Error("an error wrapping ErrAccessDenied must not be transient")
+	}
+}
+
+func TestDoRequestClientCertCallbackDenied(t *testing.T) {
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler reached without a client certificate")
+	}))
+	srv.TLS = &tls.Config{ClientAuth: tls.RequireAnyClientCert}
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+
+	// The client trusts the server, but its certificate callback refuses to
+	// provide a certificate, as an Enterprise Certificate Proxy might.
+	tr := srv.Client().Transport.(*http.Transport).Clone()
+	tr.TLSClientConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+		return nil, fmt.Errorf("device not trusted: %w", ErrAccessDenied)
+	}
+	client := &http.Client{Transport: tr}
+	t.Cleanup(client.CloseIdleConnections)
+
+	_, err := doRequest(t.Context(), client, newPost(t, srv.URL+"/token"))
+	var re *RefreshError
+	if !errors.As(err, &re) || re.Kind != KindAccessDenied {
+		t.Fatalf("doRequest() error = %v, want kind %v", err, KindAccessDenied)
+	}
+	if errors.Is(err, ErrTransient) {
+		t.Error("a refused client certificate must not be transient")
+	}
+}
+
+func TestClassifyResponseRetryableDescription(t *testing.T) {
+	for _, body := range []string{
+		`{"error_description":"internal_failure"}`,
+		`{"error":"invalid_request","error_description":"temporarily_unavailable"}`,
+	} {
+		e := classifyResponse(400, []byte(body))
+		if e.Kind != KindTransient {
+			t.Errorf("classifyResponse(400, %s) kind = %v, want %v", body, e.Kind, KindTransient)
+		}
+	}
+	e := classifyResponse(400, []byte(`{"error_subtype":"s","error_description":"something"}`))
+	if e.Kind != KindUnknown || e.Subtype != "s" || e.Description != "something" {
+		t.Errorf("classifyResponse without error = %+v, want KindUnknown with subtype and description kept", *e)
+	}
+}
+
+func TestClassifyResponseRedactsFields(t *testing.T) {
+	body := fmt.Sprintf(`{"error":"access_denied","error_subtype":"%s","error_description":"Account restricted; secret %s token %s"}`,
+		fakeEncodedRT, fakeClientSecret, fakeAccessToken)
+	e := classifyResponse(400, []byte(body))
+	b, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, text := range map[string]string{
+		"Subtype": e.Subtype, "Description": e.Description, "%#v": fmt.Sprintf("%#v", e), "json": string(b),
+	} {
+		for _, secret := range []string{fakeEncodedRT, fakeClientSecret, fakeAccessToken} {
+			if strings.Contains(text, secret) {
+				t.Errorf("%s contains secret %q: %s", name, secret, text)
+			}
+		}
+	}
+	if !errors.Is(e, ErrCAADenied) {
+		t.Errorf("classifyResponse() = %v, want it to still match ErrCAADenied after redaction", e)
+	}
+}
+
+func TestSanitizeNewPatterns(t *testing.T) {
+	for _, secret := range []string{fakeClientSecret, fakeEncodedRT, "1" + "%2f%2f0glowercase"} {
+		if got := sanitize("value=" + secret + "&x=1"); strings.Contains(got, secret) || !strings.Contains(got, "[REDACTED]") {
+			t.Errorf("sanitize(%q) = %q, want the secret redacted", secret, got)
+		}
+	}
+}
+
+func TestDoRequestOversizedBody(t *testing.T) {
+	big := strings.Repeat("a", maxResponseBody+1)
+	srv := newFakeServer(t,
+		fakeResponse{body: big},
+		fakeResponse{status: 502, contentType: "text/html", body: big},
+	)
+	_, err := doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
+	var re *RefreshError
+	if !errors.As(err, &re) || re.Kind != KindUnknown || re.StatusCode != 200 ||
+		!strings.Contains(err.Error(), "response body exceeded") {
+		t.Errorf("oversized 2xx: doRequest() error = %v, want a KindUnknown size-limit error with status 200", err)
+	}
+	_, err = doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
+	if !errors.Is(err, ErrTransient) {
+		t.Errorf("oversized 502: doRequest() error = %v, want ErrTransient", err)
+	}
+}
+
+func TestClassifyTransportErrorForeignContextErrors(t *testing.T) {
+	// Context errors that did not come from the caller's ctx are transient
+	// and no longer match the context sentinels.
+	for _, in := range []error{
+		fmt.Errorf("Post %q: %w", "https://example.com/token", context.DeadlineExceeded),
+		fmt.Errorf("Post %q: %w", "https://example.com/token", context.Canceled),
+	} {
+		err := classifyTransportError(t.Context(), in)
+		if !errors.Is(err, ErrTransient) {
+			t.Errorf("classifyTransportError(%v) = %v, want ErrTransient", in, err)
+		}
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			t.Errorf("classifyTransportError(%v) = %v, still matches a context sentinel", in, err)
+		}
+		if !strings.Contains(err.Error(), in.Error()) {
+			t.Errorf("classifyTransportError(%v).Error() = %q, want the original message kept", in, err.Error())
+		}
+	}
+	var netErr net.Error
+	err := classifyTransportError(t.Context(), context.DeadlineExceeded)
+	if !errors.As(err, &netErr) || !netErr.Timeout() || !netErr.Temporary() {
+		t.Errorf("classifyTransportError(DeadlineExceeded) = %v, want a timeout net.Error", err)
+	}
+}
+
+func TestSanitizeKeepsUTF8Valid(t *testing.T) {
+	s := strings.Repeat("a", maxDescriptionLen-1) + "é" + strings.Repeat("b", 10)
+	got := sanitize(s)
+	if !utf8.ValidString(got) {
+		t.Errorf("sanitize() = %q, not valid UTF-8", got)
+	}
+	if !strings.HasSuffix(got, "...") || len(got) > maxDescriptionLen+3 {
+		t.Errorf("sanitize() = %q, want it shortened to at most %d bytes plus \"...\"", got, maxDescriptionLen)
 	}
 }
