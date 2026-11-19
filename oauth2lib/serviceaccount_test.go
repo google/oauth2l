@@ -367,6 +367,8 @@ func TestNewServiceAccountTokenProviderErrors(t *testing.T) {
 		{"missing fields", Config{JSON: saJSON(t, map[string]any{"client_email": nil, "private_key": nil}), Client: client}, "missing client_email, private_key"},
 		{"bad key", Config{JSON: saJSON(t, map[string]any{"private_key": "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n"}), Client: client}, "not a PKCS #8"},
 		{"self-signed without scopes", Config{JSON: saJSON(t, nil), Client: client, UseSelfSignedJWT: true}, "needs Config.Scopes"},
+		{"relative token URL", Config{JSON: saJSON(t, nil), TokenURL: "/token", Client: client}, "token URL must be"},
+		{"token_uri without host", Config{JSON: saJSON(t, map[string]any{"token_uri": "https:///token"}), Client: client}, "token URL must be"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := newServiceAccountTokenProvider(&tc.cfg)

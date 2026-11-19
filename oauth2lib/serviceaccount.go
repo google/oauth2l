@@ -132,6 +132,9 @@ func newServiceAccountTokenProvider(cfg *Config) (*serviceAccountTokenProvider, 
 	if p.tokenURL == "" {
 		p.tokenURL = defaultTokenURL
 	}
+	if err := validateTokenURL(p.tokenURL); err != nil {
+		return nil, err
+	}
 	tp, err := auth.New2LOTokenProvider(&auth.Options2LO{
 		Email:        f.ClientEmail,
 		PrivateKey:   []byte(f.PrivateKey),
