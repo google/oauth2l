@@ -404,23 +404,23 @@ func isClientCertAlert(err error) bool {
 // by its status.
 const maxResponseBody = 1 << 20
 
-// doRequest sends req with client and returns the body of a 2xx response.
-// Any failure is returned as classifyTransportError or classifyResponse
-// describes.
-func doRequest(ctx context.Context, client *http.Client, req *http.Request) ([]byte, error) {
+// doRequest sends req with client and returns the status code and body of a
+// 2xx response. Any failure is returned as classifyTransportError or
+// classifyResponse describes.
+func doRequest(ctx context.Context, client *http.Client, req *http.Request) (int, []byte, error) {
 	resp, err := client.Do(req.WithContext(ctx))
 	if err != nil {
-		return nil, classifyTransportError(ctx, err)
+		return 0, nil, classifyTransportError(ctx, err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody+1))
 	if err != nil {
-		return nil, classifyTransportError(ctx, err)
+		return 0, nil, classifyTransportError(ctx, err)
 	}
 	ok := resp.StatusCode >= 200 && resp.StatusCode <= 299
 	if len(body) > maxResponseBody {
 		if ok {
-			return nil, &RefreshError{
+			return 0, nil, &RefreshError{
 				Kind:       KindUnknown,
 				StatusCode: resp.StatusCode,
 				Err:        fmt.Errorf("response body exceeded %d bytes", maxResponseBody),
@@ -429,7 +429,7 @@ func doRequest(ctx context.Context, client *http.Client, req *http.Request) ([]b
 		body = body[:maxResponseBody]
 	}
 	if !ok {
-		return nil, classifyResponse(resp.StatusCode, body)
+		return 0, nil, classifyResponse(resp.StatusCode, body)
 	}
-	return body, nil
+	return resp.StatusCode, body, nil
 }
