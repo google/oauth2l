@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -99,7 +100,7 @@ func newUserTokenProvider(cfg *Config) (*userTokenProvider, error) {
 		return nil, fmt.Errorf("oauth2lib: authorized_user JSON is missing %s", strings.Join(missing, ", "))
 	}
 	scopes := cfg.Scopes
-	if scopes == nil {
+	if len(scopes) == 0 {
 		s, err := parseJSONScopes(f.Scopes)
 		if err != nil {
 			return nil, err
@@ -112,6 +113,9 @@ func newUserTokenProvider(cfg *Config) (*userTokenProvider, error) {
 	}
 	if tokenURL == "" {
 		tokenURL = defaultTokenURL
+	}
+	if err := validateTokenURL(tokenURL); err != nil {
+		return nil, err
 	}
 	return &userTokenProvider{
 		client:       cfg.Client,
@@ -132,13 +136,30 @@ func parseJSONScopes(raw json.RawMessage) ([]string, error) {
 	}
 	var list []string
 	if err := json.Unmarshal(raw, &list); err == nil {
-		return list, nil
+		var scopes []string
+		for _, s := range list {
+			if s = strings.TrimSpace(s); s != "" {
+				scopes = append(scopes, s)
+			}
+		}
+		return scopes, nil
 	}
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
 		return strings.Fields(s), nil
 	}
 	return nil, errors.New(`oauth2lib: authorized_user JSON "scopes" must be a list or a space-separated string`)
+}
+
+// validateTokenURL rejects token URLs that could never be sent, so that a
+// bad Config.TokenURL or token_uri fails when the credentials are built
+// rather than on the first Token call. The URL is not included in the error.
+func validateTokenURL(tokenURL string) error {
+	u, err := url.Parse(tokenURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return errors.New("oauth2lib: token URL must be an absolute URL with a scheme and host")
+	}
+	return nil
 }
 
 // Token sends a refresh_token grant and returns the new access token.
@@ -174,11 +195,11 @@ func (p *userTokenProvider) Token(ctx context.Context) (*auth.Token, error) {
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	body, err := doRequest(ctx, p.client, req)
+	status, body, err := doRequest(ctx, p.client, req)
 	if err != nil {
 		return nil, err
 	}
-	return p.parseResponse(body, refreshToken, rapt)
+	return p.parseResponse(status, body, refreshToken, rapt)
 }
 
 // userTokenResponse is a successful refresh_token grant response.
@@ -191,18 +212,17 @@ type userTokenResponse struct {
 	Scope        *string         `json:"scope"`
 }
 
-func (p *userTokenProvider) parseResponse(body []byte, sentRefreshToken, rapt string) (*auth.Token, error) {
+func (p *userTokenProvider) parseResponse(status int, body []byte, sentRefreshToken, rapt string) (*auth.Token, error) {
 	var resp userTokenResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, &RefreshError{Kind: KindUnknown, Description: "token response is not valid JSON"}
+		return nil, &RefreshError{Kind: KindUnknown, StatusCode: status, Description: "token response is not valid JSON"}
 	}
 	if resp.AccessToken == "" {
-		return nil, &RefreshError{Kind: KindUnknown, Description: "token response has no access_token"}
+		return nil, &RefreshError{Kind: KindUnknown, StatusCode: status, Description: "token response has no access_token"}
 	}
-	expiresIn, err := parseExpiresIn(resp.ExpiresIn)
-	if err != nil {
-		// The parse error quotes the server's expires_in value.
-		return nil, &RefreshError{Kind: KindUnknown, Description: redact(err.Error())}
+	expiresIn, ok := parseExpiresIn(resp.ExpiresIn)
+	if !ok {
+		return nil, &RefreshError{Kind: KindUnknown, StatusCode: status, Description: "token response has an invalid expires_in"}
 	}
 
 	metadata := map[string]interface{}{}
@@ -226,7 +246,8 @@ func (p *userTokenProvider) parseResponse(body []byte, sentRefreshToken, rapt st
 	if len(p.scopes) > 0 && resp.Scope != nil {
 		if missing := missingScopes(p.scopes, *resp.Scope); len(missing) > 0 {
 			return nil, &RefreshError{
-				Kind: KindInvalidGrant,
+				Kind:       KindInvalidGrant,
+				StatusCode: status,
 				Description: "Not all requested scopes were granted by the authorization server, missing scopes " +
 					strings.Join(missing, ", ") + ".",
 			}
@@ -247,23 +268,31 @@ func (p *userTokenProvider) parseResponse(body []byte, sentRefreshToken, rapt st
 	return tok, nil
 }
 
+// maxExpiresIn is the largest expires_in, in seconds, that fits in a
+// time.Duration.
+const maxExpiresIn = math.MaxInt64 / int64(time.Second)
+
 // parseExpiresIn reads expires_in, which some servers send as a string. It
-// returns nil if the field is missing.
-func parseExpiresIn(raw json.RawMessage) (*int64, error) {
+// returns nil, true if the field is missing, and false if the value is not
+// an integer in [0, maxExpiresIn].
+func parseExpiresIn(raw json.RawMessage) (*int64, bool) {
 	if len(raw) == 0 || string(raw) == "null" {
-		return nil, nil
+		return nil, true
 	}
 	var n int64
-	if err := json.Unmarshal(raw, &n); err == nil {
-		return &n, nil
-	}
-	var s string
-	if err := json.Unmarshal(raw, &s); err == nil {
-		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
-			return &n, nil
+	if err := json.Unmarshal(raw, &n); err != nil {
+		var s string
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return nil, false
+		}
+		if n, err = strconv.ParseInt(s, 10, 64); err != nil {
+			return nil, false
 		}
 	}
-	return nil, errors.New("token response has an invalid expires_in")
+	if n < 0 || n > maxExpiresIn {
+		return nil, false
+	}
+	return &n, true
 }
 
 // missingScopes returns the requested scopes that granted (a space-separated

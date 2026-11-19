@@ -114,7 +114,8 @@ func TestUserTokenScopes(t *testing.T) {
 		{"json_list", []string{"a", "b"}, nil, "a b"},
 		{"json_string", "a  b", nil, "a b"},
 		{"config_overrides_json", []string{"a"}, []string{"x", "y"}, "x y"},
-		{"empty_config_overrides_json", []string{"a"}, []string{}, ""},
+		{"json_list_drops_empty_items", []string{"a", "", " b "}, nil, "a b"},
+		{"empty_config_uses_json", []string{"a"}, []string{}, "a"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -314,8 +315,8 @@ func TestUserTokenScopeGrant(t *testing.T) {
 				return
 			}
 			var re *RefreshError
-			if !errors.As(err, &re) || re.Kind != KindInvalidGrant {
-				t.Fatalf("Token() error = %v, want a KindInvalidGrant RefreshError", err)
+			if !errors.As(err, &re) || re.Kind != KindInvalidGrant || re.StatusCode != 200 {
+				t.Fatalf("Token() error = %v, want a KindInvalidGrant RefreshError with StatusCode 200", err)
 			}
 			if want := "missing scopes b."; !strings.Contains(re.Description, want) {
 				t.Errorf("Token() error description = %q, want it to contain %q", re.Description, want)
@@ -333,6 +334,9 @@ func TestUserTokenBadResponses(t *testing.T) {
 		{"no_access_token", `{"token_type":"Bearer"}`, "no access_token"},
 		{"not_json", `<html>ok</html>`, "not valid JSON"},
 		{"bad_expires_in", `{"access_token":"at","expires_in":"soon"}`, "invalid expires_in"},
+		{"negative_expires_in", `{"access_token":"at","expires_in":-1}`, "invalid expires_in"},
+		{"overflowing_expires_in", `{"access_token":"at","expires_in":9223372037}`, "invalid expires_in"},
+		{"overflowing_expires_in_string", `{"access_token":"at","expires_in":"9223372037"}`, "invalid expires_in"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -341,6 +345,9 @@ func TestUserTokenBadResponses(t *testing.T) {
 			var re *RefreshError
 			if !errors.As(err, &re) || re.Kind != KindUnknown || !strings.Contains(re.Description, tc.want) {
 				t.Fatalf("Token() error = %v, want a KindUnknown RefreshError mentioning %q", err, tc.want)
+			}
+			if re.StatusCode != 200 {
+				t.Errorf("Token() error StatusCode = %d, want 200", re.StatusCode)
 			}
 		})
 	}
@@ -378,6 +385,9 @@ func TestNewUserTokenProviderErrors(t *testing.T) {
 		{"wrong_type", Config{JSON: userJSON(t, map[string]any{"type": "service_account"}), Client: client}, `"service_account", want authorized_user`},
 		{"missing_fields", Config{JSON: userJSON(t, map[string]any{"client_secret": nil, "refresh_token": ""}), Client: client}, "missing client_secret, refresh_token"},
 		{"bad_scopes", Config{JSON: userJSON(t, map[string]any{"scopes": 7}), Client: client}, `"scopes" must be`},
+		{"relative_token_url", Config{JSON: userJSON(t, nil), TokenURL: "/token", Client: client}, "token URL must be"},
+		{"unparsable_token_uri", Config{JSON: userJSON(t, map[string]any{"token_uri": "https://a b\x7f/"}), Client: client}, "token URL must be"},
+		{"token_uri_without_host", Config{JSON: userJSON(t, map[string]any{"token_uri": "https:///token"}), Client: client}, "token URL must be"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

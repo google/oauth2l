@@ -306,12 +306,12 @@ func TestErrorKindString(t *testing.T) {
 
 func TestDoRequestSuccess(t *testing.T) {
 	srv := newFakeServer(t, fakeResponse{body: `{"access_token":"x","expires_in":3600}`})
-	body, err := doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
+	status, body, err := doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
 	if err != nil {
 		t.Fatalf("doRequest() error = %v", err)
 	}
-	if string(body) != `{"access_token":"x","expires_in":3600}` {
-		t.Errorf("body = %s", body)
+	if status != 200 || string(body) != `{"access_token":"x","expires_in":3600}` {
+		t.Errorf("doRequest() = %d, %s; want 200 and the response body", status, body)
 	}
 	if got := srv.forms[0].Get("grant_type"); got != "refresh_token" {
 		t.Errorf("server got grant_type %q, want refresh_token", got)
@@ -320,7 +320,7 @@ func TestDoRequestSuccess(t *testing.T) {
 
 func TestDoRequestErrorResponse(t *testing.T) {
 	srv := newFakeServer(t, fakeResponse{status: 400, body: `{"error":"invalid_grant","error_subtype":"rapt_required"}`})
-	_, err := doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
+	_, _, err := doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
 	if !errors.Is(err, ErrReauthRequired) {
 		t.Fatalf("doRequest() error = %v, want ErrReauthRequired", err)
 	}
@@ -332,7 +332,7 @@ func TestDoRequestErrorResponse(t *testing.T) {
 
 func TestDoRequestClosedConnection(t *testing.T) {
 	srv := newFakeServer(t, fakeResponse{closeConn: true})
-	_, err := doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
+	_, _, err := doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
 	if !errors.Is(err, ErrTransient) {
 		t.Fatalf("doRequest() error = %v, want ErrTransient", err)
 	}
@@ -342,7 +342,7 @@ func TestDoRequestContextCanceled(t *testing.T) {
 	srv := newFakeServer(t, fakeResponse{delay: time.Hour})
 	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 	defer cancel()
-	_, err := doRequest(ctx, srv.Client(), newPost(t, srv.URL+"/token"))
+	_, _, err := doRequest(ctx, srv.Client(), newPost(t, srv.URL+"/token"))
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("doRequest() error = %v, want context.DeadlineExceeded", err)
 	}
@@ -362,7 +362,7 @@ func TestDoRequestClientCertRejected(t *testing.T) {
 
 	// srv.Client trusts the server's certificate but presents no client
 	// certificate, so the server rejects the handshake.
-	_, err := doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
+	_, _, err := doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
 	if !errors.Is(err, ErrAccessDenied) {
 		t.Fatalf("doRequest() error = %v, want ErrAccessDenied", err)
 	}
@@ -374,7 +374,7 @@ func TestDoRequestServerCertUntrusted(t *testing.T) {
 	client := &http.Client{Transport: &http.Transport{}}
 	t.Cleanup(client.CloseIdleConnections)
 
-	_, err := doRequest(t.Context(), client, newPost(t, srv.URL+"/token"))
+	_, _, err := doRequest(t.Context(), client, newPost(t, srv.URL+"/token"))
 	var re *RefreshError
 	if !errors.As(err, &re) || re.Kind != KindUnknown {
 		t.Fatalf("doRequest() error = %v, want a KindUnknown RefreshError", err)
@@ -453,7 +453,7 @@ func TestClassifyTransportErrorTimeouts(t *testing.T) {
 	client := &http.Client{Timeout: 50 * time.Millisecond}
 	t.Cleanup(client.CloseIdleConnections)
 
-	_, err := doRequest(t.Context(), client, newPost(t, srv.URL+"/token"))
+	_, _, err := doRequest(t.Context(), client, newPost(t, srv.URL+"/token"))
 	if !errors.Is(err, ErrTransient) {
 		t.Fatalf("doRequest() with http.Client.Timeout error = %v, want ErrTransient", err)
 	}
@@ -503,7 +503,7 @@ func TestDoRequestClientCertCallbackDenied(t *testing.T) {
 	client := &http.Client{Transport: tr}
 	t.Cleanup(client.CloseIdleConnections)
 
-	_, err := doRequest(t.Context(), client, newPost(t, srv.URL+"/token"))
+	_, _, err := doRequest(t.Context(), client, newPost(t, srv.URL+"/token"))
 	var re *RefreshError
 	if !errors.As(err, &re) || re.Kind != KindAccessDenied {
 		t.Fatalf("doRequest() error = %v, want kind %v", err, KindAccessDenied)
@@ -565,13 +565,13 @@ func TestDoRequestOversizedBody(t *testing.T) {
 		fakeResponse{body: big},
 		fakeResponse{status: 502, contentType: "text/html", body: big},
 	)
-	_, err := doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
+	_, _, err := doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
 	var re *RefreshError
 	if !errors.As(err, &re) || re.Kind != KindUnknown || re.StatusCode != 200 ||
 		!strings.Contains(err.Error(), "response body exceeded") {
 		t.Errorf("oversized 2xx: doRequest() error = %v, want a KindUnknown size-limit error with status 200", err)
 	}
-	_, err = doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
+	_, _, err = doRequest(t.Context(), srv.Client(), newPost(t, srv.URL+"/token"))
 	if !errors.Is(err, ErrTransient) {
 		t.Errorf("oversized 502: doRequest() error = %v, want ErrTransient", err)
 	}

@@ -17,6 +17,7 @@ package oauth2lib
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 )
@@ -27,8 +28,8 @@ type Config struct {
 	// JSON is the credential file: authorized_user, service_account or
 	// impersonated_service_account.
 	JSON []byte
-	// Scopes are sent with every token request. If nil, the JSON's "scopes"
-	// field is used, if any.
+	// Scopes are sent with every token request. If empty, the JSON's
+	// "scopes" field is used, if any.
 	Scopes []string
 	// TokenURL overrides the JSON's token_uri for authorized_user and
 	// service_account credentials. If empty, the JSON's token_uri is used,
@@ -49,4 +50,24 @@ type Config struct {
 	UseSelfSignedJWT bool
 	// Logger receives debug logs. Nil discards them.
 	Logger *slog.Logger
+}
+
+// String describes c without the contents of JSON, which holds secrets
+// (refresh tokens, client secrets or private keys).
+func (c Config) String() string {
+	return fmt.Sprintf("oauth2lib.Config{TokenURL:%q UniverseDomain:%q Scopes:%q JSON:[REDACTED %d bytes]}",
+		c.TokenURL, c.UniverseDomain, c.Scopes, len(c.JSON))
+}
+
+// GoString makes %#v print the same as String, so it does not dump JSON.
+func (c Config) GoString() string { return c.String() }
+
+// LogValue implements slog.LogValuer without the contents of JSON.
+func (c Config) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("token_url", c.TokenURL),
+		slog.String("universe_domain", c.UniverseDomain),
+		slog.Any("scopes", c.Scopes),
+		slog.Int("json_bytes", len(c.JSON)),
+	)
 }
