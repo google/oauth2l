@@ -217,6 +217,13 @@ func (lh *AuthorizationCodeLocalhost) WaitForConsentPageToReturnControl() (err e
 		return fmt.Errorf("Server has not been set.")
 	}
 
+	lh.mu.Lock()
+	status := lh.AuthCodeReqStatus.Status
+	lh.mu.Unlock()
+	if status != WAITING {
+		return nil
+	}
+
 	timer := time.NewTimer(lh.ConsentPageSettings.InteractionTimeout)
 	defer timer.Stop()
 

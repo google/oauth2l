@@ -39,23 +39,32 @@ func startLocalhost(t *testing.T, timeout time.Duration) *AuthorizationCodeLocal
 }
 
 // redirect sends the request the consent page would send to the loopback
-// server, from another goroutine, like the browser does.
-func redirect(t *testing.T, lh *AuthorizationCodeLocalhost, query string) {
-	t.Helper()
+// server, from another goroutine, like the browser does. The returned channel
+// receives the result of the request once it completes.
+func redirect(lh *AuthorizationCodeLocalhost, query string) <-chan error {
 	url := lh.addr + "/?" + query
+	errc := make(chan error, 1)
 	go func() {
 		resp, err := http.Get(url)
-		if err != nil {
-			t.Errorf("http.Get(%q) failed: %v", url, err)
-			return
+		if err == nil {
+			resp.Body.Close()
 		}
-		resp.Body.Close()
+		errc <- err
 	}()
+	return errc
+}
+
+func waitForRedirect(t *testing.T, errc <-chan error) {
+	t.Helper()
+	if err := <-errc; err != nil {
+		t.Errorf("redirect request failed: %v", err)
+	}
 }
 
 func TestWaitForConsentPageToReturnControlGranted(t *testing.T) {
 	lh := startLocalhost(t, time.Minute)
-	redirect(t, lh, "code=test-code&state=test-state")
+	errc := redirect(lh, "code=test-code&state=test-state")
+	defer waitForRedirect(t, errc)
 
 	start := time.Now()
 	if err := lh.WaitForConsentPageToReturnControl(); err != nil {
@@ -63,6 +72,14 @@ func TestWaitForConsentPageToReturnControlGranted(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed > 30*time.Second {
 		t.Errorf("WaitForConsentPageToReturnControl() took %v", elapsed)
+	}
+	// A second call returns right away, since the status is already set.
+	start = time.Now()
+	if err := lh.WaitForConsentPageToReturnControl(); err != nil {
+		t.Fatalf("second WaitForConsentPageToReturnControl() = %v, want nil", err)
+	}
+	if elapsed := time.Since(start); elapsed > 30*time.Second {
+		t.Errorf("second WaitForConsentPageToReturnControl() took %v", elapsed)
 	}
 	code, err := lh.GetAuthenticationCode()
 	if err != nil {
@@ -75,7 +92,8 @@ func TestWaitForConsentPageToReturnControlGranted(t *testing.T) {
 
 func TestWaitForConsentPageToReturnControlError(t *testing.T) {
 	lh := startLocalhost(t, time.Minute)
-	redirect(t, lh, "error=access_denied")
+	errc := redirect(lh, "error=access_denied")
+	defer waitForRedirect(t, errc)
 
 	if err := lh.WaitForConsentPageToReturnControl(); err != nil {
 		t.Fatalf("WaitForConsentPageToReturnControl() = %v, want nil", err)
