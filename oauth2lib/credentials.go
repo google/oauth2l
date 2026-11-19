@@ -201,9 +201,6 @@ func validateConfig(cfg *Config) (*Config, credentialType, error) {
 			return nil, ct, fmt.Errorf("oauth2lib: Config.Scopes has an empty scope or one with spaces: %q", s)
 		}
 	}
-	if cfg.UniverseDomain != "" && !isHostname(cfg.UniverseDomain) {
-		return nil, ct, fmt.Errorf("oauth2lib: Config.UniverseDomain %q is not a domain name", cfg.UniverseDomain)
-	}
 	c := *cfg
 	c.JSON = bytes.Clone(cfg.JSON)
 	c.Scopes = slices.Clone(cfg.Scopes)
@@ -212,20 +209,4 @@ func validateConfig(cfg *Config) (*Config, credentialType, error) {
 
 func isSpace(r rune) bool {
 	return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\f' || r == '\v'
-}
-
-// isHostname reports whether s looks like a bare domain name such as
-// googleapis.com: no scheme, port, path or spaces.
-func isHostname(s string) bool {
-	if strings.HasPrefix(s, ".") || strings.HasSuffix(s, ".") {
-		return false
-	}
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '.':
-		default:
-			return false
-		}
-	}
-	return true
 }

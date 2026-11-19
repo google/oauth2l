@@ -173,8 +173,6 @@ func TestBuildCredentialsErrors(t *testing.T) {
 		{name: "external_account_authorized_user", cfg: &Config{Client: client, JSON: []byte(`{"type":"external_account_authorized_user"}`)}, want: "external_account_authorized_user credentials are not supported"},
 		{name: "empty_scope", cfg: &Config{Client: client, JSON: userJSON(t, nil), Scopes: []string{"a", ""}}, want: "empty scope"},
 		{name: "scope_with_space", cfg: &Config{Client: client, JSON: userJSON(t, nil), Scopes: []string{"a b"}}, want: "with spaces"},
-		{name: "universe_with_scheme", cfg: &Config{Client: client, JSON: userJSON(t, nil), UniverseDomain: "https://example.com"}, want: "not a domain name"},
-		{name: "universe_with_dot", cfg: &Config{Client: client, JSON: userJSON(t, nil), UniverseDomain: "example.com."}, want: "not a domain name"},
 		{name: "self_signed_user", cfg: &Config{Client: client, JSON: userJSON(t, nil), UseSelfSignedJWT: true}, want: "applies only to service_account"},
 		{name: "user_missing_fields", cfg: &Config{Client: client, JSON: userJSON(t, map[string]any{"client_secret": nil})}, want: "missing client_secret"},
 		{name: "user_bad_token_url", cfg: &Config{Client: client, JSON: userJSON(t, nil), TokenURL: "/token"}, want: "absolute URL"},
