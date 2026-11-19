@@ -16,19 +16,27 @@
 package oauth2lib
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdh"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"sync"
@@ -168,6 +176,14 @@ func TestServiceAccount2LORequest(t *testing.T) {
 	if claims["iss"] != testSAEmail || claims["aud"] != srv.URL+"/token" || claims["scope"] != "s1 s2" {
 		t.Errorf("JWT claims = %v, want iss %s, aud the token URL, scope \"s1 s2\"", claims, testSAEmail)
 	}
+	iat, _ := claims["iat"].(float64)
+	exp, _ := claims["exp"].(float64)
+	if d := time.Unix(int64(iat), 0).Sub(before); d < -15*time.Second || d > 5*time.Second {
+		t.Errorf("JWT iat is %v from the request, want within the last few seconds", d)
+	}
+	if exp-iat != 3600 {
+		t.Errorf("JWT exp - iat = %v, want 3600", exp-iat)
+	}
 }
 
 func TestServiceAccountEachTokenCallSendsARequest(t *testing.T) {
@@ -254,6 +270,10 @@ func TestServiceAccountErrors(t *testing.T) {
 		{"2xx_id_token_without_dots", fakeResponse{body: `{"access_token":"at","id_token":"abc"}`}, nil, KindUnknown},
 		{"2xx_overflowing_expires_in", fakeResponse{body: `{"access_token":"at","expires_in":9223372037}`}, nil, KindUnknown},
 		{"2xx_negative_expires_in", fakeResponse{body: `{"access_token":"at","expires_in":-1}`}, nil, KindUnknown},
+		{"2xx_truncated_id_token", fakeResponse{body: `{"access_token":"at","id_token":"eyJhbGciOiJSUzI1NiJ9.eyJleHAiOjE.c2ln"}`}, nil, KindUnknown},
+		{"408", fakeResponse{status: 408, body: `{"error":"timeout"}`}, ErrTransient, KindTransient},
+		{"429", fakeResponse{status: 429, body: `{"error":"rate_limited"}`}, ErrTransient, KindTransient},
+		{"caa_403", fakeResponse{status: 403, body: `{"error":"access_denied","error_description":"Account restricted"}`}, ErrCAADenied, KindAccessDenied},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newFakeServer(t, tc.resp)
@@ -336,8 +356,8 @@ func TestServiceAccountSelfSignedJWT(t *testing.T) {
 				t.Errorf("server got %d requests, want none for a self-signed JWT", n)
 			}
 			header, claims := verifyJWT(t, tok.Value)
-			if header["kid"] != "key-id-1" {
-				t.Errorf("JWT header = %v, want kid key-id-1", header)
+			if header["alg"] != "RS256" || header["kid"] != "key-id-1" {
+				t.Errorf("JWT header = %v, want RS256 with kid key-id-1", header)
 			}
 			if claims["iss"] != testSAEmail || claims["sub"] != testSAEmail || claims["scope"] != "s1 s2" {
 				t.Errorf("JWT claims = %v, want iss and sub %s and scope \"s1 s2\"", claims, testSAEmail)
@@ -361,8 +381,9 @@ func TestServiceAccountUniverseDomain(t *testing.T) {
 	}{
 		{"default", "", nil, "googleapis.com"},
 		{"json", "", "example-universe.com", "example-universe.com"},
-		{"config_overrides_json", "other.example", "example-universe.com", "other.example"},
-		{"default_config_overrides_json", "googleapis.com", "example-universe.com", "googleapis.com"},
+		{"config_without_json", "other.example", nil, "other.example"},
+		{"json_overrides_config", "other.example", "example-universe.com", "example-universe.com"},
+		{"json_overrides_default_config", "googleapis.com", "example-universe.com", "example-universe.com"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := Config{
@@ -397,15 +418,24 @@ func TestNewServiceAccountTokenProviderErrors(t *testing.T) {
 		{"wrong_type", Config{JSON: userJSON(t, nil), Client: client}, `want service_account`},
 		{"missing_fields", Config{JSON: saJSON(t, map[string]any{"client_email": nil, "private_key": nil}), Client: client}, "missing client_email, private_key"},
 		{"key_cannot_sign", Config{JSON: saJSON(t, map[string]any{"private_key": x25519PKCS8(t)}), Client: client}, "cannot sign"},
+		{"ec_pkcs8_key", Config{JSON: saJSON(t, map[string]any{"private_key": ecKeyPEM(t, true)}), Client: client}, "is an EC key"},
+		{"ec_sec1_key", Config{JSON: saJSON(t, map[string]any{"private_key": ecKeyPEM(t, false)}), Client: client}, "is an EC key"},
 		{"bad_key", Config{JSON: saJSON(t, map[string]any{"private_key": "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n"}), Client: client}, "not a PKCS #8"},
 		{"self_signed_without_scopes", Config{JSON: saJSON(t, nil), Client: client, UseSelfSignedJWT: true}, "needs Config.Scopes"},
+		{"self_signed_blank_scopes", Config{JSON: saJSON(t, nil), Client: client, UseSelfSignedJWT: true, Scopes: []string{"", " "}}, "needs Config.Scopes"},
+		{"truncated_json", Config{JSON: saJSON(t, nil)[:200], Client: client}, "parsing service_account JSON"},
 		{"relative_token_url", Config{JSON: saJSON(t, nil), TokenURL: "/token", Client: client}, "token URL must be"},
 		{"token_uri_without_host", Config{JSON: saJSON(t, map[string]any{"token_uri": "https:///token"}), Client: client}, "token URL must be"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := newServiceAccountTokenProvider(&tc.cfg)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Errorf("newServiceAccountTokenProvider() error = %v, want it to contain %q", err, tc.want)
+				t.Fatalf("newServiceAccountTokenProvider() error = %v, want it to contain %q", err, tc.want)
+			}
+			_, keyPEM := testServiceAccountKey(t)
+			keyLine := strings.Split(keyPEM, "\n")[1] // the first line of key material
+			if strings.Contains(err.Error(), "PRIVATE KEY") || strings.Contains(err.Error(), keyLine) {
+				t.Errorf("newServiceAccountTokenProvider() error = %q, which includes the private key", err)
 			}
 		})
 	}
@@ -425,12 +455,16 @@ func TestServiceAccountDoesNotLogSecrets(t *testing.T) {
 	os.Stderr = w
 	defer func() { os.Stderr = orig }()
 
+	// A debug Config.Logger must not reach go/auth either.
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
 	srv := newFakeServer(t, fakeResponse{body: `{"access_token":"secret-access-token","expires_in":3600}`})
-	p := newTestSAProvider(t, srv, Config{Scopes: []string{"s"}})
+	p := newTestSAProvider(t, srv, Config{Scopes: []string{"s"}, Logger: logger})
 	if _, err := p.Token(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	ss := newTestSAProvider(t, srv, Config{Scopes: []string{"s"}, UseSelfSignedJWT: true, JSON: saJSON(t, nil)})
+	ss := newTestSAProvider(t, srv, Config{Scopes: []string{"s"}, UseSelfSignedJWT: true, JSON: saJSON(t, nil), Logger: logger})
 	if _, err := ss.Token(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -444,6 +478,9 @@ func TestServiceAccountDoesNotLogSecrets(t *testing.T) {
 	for _, secret := range []string{"secret-access-token", "assertion", "eyJ"} {
 		if strings.Contains(string(out), secret) {
 			t.Errorf("stderr contains %q: %s", secret, out)
+		}
+		if strings.Contains(logs.String(), secret) {
+			t.Errorf("Config.Logger output contains %q: %s", secret, logs.String())
 		}
 	}
 }
@@ -532,6 +569,28 @@ func TestServiceAccountCopiesConfigSlices(t *testing.T) {
 	}
 }
 
+// ecKeyPEM returns a P-256 key in PKCS #8 ("PRIVATE KEY") or SEC 1
+// ("EC PRIVATE KEY") form.
+func ecKeyPEM(t *testing.T, pkcs8 bool) string {
+	t.Helper()
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pkcs8 {
+		der, err := x509.MarshalECPrivateKey(k)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der}))
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
+}
+
 func TestCheckPrivateKeyAcceptsKeyForms(t *testing.T) {
 	k, _ := testServiceAccountKey(t)
 	pkcs8, err := x509.MarshalPKCS8PrivateKey(k)
@@ -545,6 +604,211 @@ func TestCheckPrivateKeyAcceptsKeyForms(t *testing.T) {
 	} {
 		if err := checkPrivateKey(key); err != nil {
 			t.Errorf("checkPrivateKey(%s) = %v, want nil", name, err)
+		}
+	}
+}
+
+// newTLSTestSAProvider builds a 2LO provider whose token URL is srv's /token.
+func newTLSTestSAProvider(t *testing.T, srv *httptest.Server, client *http.Client) *serviceAccountTokenProvider {
+	t.Helper()
+	cfg := Config{
+		JSON:   saJSON(t, map[string]any{"token_uri": srv.URL + "/token"}),
+		Scopes: []string{"s"},
+		Client: client,
+	}
+	p, err := newServiceAccountTokenProvider(&cfg)
+	if err != nil {
+		t.Fatalf("newServiceAccountTokenProvider() error = %v", err)
+	}
+	return p
+}
+
+// TestServiceAccountTransportErrors checks that transport failures on the 2LO
+// path (tagTransportErrors and classify2LOError) are classified the same way
+// as doRequest classifies them for user.go.
+func TestServiceAccountTransportErrors(t *testing.T) {
+	t.Run("client_cert_callback_denied", func(t *testing.T) {
+		srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			t.Error("handler reached without a client certificate")
+		}))
+		srv.TLS = &tls.Config{ClientAuth: tls.RequireAnyClientCert}
+		srv.StartTLS()
+		t.Cleanup(srv.Close)
+		tr := srv.Client().Transport.(*http.Transport).Clone()
+		tr.TLSClientConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			return nil, fmt.Errorf("device not trusted: %w", ErrAccessDenied)
+		}
+		client := &http.Client{Transport: tr}
+		t.Cleanup(client.CloseIdleConnections)
+
+		_, err := newTLSTestSAProvider(t, srv, client).Token(t.Context())
+		var re *RefreshError
+		if !errors.As(err, &re) || re.Kind != KindAccessDenied {
+			t.Fatalf("Token() error = %v, want kind %v", err, KindAccessDenied)
+		}
+		if errors.Is(err, ErrTransient) {
+			t.Error("a refused client certificate must not be transient")
+		}
+	})
+	t.Run("client_cert_rejected", func(t *testing.T) {
+		srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			t.Error("handler reached without a client certificate")
+		}))
+		srv.TLS = &tls.Config{ClientAuth: tls.RequireAnyClientCert}
+		srv.StartTLS()
+		t.Cleanup(srv.Close)
+
+		_, err := newTLSTestSAProvider(t, srv, srv.Client()).Token(t.Context())
+		if !errors.Is(err, ErrAccessDenied) {
+			t.Fatalf("Token() error = %v, want ErrAccessDenied", err)
+		}
+	})
+	t.Run("server_cert_untrusted", func(t *testing.T) {
+		srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		t.Cleanup(srv.Close)
+		client := &http.Client{Transport: &http.Transport{}}
+		t.Cleanup(client.CloseIdleConnections)
+
+		_, err := newTLSTestSAProvider(t, srv, client).Token(t.Context())
+		var re *RefreshError
+		if !errors.As(err, &re) || re.Kind != KindUnknown {
+			t.Fatalf("Token() error = %v, want a KindUnknown RefreshError", err)
+		}
+		if errors.Is(err, ErrTransient) {
+			t.Error("a server certificate error must not be transient")
+		}
+	})
+	t.Run("client_timeout", func(t *testing.T) {
+		release := make(chan struct{})
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			<-release
+		}))
+		t.Cleanup(srv.Close)
+		t.Cleanup(func() { close(release) }) // runs before srv.Close
+		client := &http.Client{Timeout: 50 * time.Millisecond}
+		t.Cleanup(client.CloseIdleConnections)
+
+		_, err := newTLSTestSAProvider(t, srv, client).Token(t.Context())
+		if !errors.Is(err, ErrTransient) {
+			t.Fatalf("Token() with http.Client.Timeout error = %v, want ErrTransient", err)
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("Token() error = %v matches context.DeadlineExceeded, want it not to", err)
+		}
+		var netErr net.Error
+		if !errors.As(err, &netErr) || !netErr.Timeout() {
+			t.Errorf("Token() error = %v, want a net.Error with Timeout() true", err)
+		}
+	})
+}
+
+func TestServiceAccountZeroExpiresIn(t *testing.T) {
+	srv := newFakeServer(t, fakeResponse{body: `{"access_token":"at","expires_in":0}`})
+	p := newTestSAProvider(t, srv, Config{Scopes: []string{"s"}})
+	before := time.Now()
+	tok, err := p.Token(t.Context())
+	if err != nil {
+		t.Fatalf("Token() error = %v", err)
+	}
+	if tok.Expiry.IsZero() || tok.Expiry.Before(before) || tok.Expiry.After(time.Now()) {
+		t.Errorf("Expiry = %v, want the time of the call (expires_in 0)", tok.Expiry)
+	}
+	if tok.IsValid() {
+		t.Error("IsValid() = true for expires_in 0, want false")
+	}
+}
+
+func TestServiceAccount2LOScopesDropBlankItems(t *testing.T) {
+	srv := newFakeServer(t, fakeResponse{body: `{"access_token":"at","expires_in":3600}`})
+	p := newTestSAProvider(t, srv, Config{Scopes: []string{" s1 ", "", "s2"}})
+	if _, err := p.Token(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	_, claims := verifyJWT(t, srv.recordedForms()[0].Get("assertion"))
+	if claims["scope"] != "s1 s2" {
+		t.Errorf("JWT scope = %v, want \"s1 s2\"", claims["scope"])
+	}
+}
+
+// newSelfSignedProvider builds a self-signed JWT provider whose client fails
+// the test on any request.
+func newSelfSignedProvider(t *testing.T, cfg Config) *serviceAccountTokenProvider {
+	t.Helper()
+	cfg.UseSelfSignedJWT = true
+	if cfg.JSON == nil {
+		cfg.JSON = saJSON(t, nil)
+	}
+	if cfg.Scopes == nil {
+		cfg.Scopes = []string{"s"}
+	}
+	return newTestSAProvider(t, newFakeServer(t), cfg)
+}
+
+func TestServiceAccountSelfSignedJWTConcurrentTokens(t *testing.T) {
+	p := newSelfSignedProvider(t, Config{})
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tok, err := p.Token(t.Context())
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if _, claims := verifyJWT(t, tok.Value); claims["iss"] != testSAEmail {
+				t.Errorf("JWT iss = %v, want %s", claims["iss"], testSAEmail)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func TestServiceAccountSelfSignedJWTEachTokenCallSigns(t *testing.T) {
+	p := newSelfSignedProvider(t, Config{})
+	first, err := p.Token(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// iat has one-second resolution, so wait for it to change.
+	time.Sleep(1100 * time.Millisecond)
+	second, err := p.Token(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, c1 := verifyJWT(t, first.Value)
+	_, c2 := verifyJWT(t, second.Value)
+	if c1["iat"] == c2["iat"] || first.Value == second.Value {
+		t.Errorf("two Token calls returned JWTs with iat %v and %v, want a new JWT each call (no caching)", c1["iat"], c2["iat"])
+	}
+}
+
+func TestServiceAccountSelfSignedJWTCopiesConfig(t *testing.T) {
+	cfg := Config{JSON: saJSON(t, nil), Scopes: []string{"s1"}}
+	p := newSelfSignedProvider(t, cfg)
+	for i := range cfg.JSON {
+		cfg.JSON[i] = ' '
+	}
+	cfg.Scopes[0] = "changed"
+	tok, err := p.Token(t.Context())
+	if err != nil {
+		t.Fatalf("Token() error = %v, want the JSON as it was at construction", err)
+	}
+	if _, claims := verifyJWT(t, tok.Value); claims["scope"] != "s1" || claims["iss"] != testSAEmail {
+		t.Errorf("JWT claims = %v, want scope s1 and iss %s (the config at construction)", claims, testSAEmail)
+	}
+}
+
+// TestServiceAccountSelfSignedJWTIgnoresTrustBoundaryEnv guards against a
+// go/auth upgrade making the self-signed path call the regional access
+// boundary endpoint or start a background refresh: any request fails the test,
+// and TestMain's goleak check catches leftover goroutines.
+func TestServiceAccountSelfSignedJWTIgnoresTrustBoundaryEnv(t *testing.T) {
+	t.Setenv("GOOGLE_AUTH_TRUST_BOUNDARY_ENABLED", "true")
+	p := newSelfSignedProvider(t, Config{})
+	for range 2 {
+		if _, err := p.Token(t.Context()); err != nil {
+			t.Fatalf("Token() error = %v", err)
 		}
 	}
 }

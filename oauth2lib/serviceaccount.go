@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -29,8 +30,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/auth/credentials"
@@ -103,9 +104,13 @@ func newServiceAccountTokenProvider(cfg *Config) (*serviceAccountTokenProvider, 
 		return nil, err
 	}
 
-	p := &serviceAccountTokenProvider{universeDomain: cfg.UniverseDomain}
+	// A key belongs to the universe that issued it, so the JSON's
+	// universe_domain wins, and Config.UniverseDomain is used only when the
+	// JSON has none. That way UniverseDomain always reports the key's real
+	// universe, and the caller can check it against its own configuration.
+	p := &serviceAccountTokenProvider{universeDomain: f.UniverseDomain}
 	if p.universeDomain == "" {
-		p.universeDomain = f.UniverseDomain
+		p.universeDomain = cfg.UniverseDomain
 	}
 	if p.universeDomain == "" {
 		p.universeDomain = defaultUniverseDomain
@@ -119,15 +124,16 @@ func newServiceAccountTokenProvider(cfg *Config) (*serviceAccountTokenProvider, 
 	p.selfSignedJWT = cfg.UseSelfSignedJWT ||
 		(f.UniverseDomain != "" && f.UniverseDomain != defaultUniverseDomain) ||
 		(cfg.UniverseDomain != "" && cfg.UniverseDomain != defaultUniverseDomain)
+	scopes := cleanScopes(cfg.Scopes) // a new slice, so later changes by the caller can't affect it
 	if p.selfSignedJWT {
-		if len(cfg.Scopes) == 0 {
+		if len(scopes) == 0 {
 			return nil, errors.New("oauth2lib: a self-signed JWT needs Config.Scopes")
 		}
-		// Copies, so a caller changing its slices later can't affect (or
-		// race with) later Token calls.
+		// A copy, so a caller changing its slice later can't affect (or race
+		// with) later Token calls.
 		p.jsonData = bytes.Clone(cfg.JSON)
 		p.jsonOpts = &credentials.DetectOptions{
-			Scopes:           slices.Clone(cfg.Scopes),
+			Scopes:           scopes,
 			UseSelfSignedJWT: true,
 			UniverseDomain:   p.universeDomain,
 			Client:           cfg.Client,
@@ -150,7 +156,7 @@ func newServiceAccountTokenProvider(cfg *Config) (*serviceAccountTokenProvider, 
 		Email:        f.ClientEmail,
 		PrivateKey:   []byte(f.PrivateKey),
 		PrivateKeyID: f.PrivateKeyID,
-		Scopes:       slices.Clone(cfg.Scopes),
+		Scopes:       scopes,
 		TokenURL:     p.tokenURL,
 		Client:       tagTransportErrors(cfg.Client),
 		Logger:       discardLogger,
@@ -162,9 +168,11 @@ func newServiceAccountTokenProvider(cfg *Config) (*serviceAccountTokenProvider, 
 	return p, nil
 }
 
+var errECKey = errors.New("oauth2lib: service_account private_key is an EC key; only RSA keys are supported")
+
 // checkPrivateKey reports whether key is a PEM or DER private key in a form
-// cloud.google.com/go/auth can sign with (PKCS #8, PKCS #1 or EC), so a bad
-// key fails when the credentials are built rather than on every Token call.
+// cloud.google.com/go/auth can sign with (PKCS #8 or PKCS #1), so a bad key
+// fails when the credentials are built rather than on every Token call.
 func checkPrivateKey(key string) error {
 	der := []byte(key)
 	if block, _ := pem.Decode(der); block != nil {
@@ -176,15 +184,19 @@ func checkPrivateKey(key string) error {
 		if _, ok := k.(crypto.Signer); !ok {
 			return errors.New("oauth2lib: service_account private_key cannot sign")
 		}
+		// go/auth supports only RSA service account keys.
+		if _, ok := k.(*ecdsa.PrivateKey); ok {
+			return errECKey
+		}
 		return nil
 	}
 	if _, err := x509.ParsePKCS1PrivateKey(der); err == nil {
 		return nil
 	}
 	if _, err := x509.ParseECPrivateKey(der); err == nil {
-		return nil
+		return errECKey
 	}
-	return errors.New("oauth2lib: service_account private_key is not a PKCS #8, PKCS #1 or EC private key")
+	return errors.New("oauth2lib: service_account private_key is not a PKCS #8 or PKCS #1 private key")
 }
 
 // Token returns a new access token or self-signed JWT. It never returns a
@@ -208,8 +220,15 @@ func (p *serviceAccountTokenProvider) Token(ctx context.Context) (*auth.Token, e
 	// the whole response into Metadata.
 	if v, ok := tok.Metadata["expires_in"]; ok {
 		raw, err := json.Marshal(v)
-		if _, valid := parseExpiresIn(raw); err != nil || !valid {
+		secs, valid := parseExpiresIn(raw)
+		if err != nil || !valid {
 			return nil, &RefreshError{Kind: KindUnknown, StatusCode: status, Description: "token response has an invalid expires_in"}
+		}
+		// go/auth sets Expiry only when expires_in > 0, and a zero Expiry
+		// means "never expires" to auth.Token.IsValid. Like user.go, treat
+		// expires_in 0 as expiring now.
+		if secs != nil && *secs == 0 && tok.Expiry.IsZero() {
+			tok.Expiry = time.Now()
 		}
 	}
 	return newServiceAccountToken(tok), nil
@@ -280,11 +299,14 @@ func classify2LOError(ctx context.Context, err error, status int) error {
 	// Errors from sending the request or reading the response, as in
 	// doRequest: anything the client's transport or body returned (tagged by
 	// tagTransportErrors), http.Client's own errors (*url.Error), and a body
-	// read cut short by http.Client.Timeout (a net.Error).
+	// read cut short by http.Client.Timeout (a net.Error). A bare
+	// io.ErrUnexpectedEOF is not matched: a real one from the body is already
+	// tagged, and go/auth's JSON decoding of a truncated id_token returns one
+	// too, which is a bad response, not a network error.
 	var tagged *transportError
 	var urlErr *url.Error
 	var netErr net.Error
-	if errors.As(err, &tagged) || errors.As(err, &urlErr) || errors.As(err, &netErr) || errors.Is(err, io.ErrUnexpectedEOF) {
+	if errors.As(err, &tagged) || errors.As(err, &urlErr) || errors.As(err, &netErr) {
 		return classifyTransportError(ctx, err)
 	}
 	// Anything else came from go/auth itself, such as a 2xx body that is not

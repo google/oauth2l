@@ -117,6 +117,7 @@ func TestUserTokenScopes(t *testing.T) {
 		{"json_list_drops_empty_items", []string{"a", "", " b "}, nil, "a b"},
 		{"empty_config_uses_json", []string{"a"}, []string{}, "a"},
 		{"config_trimmed", nil, []string{" a ", "", "b"}, "a b"},
+		{"config_drops_blank_items", []string{"a"}, []string{" x ", ""}, "x"},
 		{"blank_config_uses_json", []string{"a"}, []string{"", " "}, "a"},
 	}
 	for _, tc := range tests {
