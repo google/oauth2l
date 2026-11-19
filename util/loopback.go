@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -125,6 +126,12 @@ type AuthorizationCodeLocalhost struct {
 	addr                string
 	authCode            AuthorizationCode
 	server              *http.Server
+
+	// mu guards AuthCodeReqStatus and authCode once the server is running,
+	// since redirectUriHandler runs on the server's goroutine.
+	mu sync.Mutex
+	// done is signaled when redirectUriHandler sets a status.
+	done chan struct{}
 }
 
 func (lh *AuthorizationCodeLocalhost) ListenAndServe(address string) (serverAddress string, err error) {
@@ -134,6 +141,7 @@ func (lh *AuthorizationCodeLocalhost) ListenAndServe(address string) (serverAddr
 	}
 
 	lh.addr = serverAddress
+	lh.done = make(chan struct{}, 1)
 
 	// Setup local host in given address
 	mux := http.NewServeMux()
@@ -196,6 +204,8 @@ func (lh *AuthorizationCodeLocalhost) WaitForListeningAndServing(maxWaitTime tim
 }
 
 func (lh *AuthorizationCodeLocalhost) GetAuthenticationCode() (authCode AuthorizationCode, err error) {
+	lh.mu.Lock()
+	defer lh.mu.Unlock()
 	if lh.AuthCodeReqStatus.Status != GRANTED {
 		return lh.authCode, fmt.Errorf("%s", lh.AuthCodeReqStatus.Details)
 	}
@@ -207,23 +217,37 @@ func (lh *AuthorizationCodeLocalhost) WaitForConsentPageToReturnControl() (err e
 		return fmt.Errorf("Server has not been set.")
 	}
 
-	timeout := false
-	timer := time.AfterFunc(lh.ConsentPageSettings.InteractionTimeout, func() {
-		timeout = true
-	})
-
+	timer := time.NewTimer(lh.ConsentPageSettings.InteractionTimeout)
 	defer timer.Stop()
 
-	for !timeout && lh.AuthCodeReqStatus.Status == WAITING {
-		// Loop until:
-		// - maxWaitTime is reached
-		// - authorization code status is not waiting
+	// Wait until:
+	// - maxWaitTime is reached
+	// - authorization code status is not waiting
+	select {
+	case <-lh.done:
+	case <-timer.C:
 	}
 
+	lh.mu.Lock()
+	defer lh.mu.Unlock()
 	if lh.AuthCodeReqStatus.Status == WAITING {
 		return fmt.Errorf("Timed out.")
 	}
 	return nil
+}
+
+// setStatus records the result of a redirect and wakes up
+// WaitForConsentPageToReturnControl.
+func (lh *AuthorizationCodeLocalhost) setStatus(status AuthorizationCodeStatus, code AuthorizationCode) {
+	lh.mu.Lock()
+	lh.AuthCodeReqStatus = status
+	lh.authCode = code
+	lh.mu.Unlock()
+
+	select {
+	case lh.done <- struct{}{}:
+	default:
+	}
 }
 
 // redirectUriHandler handles the redirect logic when aquiring the authorization code.
@@ -237,10 +261,9 @@ func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, 
 	if err != nil {
 		err := fmt.Sprintf("Unable to parse query: %v", err)
 
-		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err}
-		lh.authCode = AuthorizationCode{}
+		lh.setStatus(AuthorizationCodeStatus{Status: FAILED, Details: err}, AuthorizationCode{})
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(lh.AuthCodeReqStatus.Details + closeTab))
+		w.Write([]byte(err + closeTab))
 		return
 	}
 
@@ -248,10 +271,9 @@ func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, 
 	// Authentication Code Error from consent page
 	if urlError != "" {
 		err := fmt.Sprintf("An error occurred when getting authorization code: %s", urlError)
-		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err}
-		lh.authCode = AuthorizationCode{}
+		lh.setStatus(AuthorizationCodeStatus{Status: FAILED, Details: err}, AuthorizationCode{})
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(lh.AuthCodeReqStatus.Details + closeTab))
+		w.Write([]byte(err + closeTab))
 		return
 	}
 
@@ -260,35 +282,27 @@ func (lh *AuthorizationCodeLocalhost) redirectUriHandler(w http.ResponseWriter, 
 	// No Code, Status, or Error is treated as unknown error
 	if urlCode == "" && urlState == "" {
 		err := "Unknown error when getting authorization code"
-		lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err}
-
-		lh.authCode = AuthorizationCode{}
+		lh.setStatus(AuthorizationCodeStatus{Status: FAILED, Details: err}, AuthorizationCode{})
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(lh.AuthCodeReqStatus.Details + closeTab))
+		w.Write([]byte(err + closeTab))
 		return
 	}
 
 	//  Authorization code returned
 	if urlCode != "" && urlState != "" {
-		lh.authCode = AuthorizationCode{
-			Code:  urlCode,
-			State: urlState,
-		}
-
-		lh.AuthCodeReqStatus = AuthorizationCodeStatus{
-			Status: GRANTED, Details: "Authorization code granted"}
+		details := "Authorization code granted"
+		lh.setStatus(AuthorizationCodeStatus{Status: GRANTED, Details: details},
+			AuthorizationCode{Code: urlCode, State: urlState})
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(lh.AuthCodeReqStatus.Details + closeTab))
+		w.Write([]byte(details + closeTab))
 		return
 	}
 
 	err = fmt.Errorf("Authorization code missing code or state.")
-	lh.AuthCodeReqStatus = AuthorizationCodeStatus{Status: FAILED, Details: err.Error()}
-
-	lh.authCode = AuthorizationCode{}
+	lh.setStatus(AuthorizationCodeStatus{Status: FAILED, Details: err.Error()}, AuthorizationCode{})
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(lh.AuthCodeReqStatus.Details + closeTab))
+	w.Write([]byte(err.Error() + closeTab))
 	return
 }
 
