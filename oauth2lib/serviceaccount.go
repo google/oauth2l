@@ -16,7 +16,9 @@
 package oauth2lib
 
 import (
+	"bytes"
 	"context"
+	"crypto"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
@@ -25,7 +27,9 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"cloud.google.com/go/auth"
@@ -108,15 +112,22 @@ func newServiceAccountTokenProvider(cfg *Config) (*serviceAccountTokenProvider, 
 	}
 
 	// Outside the Google universe there is no token endpoint for the JWT
-	// bearer grant, so tokens must be self-signed, as in Python gcloud.
-	p.selfSignedJWT = cfg.UseSelfSignedJWT || p.universeDomain != defaultUniverseDomain
+	// bearer grant, so tokens must be self-signed. As in Python gcloud
+	// (creds.UseSelfSignedJwt), a non-default universe in either the JSON or
+	// the caller's configuration is enough, even if the other one is the
+	// default.
+	p.selfSignedJWT = cfg.UseSelfSignedJWT ||
+		(f.UniverseDomain != "" && f.UniverseDomain != defaultUniverseDomain) ||
+		(cfg.UniverseDomain != "" && cfg.UniverseDomain != defaultUniverseDomain)
 	if p.selfSignedJWT {
 		if len(cfg.Scopes) == 0 {
 			return nil, errors.New("oauth2lib: a self-signed JWT needs Config.Scopes")
 		}
-		p.jsonData = cfg.JSON
+		// Copies, so a caller changing its slices later can't affect (or
+		// race with) later Token calls.
+		p.jsonData = bytes.Clone(cfg.JSON)
 		p.jsonOpts = &credentials.DetectOptions{
-			Scopes:           cfg.Scopes,
+			Scopes:           slices.Clone(cfg.Scopes),
 			UseSelfSignedJWT: true,
 			UniverseDomain:   p.universeDomain,
 			Client:           cfg.Client,
@@ -139,9 +150,9 @@ func newServiceAccountTokenProvider(cfg *Config) (*serviceAccountTokenProvider, 
 		Email:        f.ClientEmail,
 		PrivateKey:   []byte(f.PrivateKey),
 		PrivateKeyID: f.PrivateKeyID,
-		Scopes:       cfg.Scopes,
+		Scopes:       slices.Clone(cfg.Scopes),
 		TokenURL:     p.tokenURL,
-		Client:       cfg.Client,
+		Client:       tagTransportErrors(cfg.Client),
 		Logger:       discardLogger,
 	})
 	if err != nil {
@@ -159,7 +170,12 @@ func checkPrivateKey(key string) error {
 	if block, _ := pem.Decode(der); block != nil {
 		der = block.Bytes
 	}
-	if _, err := x509.ParsePKCS8PrivateKey(der); err == nil {
+	if k, err := x509.ParsePKCS8PrivateKey(der); err == nil {
+		// PKCS #8 can also hold keys that can't sign (X25519, for example).
+		// go/auth's ParseKey rejects those on every Token call.
+		if _, ok := k.(crypto.Signer); !ok {
+			return errors.New("oauth2lib: service_account private_key cannot sign")
+		}
 		return nil
 	}
 	if _, err := x509.ParsePKCS1PrivateKey(der); err == nil {
@@ -177,15 +193,31 @@ func (p *serviceAccountTokenProvider) Token(ctx context.Context) (*auth.Token, e
 	if p.selfSignedJWT {
 		return p.selfSignedToken(ctx)
 	}
-	tok, err := p.twoLO.Token(ctx)
+	// The tagging transport records the response's status code here, so
+	// errors about a 2xx body keep it (StatusCode 0 means no response).
+	var status int
+	tok, err := p.twoLO.Token(context.WithValue(ctx, statusKey{}, &status))
 	if err != nil {
-		return nil, classify2LOError(ctx, err)
+		return nil, classify2LOError(ctx, err, status)
 	}
 	if tok.Value == "" {
-		return nil, &RefreshError{Kind: KindUnknown, Description: "token response has no access_token"}
+		return nil, &RefreshError{Kind: KindUnknown, StatusCode: status, Description: "token response has no access_token"}
+	}
+	// go/auth ignores a negative expires_in and computes Expiry without an
+	// overflow check, so apply user.go's rule to the raw value. go/auth copies
+	// the whole response into Metadata.
+	if v, ok := tok.Metadata["expires_in"]; ok {
+		raw, err := json.Marshal(v)
+		if _, valid := parseExpiresIn(raw); err != nil || !valid {
+			return nil, &RefreshError{Kind: KindUnknown, StatusCode: status, Description: "token response has an invalid expires_in"}
+		}
 	}
 	return newServiceAccountToken(tok), nil
 }
+
+// statusKey is the context key under which Token passes a *int for the
+// tagging transport to store the response status code in.
+type statusKey struct{}
 
 // selfSignedToken signs a new self-signed JWT. go/auth only exposes
 // self-signed JWTs through NewCredentialsFromJSON, whose credentials cache
@@ -193,6 +225,11 @@ func (p *serviceAccountTokenProvider) Token(ctx context.Context) (*auth.Token, e
 // empty, the first Token call signs synchronously, and nothing is reused or
 // refreshed in the background.
 func (p *serviceAccountTokenProvider) selfSignedToken(ctx context.Context) (*auth.Token, error) {
+	// Signing never looks at ctx, so check it first: a canceled or expired
+	// context returns its error, as for every other credential type.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	creds, err := credentials.NewCredentialsFromJSON(credentials.ServiceAccount, p.jsonData, p.jsonOpts)
 	if err != nil {
 		return nil, fmt.Errorf("oauth2lib: self-signed JWT: %w", err)
@@ -215,7 +252,7 @@ func newServiceAccountToken(tok *auth.Token) *auth.Token {
 		Value:    tok.Value,
 		Type:     tok.Type,
 		Expiry:   tok.Expiry,
-		Metadata: map[string]interface{}{},
+		Metadata: map[string]any{},
 	}
 	if out.Type == "" {
 		out.Type = "Bearer"
@@ -228,7 +265,7 @@ func newServiceAccountToken(tok *auth.Token) *auth.Token {
 
 // classify2LOError turns an error from go/auth's 2LO token provider into the
 // error Token returns, as doRequest does for oauth2lib's own requests.
-func classify2LOError(ctx context.Context, err error) error {
+func classify2LOError(ctx context.Context, err error, status int) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr
 	}
@@ -240,13 +277,65 @@ func classify2LOError(ctx context.Context, err error) error {
 		}
 		return classifyResponse(authErr.Response.StatusCode, body)
 	}
-	// http.Client.Do always returns a *url.Error. A failure while reading the
-	// body is a network error or an unexpected EOF.
+	// Errors from sending the request or reading the response, as in
+	// doRequest: anything the client's transport or body returned (tagged by
+	// tagTransportErrors), http.Client's own errors (*url.Error), and a body
+	// read cut short by http.Client.Timeout (a net.Error).
+	var tagged *transportError
 	var urlErr *url.Error
 	var netErr net.Error
-	if errors.As(err, &urlErr) || errors.As(err, &netErr) || errors.Is(err, io.ErrUnexpectedEOF) {
+	if errors.As(err, &tagged) || errors.As(err, &urlErr) || errors.As(err, &netErr) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return classifyTransportError(ctx, err)
 	}
-	// Anything else, such as a 2xx body that is not valid JSON.
-	return &RefreshError{Kind: KindUnknown, Err: err}
+	// Anything else came from go/auth itself, such as a 2xx body that is not
+	// valid JSON, an id_token it can't decode, or a signing failure. Sending
+	// the request again won't help.
+	return &RefreshError{Kind: KindUnknown, StatusCode: status, Err: err}
+}
+
+// transportError marks an error returned by the client's transport or while
+// reading a response body.
+type transportError struct{ err error }
+
+func (e *transportError) Error() string { return e.err.Error() }
+func (e *transportError) Unwrap() error { return e.err }
+
+// tagTransportErrors returns a copy of c whose transport marks every error
+// from sending a request or reading its response body as a transportError.
+// go/auth reads the body after http.Client.Do returns, so body-read errors
+// reach classify2LOError unwrapped, and they need not be net.Errors (an HTTP/2
+// stream reset, for example). The copy keeps c's transport, timeout, cookie
+// jar and redirect policy.
+func tagTransportErrors(c *http.Client) *http.Client {
+	cc := *c
+	base := c.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	cc.Transport = taggingTransport{base: base}
+	return &cc
+}
+
+type taggingTransport struct{ base http.RoundTripper }
+
+func (t taggingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil {
+		return nil, &transportError{err: err}
+	}
+	if status, ok := req.Context().Value(statusKey{}).(*int); ok {
+		*status = resp.StatusCode // the last one wins if there are redirects
+	}
+	resp.Body = taggingBody{ReadCloser: resp.Body}
+	return resp, nil
+}
+
+type taggingBody struct{ io.ReadCloser }
+
+func (b taggingBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil && err != io.EOF { // io.EOF must be returned unchanged
+		err = &transportError{err: err}
+	}
+	return n, err
 }

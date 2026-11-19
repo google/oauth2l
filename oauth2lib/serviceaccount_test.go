@@ -18,6 +18,7 @@ package oauth2lib
 import (
 	"context"
 	"crypto"
+	"crypto/ecdh"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -27,6 +28,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -155,8 +157,9 @@ func TestServiceAccount2LORequest(t *testing.T) {
 	if len(forms) != 1 {
 		t.Fatalf("server got %d requests, want 1", len(forms))
 	}
-	if got := forms[0].Get("grant_type"); got != "urn:ietf:params:oauth:grant-type:jwt-bearer" {
-		t.Errorf("grant_type = %q", got)
+	const wantGrant = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+	if got := forms[0].Get("grant_type"); got != wantGrant {
+		t.Errorf("grant_type = %q, want %q", got, wantGrant)
 	}
 	header, claims := verifyJWT(t, forms[0].Get("assertion"))
 	if header["alg"] != "RS256" || header["kid"] != "key-id-1" {
@@ -212,8 +215,8 @@ func TestServiceAccountTokenURL(t *testing.T) {
 		json any
 		want string
 	}{
-		{"Config.TokenURL wins", "https://override.example/token", "https://json.example/token", "https://override.example/token"},
-		{"JSON token_uri", "", "https://json.example/token", "https://json.example/token"},
+		{"config_overrides_json", "https://override.example/token", "https://json.example/token", "https://override.example/token"},
+		{"json_token_uri", "", "https://json.example/token", "https://json.example/token"},
 		{"default", "", nil, defaultTokenURL},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -243,9 +246,14 @@ func TestServiceAccountErrors(t *testing.T) {
 		{"invalid_grant", fakeResponse{status: 400, body: `{"error":"invalid_grant","error_description":"Invalid JWT Signature."}`}, ErrInvalidGrant, KindInvalidGrant},
 		{"invalid_scope", fakeResponse{status: 400, body: `{"error":"invalid_scope"}`}, ErrInvalidGrant, KindInvalidGrant},
 		{"503", fakeResponse{status: 503, body: `{"error":"server_error"}`}, ErrTransient, KindTransient},
-		{"closed connection", fakeResponse{closeConn: true}, ErrTransient, KindTransient},
-		{"2xx not JSON", fakeResponse{body: `not json`}, nil, KindUnknown},
-		{"2xx without access_token", fakeResponse{body: `{"expires_in":3600}`}, nil, KindUnknown},
+		{"closed_connection", fakeResponse{closeConn: true}, ErrTransient, KindTransient},
+		{"2xx_not_json", fakeResponse{body: `not json`}, nil, KindUnknown},
+		{"2xx_without_access_token", fakeResponse{body: `{"expires_in":3600}`}, nil, KindUnknown},
+		{"2xx_wrong_json_type", fakeResponse{body: `{"access_token":"at","expires_in":"3600"}`}, nil, KindUnknown},
+		{"2xx_bad_id_token", fakeResponse{body: `{"access_token":"at","id_token":"a.!!!.c"}`}, nil, KindUnknown},
+		{"2xx_id_token_without_dots", fakeResponse{body: `{"access_token":"at","id_token":"abc"}`}, nil, KindUnknown},
+		{"2xx_overflowing_expires_in", fakeResponse{body: `{"access_token":"at","expires_in":9223372037}`}, nil, KindUnknown},
+		{"2xx_negative_expires_in", fakeResponse{body: `{"access_token":"at","expires_in":-1}`}, nil, KindUnknown},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newFakeServer(t, tc.resp)
@@ -260,6 +268,16 @@ func TestServiceAccountErrors(t *testing.T) {
 			}
 			if tc.kind == KindUnknown && errors.Is(err, ErrTransient) {
 				t.Errorf("Token() error = %v must not be transient", err)
+			}
+			wantStatus := tc.resp.status
+			if wantStatus == 0 {
+				wantStatus = 200 // fakeServer's default
+			}
+			if tc.resp.closeConn {
+				wantStatus = 0 // no response was received
+			}
+			if re.StatusCode != wantStatus {
+				t.Errorf("Token() error StatusCode = %d, want %d", re.StatusCode, wantStatus)
 			}
 		})
 	}
@@ -280,15 +298,27 @@ func TestServiceAccountContextCanceled(t *testing.T) {
 	}
 }
 
+func TestServiceAccountSelfSignedJWTCanceledContext(t *testing.T) {
+	srv := newFakeServer(t)
+	p := newTestSAProvider(t, srv, Config{UseSelfSignedJWT: true, Scopes: []string{"s"}})
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	tok, err := p.Token(ctx)
+	if !errors.Is(err, context.Canceled) || tok != nil {
+		t.Fatalf("Token() = %v, %v; want nil, context.Canceled", tok, err)
+	}
+}
+
 func TestServiceAccountSelfSignedJWT(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		cfg  Config
 		json map[string]any
 	}{
-		{"UseSelfSignedJWT", Config{UseSelfSignedJWT: true}, nil},
-		{"non-Google universe from Config", Config{UniverseDomain: "example-universe.com"}, nil},
-		{"non-Google universe from JSON", Config{}, map[string]any{"universe_domain": "example-universe.com"}},
+		{"use_self_signed_jwt", Config{UseSelfSignedJWT: true}, nil},
+		{"config_universe", Config{UniverseDomain: "example-universe.com"}, nil},
+		{"json_universe", Config{}, map[string]any{"universe_domain": "example-universe.com"}},
+		{"json_universe_with_default_config_universe", Config{UniverseDomain: "googleapis.com"}, map[string]any{"universe_domain": "example-universe.com"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := newFakeServer(t) // any request fails the test
@@ -330,8 +360,9 @@ func TestServiceAccountUniverseDomain(t *testing.T) {
 		want      string
 	}{
 		{"default", "", nil, "googleapis.com"},
-		{"JSON", "", "example-universe.com", "example-universe.com"},
-		{"Config wins", "other.example", "example-universe.com", "other.example"},
+		{"json", "", "example-universe.com", "example-universe.com"},
+		{"config_overrides_json", "other.example", "example-universe.com", "other.example"},
+		{"default_config_overrides_json", "googleapis.com", "example-universe.com", "googleapis.com"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := Config{
@@ -347,8 +378,8 @@ func TestServiceAccountUniverseDomain(t *testing.T) {
 			if p.universeDomain != tc.want {
 				t.Errorf("universeDomain = %q, want %q", p.universeDomain, tc.want)
 			}
-			if p.selfSignedJWT != (tc.want != "googleapis.com") {
-				t.Errorf("selfSignedJWT = %v for universe %q", p.selfSignedJWT, tc.want)
+			if !p.selfSignedJWT && tc.want != "googleapis.com" {
+				t.Errorf("selfSignedJWT = false for universe %q, want true", tc.want)
 			}
 		})
 	}
@@ -361,14 +392,15 @@ func TestNewServiceAccountTokenProviderErrors(t *testing.T) {
 		cfg  Config
 		want string
 	}{
-		{"nil client", Config{JSON: saJSON(t, nil)}, "Client is nil"},
-		{"bad JSON", Config{JSON: []byte("{"), Client: client}, "parsing service_account JSON"},
-		{"wrong type", Config{JSON: userJSON(t, nil), Client: client}, `want service_account`},
-		{"missing fields", Config{JSON: saJSON(t, map[string]any{"client_email": nil, "private_key": nil}), Client: client}, "missing client_email, private_key"},
-		{"bad key", Config{JSON: saJSON(t, map[string]any{"private_key": "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n"}), Client: client}, "not a PKCS #8"},
-		{"self-signed without scopes", Config{JSON: saJSON(t, nil), Client: client, UseSelfSignedJWT: true}, "needs Config.Scopes"},
-		{"relative token URL", Config{JSON: saJSON(t, nil), TokenURL: "/token", Client: client}, "token URL must be"},
-		{"token_uri without host", Config{JSON: saJSON(t, map[string]any{"token_uri": "https:///token"}), Client: client}, "token URL must be"},
+		{"nil_client", Config{JSON: saJSON(t, nil)}, "Client is nil"},
+		{"bad_json", Config{JSON: []byte("{"), Client: client}, "parsing service_account JSON"},
+		{"wrong_type", Config{JSON: userJSON(t, nil), Client: client}, `want service_account`},
+		{"missing_fields", Config{JSON: saJSON(t, map[string]any{"client_email": nil, "private_key": nil}), Client: client}, "missing client_email, private_key"},
+		{"key_cannot_sign", Config{JSON: saJSON(t, map[string]any{"private_key": x25519PKCS8(t)}), Client: client}, "cannot sign"},
+		{"bad_key", Config{JSON: saJSON(t, map[string]any{"private_key": "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n"}), Client: client}, "not a PKCS #8"},
+		{"self_signed_without_scopes", Config{JSON: saJSON(t, nil), Client: client, UseSelfSignedJWT: true}, "needs Config.Scopes"},
+		{"relative_token_url", Config{JSON: saJSON(t, nil), TokenURL: "/token", Client: client}, "token URL must be"},
+		{"token_uri_without_host", Config{JSON: saJSON(t, map[string]any{"token_uri": "https:///token"}), Client: client}, "token URL must be"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := newServiceAccountTokenProvider(&tc.cfg)
@@ -387,6 +419,8 @@ func TestServiceAccountDoesNotLogSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer r.Close()
+	defer w.Close() // a no-op error after the explicit Close below
 	orig := os.Stderr
 	os.Stderr = w
 	defer func() { os.Stderr = orig }()
@@ -403,7 +437,10 @@ func TestServiceAccountDoesNotLogSecrets(t *testing.T) {
 
 	w.Close()
 	os.Stderr = orig
-	out, _ := io.ReadAll(r)
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("reading stderr: %v", err)
+	}
 	for _, secret := range []string{"secret-access-token", "assertion", "eyJ"} {
 		if strings.Contains(string(out), secret) {
 			t.Errorf("stderr contains %q: %s", secret, out)
@@ -430,4 +467,84 @@ func TestServiceAccountConcurrentTokens(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// x25519PKCS8 returns a PEM PKCS #8 X25519 key, which parses but can't sign.
+func x25519PKCS8(t *testing.T) string {
+	t.Helper()
+	k, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
+}
+
+// bodyErrorTransport returns a 200 response whose body fails with err after
+// a few bytes, like an HTTP/2 stream reset while reading.
+type bodyErrorTransport struct{ err error }
+
+func (b bodyErrorTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"application/json"}},
+		Body:       io.NopCloser(io.MultiReader(strings.NewReader(`{"access`), errReader{b.err})),
+		Request:    req,
+	}, nil
+}
+
+type errReader struct{ err error }
+
+func (e errReader) Read([]byte) (int, error) { return 0, e.err }
+
+func TestServiceAccountBodyReadErrorIsTransient(t *testing.T) {
+	// Not a net.Error, like net/http's HTTP/2 stream errors.
+	streamReset := errors.New("stream error: stream ID 1; INTERNAL_ERROR")
+	cfg := Config{
+		JSON:   saJSON(t, nil),
+		Scopes: []string{"s"},
+		Client: &http.Client{Transport: bodyErrorTransport{streamReset}},
+	}
+	p, err := newServiceAccountTokenProvider(&cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.Token(t.Context())
+	if !errors.Is(err, ErrTransient) {
+		t.Fatalf("Token() error = %v, want ErrTransient", err)
+	}
+}
+
+func TestServiceAccountCopiesConfigSlices(t *testing.T) {
+	srv := newFakeServer(t, fakeResponse{body: `{"access_token":"at","expires_in":3600}`})
+	cfg := Config{Scopes: []string{"s1"}}
+	p := newTestSAProvider(t, srv, cfg)
+	cfg.Scopes[0] = "changed"
+	if _, err := p.Token(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	_, claims := verifyJWT(t, srv.recordedForms()[0].Get("assertion"))
+	if claims["scope"] != "s1" {
+		t.Errorf("JWT scope = %v, want s1 (the scopes at construction)", claims["scope"])
+	}
+}
+
+func TestCheckPrivateKeyAcceptsKeyForms(t *testing.T) {
+	k, _ := testServiceAccountKey(t)
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, key := range map[string]string{
+		"pkcs8_pem": string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})),
+		"pkcs1_pem": string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)})),
+		"pkcs8_der": string(pkcs8),
+	} {
+		if err := checkPrivateKey(key); err != nil {
+			t.Errorf("checkPrivateKey(%s) = %v, want nil", name, err)
+		}
+	}
 }
