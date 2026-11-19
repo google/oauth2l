@@ -16,10 +16,17 @@
 package oauth2lib
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strings"
+
+	"cloud.google.com/go/auth"
 )
 
 // Config describes one credential. The caller (for example Go gcloud)
@@ -78,4 +85,147 @@ func (c Config) LogValue() slog.Value {
 		slog.Any("scopes", c.Scopes),
 		slog.Int("json_bytes", len(c.JSON)),
 	)
+}
+
+// credentialType reads only the "type" and "universe_domain" fields of a
+// credential file.
+type credentialType struct {
+	Type           string `json:"type"`
+	UniverseDomain string `json:"universe_domain"`
+}
+
+// BuildCredentials returns credentials for cfg.JSON, which must be an
+// authorized_user or service_account credential file.
+//
+// The returned credentials' TokenProvider is not cached: each Token call
+// blocks on a new token request (or, for a self-signed JWT, signs a new JWT
+// locally) and returns a *RefreshError when the token endpoint fails, or
+// the context's error when ctx is done. JSON returns a copy of cfg.JSON, and
+// UniverseDomain returns cfg.UniverseDomain, else the JSON's
+// universe_domain, else googleapis.com.
+//
+// BuildCredentials reads no files, environment variables or gcloud
+// properties, and makes no network calls. cfg is copied, so changing it
+// afterwards does not affect the credentials.
+//
+// oauth2lib sets no quota project or project ID. go/auth's QuotaProjectID
+// and ProjectID still fall back to environment variables and to the JSON's
+// quota_project_id and project_id, so callers should decide the quota project
+// themselves and should not pass the credentials to go/auth's httptransport
+// or grpctransport.
+func BuildCredentials(ctx context.Context, cfg *Config) (*auth.Credentials, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	c, ct, err := validateConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	logger := c.Logger
+	if logger == nil {
+		logger = discardLogger
+	}
+
+	var (
+		tp       auth.TokenProvider
+		universe string
+	)
+	switch ct.Type {
+	case "authorized_user":
+		if c.UseSelfSignedJWT {
+			return nil, errors.New("oauth2lib: Config.UseSelfSignedJWT applies only to service_account credentials")
+		}
+		p, err := newUserTokenProvider(c)
+		if err != nil {
+			return nil, err
+		}
+		tp = p
+		universe = c.UniverseDomain
+		if universe == "" {
+			universe = ct.UniverseDomain
+		}
+		if universe == "" {
+			universe = defaultUniverseDomain
+		}
+	case "service_account":
+		p, err := newServiceAccountTokenProvider(c)
+		if err != nil {
+			return nil, err
+		}
+		tp = p
+		universe = p.universeDomain
+	case "impersonated_service_account":
+		return nil, errors.New("oauth2lib: impersonated_service_account credentials are not supported yet")
+	case "external_account", "external_account_authorized_user":
+		return nil, fmt.Errorf("oauth2lib: %s credentials are not supported", ct.Type)
+	case "":
+		return nil, errors.New(`oauth2lib: credential JSON has no "type"`)
+	default:
+		return nil, fmt.Errorf("oauth2lib: unsupported credential type %q", ct.Type)
+	}
+
+	logger.DebugContext(ctx, "oauth2lib: built credentials",
+		slog.String("type", ct.Type),
+		slog.String("universe_domain", universe))
+	return auth.NewCredentials(&auth.CredentialsOptions{
+		TokenProvider: tp,
+		JSON:          c.JSON,
+		UniverseDomainProvider: auth.CredentialsPropertyFunc(func(context.Context) (string, error) {
+			return universe, nil
+		}),
+	}), nil
+}
+
+// validateConfig checks the fields every credential type needs and returns
+// a copy of cfg, with its own copies of JSON and Scopes, and the JSON's type.
+func validateConfig(cfg *Config) (*Config, credentialType, error) {
+	var ct credentialType
+	if cfg == nil {
+		return nil, ct, errors.New("oauth2lib: Config is nil")
+	}
+	if cfg.Client == nil {
+		return nil, ct, errors.New("oauth2lib: Config.Client is nil")
+	}
+	if len(bytes.TrimSpace(cfg.JSON)) == 0 {
+		return nil, ct, errors.New("oauth2lib: Config.JSON is empty")
+	}
+	// The JSON holds secrets, so the parse error (which can quote it) is not
+	// wrapped.
+	if err := json.Unmarshal(cfg.JSON, &ct); err != nil {
+		return nil, ct, errors.New("oauth2lib: Config.JSON is not a JSON object")
+	}
+	for _, s := range cfg.Scopes {
+		// Scopes are sent space-separated, so one with spaces in it would
+		// silently become several.
+		if s == "" || strings.ContainsFunc(s, isSpace) {
+			return nil, ct, fmt.Errorf("oauth2lib: Config.Scopes has an empty scope or one with spaces: %q", s)
+		}
+	}
+	if cfg.UniverseDomain != "" && !isHostname(cfg.UniverseDomain) {
+		return nil, ct, fmt.Errorf("oauth2lib: Config.UniverseDomain %q is not a domain name", cfg.UniverseDomain)
+	}
+	c := *cfg
+	c.JSON = bytes.Clone(cfg.JSON)
+	c.Scopes = slices.Clone(cfg.Scopes)
+	return &c, ct, nil
+}
+
+func isSpace(r rune) bool {
+	return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\f' || r == '\v'
+}
+
+// isHostname reports whether s looks like a bare domain name such as
+// googleapis.com: no scheme, port, path or spaces.
+func isHostname(s string) bool {
+	if strings.HasPrefix(s, ".") || strings.HasSuffix(s, ".") {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
