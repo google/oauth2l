@@ -173,7 +173,6 @@ func TestBuildCredentialsErrors(t *testing.T) {
 		{name: "external_account_authorized_user", cfg: &Config{Client: client, JSON: []byte(`{"type":"external_account_authorized_user"}`)}, want: "external_account_authorized_user credentials are not supported"},
 		{name: "empty_scope", cfg: &Config{Client: client, JSON: userJSON(t, nil), Scopes: []string{"a", ""}}, want: "empty scope"},
 		{name: "scope_with_space", cfg: &Config{Client: client, JSON: userJSON(t, nil), Scopes: []string{"a b"}}, want: "with spaces"},
-		{name: "self_signed_user", cfg: &Config{Client: client, JSON: userJSON(t, nil), UseSelfSignedJWT: true}, want: "applies only to service_account"},
 		{name: "user_missing_fields", cfg: &Config{Client: client, JSON: userJSON(t, map[string]any{"client_secret": nil})}, want: "missing client_secret"},
 		{name: "user_bad_token_url", cfg: &Config{Client: client, JSON: userJSON(t, nil), TokenURL: "/token"}, want: "absolute URL"},
 		{name: "sa_missing_key", cfg: &Config{Client: client, JSON: saJSON(t, map[string]any{"private_key": nil})}, want: "missing private_key"},
@@ -193,6 +192,47 @@ func TestBuildCredentialsErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildCredentialsIgnoresOptionsForOtherTypes(t *testing.T) {
+	t.Run("self_signed_jwt_on_authorized_user", func(t *testing.T) {
+		srv := newFakeServer(t, fakeResponse{body: okTokenBody})
+		creds, err := BuildCredentials(t.Context(), &Config{
+			JSON:             userJSON(t, map[string]any{"token_uri": srv.URL + "/token"}),
+			Client:           srv.Client(),
+			UseSelfSignedJWT: true,
+		})
+		if err != nil {
+			t.Fatalf("BuildCredentials(UseSelfSignedJWT: true) error = %v, want nil", err)
+		}
+		if _, err := creds.Token(t.Context()); err != nil {
+			t.Fatalf("Token() error = %v", err)
+		}
+		if forms := srv.recordedForms(); len(forms) != 1 || forms[0].Get("grant_type") != "refresh_token" {
+			t.Errorf("server got forms %v, want one refresh_token grant", forms)
+		}
+	})
+	t.Run("rapt_on_service_account", func(t *testing.T) {
+		srv := newFakeServer(t, fakeResponse{body: `{"access_token":"sa-at","expires_in":3600}`})
+		creds, err := BuildCredentials(t.Context(), &Config{
+			JSON:   saJSON(t, map[string]any{"token_uri": srv.URL + "/token"}),
+			Client: srv.Client(),
+			Scopes: []string{"s1"},
+			RAPT: func(context.Context) (string, error) {
+				t.Error("Config.RAPT was called for service_account credentials")
+				return "rapt", nil
+			},
+		})
+		if err != nil {
+			t.Fatalf("BuildCredentials(RAPT set) error = %v, want nil", err)
+		}
+		if _, err := creds.Token(t.Context()); err != nil {
+			t.Fatalf("Token() error = %v", err)
+		}
+		if forms := srv.recordedForms(); len(forms) != 1 || forms[0].Has("rapt") {
+			t.Errorf("server got forms %v, want one request without rapt", forms)
+		}
+	})
 }
 
 func TestBuildCredentialsCanceledContext(t *testing.T) {

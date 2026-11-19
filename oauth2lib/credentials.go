@@ -57,11 +57,12 @@ type Config struct {
 	Client *http.Client
 	// RAPT returns the latest reauth proof token before each user refresh.
 	// ("", nil) omits rapt, (t, nil) sends rapt=t, and an error stops Token
-	// before any request is made. Nil for non-user credentials, or to never
-	// send a RAPT.
+	// before any request is made. Nil to never send a RAPT. Ignored for
+	// credentials other than authorized_user, as in Python gcloud.
 	RAPT func(ctx context.Context) (string, error)
 	// UseSelfSignedJWT makes service account credentials sign a JWT locally
-	// instead of calling the token endpoint.
+	// instead of calling the token endpoint. Ignored for credentials other
+	// than service_account, as in Python gcloud (creds.UseSelfSignedJwt).
 	UseSelfSignedJWT bool
 	// Logger receives debug logs. Nil discards them.
 	Logger *slog.Logger
@@ -132,9 +133,6 @@ func BuildCredentials(ctx context.Context, cfg *Config) (*auth.Credentials, erro
 	)
 	switch ct.Type {
 	case "authorized_user":
-		if c.UseSelfSignedJWT {
-			return nil, errors.New("oauth2lib: Config.UseSelfSignedJWT applies only to service_account credentials")
-		}
 		p, err := newUserTokenProvider(c)
 		if err != nil {
 			return nil, err
