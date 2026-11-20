@@ -152,9 +152,12 @@ func TestBuildCredentialsUniverseDomain(t *testing.T) {
 	}{
 		{name: "user_default", json: userJSON(t, nil), want: "googleapis.com"},
 		{name: "user_json", json: userJSON(t, map[string]any{"universe_domain": "json.example"}), want: "json.example"},
-		{name: "user_config_wins", json: userJSON(t, map[string]any{"universe_domain": "json.example"}), config: "cfg.example", want: "cfg.example"},
+		{name: "user_json_wins_over_config", json: userJSON(t, map[string]any{"universe_domain": "json.example"}), config: "cfg.example", want: "json.example"},
+		{name: "user_config_without_json", json: userJSON(t, nil), config: "cfg.example", want: "cfg.example"},
+		{name: "user_blank_json_uses_config", json: userJSON(t, map[string]any{"universe_domain": " "}), config: " cfg.example ", want: "cfg.example"},
 		{name: "sa_json", json: saJSON(t, map[string]any{"universe_domain": "json.example"}), want: "json.example"},
-		{name: "sa_config_wins", json: saJSON(t, map[string]any{"universe_domain": "json.example"}), config: "cfg.example", want: "cfg.example"},
+		{name: "sa_json_wins_over_config", json: saJSON(t, map[string]any{"universe_domain": "json.example"}), config: "cfg.example", want: "json.example"},
+		{name: "sa_config_without_json", json: saJSON(t, nil), config: "cfg.example", want: "cfg.example"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -196,7 +199,7 @@ func TestBuildCredentialsErrors(t *testing.T) {
 		{name: "scope_with_space", cfg: &Config{Client: client, JSON: userJSON(t, nil), Scopes: []string{"a b"}}, want: "with spaces"},
 		{name: "scope_with_unicode_space", cfg: &Config{Client: client, JSON: userJSON(t, nil), Scopes: []string{"a\u00a0b"}}, want: "with spaces"},
 		{name: "user_missing_fields", cfg: &Config{Client: client, JSON: userJSON(t, map[string]any{"client_secret": nil})}, want: "missing client_secret"},
-		{name: "user_bad_token_url", cfg: &Config{Client: client, JSON: userJSON(t, nil), TokenURL: "/token"}, want: "absolute URL"},
+		{name: "user_bad_token_url", cfg: &Config{Client: client, JSON: userJSON(t, nil), TokenURL: "/token"}, want: "token URL must be"},
 		{name: "sa_missing_key", cfg: &Config{Client: client, JSON: saJSON(t, map[string]any{"private_key": nil})}, want: "missing private_key"},
 		{name: "sa_self_signed_no_scopes", cfg: &Config{Client: client, JSON: saJSON(t, nil), UseSelfSignedJWT: true}, want: "needs Config.Scopes"},
 	}

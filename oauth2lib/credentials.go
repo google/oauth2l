@@ -103,8 +103,8 @@ type credentialType struct {
 // blocks on a new token request (or, for a self-signed JWT, signs a new JWT
 // locally) and returns a *RefreshError when the token endpoint fails, or
 // the context's error when ctx is done. JSON returns a copy of cfg.JSON, and
-// UniverseDomain returns cfg.UniverseDomain, else the JSON's
-// universe_domain, else googleapis.com.
+// UniverseDomain returns the JSON's universe_domain, else
+// cfg.UniverseDomain, else googleapis.com (surrounding spaces ignored).
 //
 // BuildCredentials reads no files, environment variables or gcloud
 // properties, and makes no network calls. cfg is copied, so changing it
@@ -139,9 +139,11 @@ func BuildCredentials(ctx context.Context, cfg *Config) (*auth.Credentials, erro
 			return nil, err
 		}
 		tp = p
-		universe = c.UniverseDomain
+		// The same order as service_account (serviceaccount.go): the JSON's
+		// universe_domain, then Config.UniverseDomain, then googleapis.com.
+		universe = strings.TrimSpace(ct.UniverseDomain)
 		if universe == "" {
-			universe = ct.UniverseDomain
+			universe = strings.TrimSpace(c.UniverseDomain)
 		}
 		if universe == "" {
 			universe = defaultUniverseDomain
