@@ -35,7 +35,15 @@ type Config struct {
 	// service_account credentials. If empty, the JSON's token_uri is used,
 	// and https://oauth2.googleapis.com/token if the JSON has none.
 	TokenURL string
-	// UniverseDomain is the universe domain of the credential.
+	// UniverseDomain is used when the credential JSON has no universe_domain.
+	// The JSON's own universe_domain always wins, since a key belongs to the
+	// universe that issued it. A key file without universe_domain was issued
+	// in googleapis.com, so for a key file pass that file's universe
+	// (googleapis.com when absent), not core/universe_domain; otherwise the
+	// credentials can't reveal a mismatch with core/universe_domain. Go
+	// gcloud's file-override path already resolves it this way. For service
+	// accounts, a non-default value also turns on self-signed JWTs, as in
+	// Python gcloud. Leading and trailing spaces are ignored.
 	UniverseDomain string
 	// Client is used for every network call. It must not add its own
 	// Authorization header.
