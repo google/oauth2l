@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 	"unicode"
 
@@ -36,8 +35,10 @@ type Config struct {
 	// JSON is the credential file: authorized_user, service_account or
 	// impersonated_service_account.
 	JSON []byte
-	// Scopes are sent with every token request. If empty, the JSON's
-	// "scopes" field is used, if any.
+	// Scopes are sent with every token request. Surrounding spaces are
+	// trimmed and empty entries dropped; a scope with a space inside it is an
+	// error, since scopes are sent space-separated. If no scopes remain, the
+	// JSON's "scopes" field is used, if any.
 	Scopes []string
 	// TokenURL overrides the JSON's token_uri for authorized_user and
 	// service_account credentials. If empty, the JSON's token_uri is used,
@@ -139,15 +140,7 @@ func BuildCredentials(ctx context.Context, cfg *Config) (*auth.Credentials, erro
 			return nil, err
 		}
 		tp = p
-		// The same order as service_account (serviceaccount.go): the JSON's
-		// universe_domain, then Config.UniverseDomain, then googleapis.com.
-		universe = strings.TrimSpace(ct.UniverseDomain)
-		if universe == "" {
-			universe = strings.TrimSpace(c.UniverseDomain)
-		}
-		if universe == "" {
-			universe = defaultUniverseDomain
-		}
+		universe = resolveUniverseDomain(ct.UniverseDomain, c.UniverseDomain)
 	case "service_account":
 		p, err := newServiceAccountTokenProvider(c)
 		if err != nil {
@@ -177,6 +170,23 @@ func BuildCredentials(ctx context.Context, cfg *Config) (*auth.Credentials, erro
 	}), nil
 }
 
+// resolveUniverseDomain returns a credential's universe domain: the JSON's
+// universe_domain, else the caller's Config.UniverseDomain, else
+// googleapis.com, ignoring surrounding spaces. A key belongs to the universe
+// that issued it, so the JSON wins. It only reports the universe: whether a
+// service account self-signs is decided separately (serviceaccount.go), since
+// a non-default Config.UniverseDomain turns that on even when the JSON says
+// googleapis.com.
+func resolveUniverseDomain(jsonUniverse, cfgUniverse string) string {
+	if u := strings.TrimSpace(jsonUniverse); u != "" {
+		return u
+	}
+	if u := strings.TrimSpace(cfgUniverse); u != "" {
+		return u
+	}
+	return defaultUniverseDomain
+}
+
 // validateConfig checks the fields every credential type needs and returns
 // a copy of cfg, with its own copies of JSON and Scopes, and the JSON's type.
 func validateConfig(cfg *Config) (*Config, credentialType, error) {
@@ -192,19 +202,34 @@ func validateConfig(cfg *Config) (*Config, credentialType, error) {
 		return nil, ct, errors.New("oauth2lib: Config.JSON is empty")
 	}
 	// The JSON holds secrets, so the parse error (which can quote it) is not
-	// wrapped. json.Unmarshal accepts null without error, so reject it here.
-	if bytes.Equal(trimmed, []byte("null")) || json.Unmarshal(trimmed, &ct) != nil {
+	// wrapped. Parse cfg.JSON itself, the same bytes the providers parse:
+	// bytes.TrimSpace also strips Unicode spaces (such as U+00A0) that
+	// encoding/json rejects. Requiring '{' also rejects null, which
+	// json.Unmarshal accepts without error, arrays and strings.
+	if trimmed[0] != '{' {
 		return nil, ct, errors.New("oauth2lib: Config.JSON is not a JSON object")
 	}
-	for _, s := range cfg.Scopes {
-		// Scopes are sent space-separated, so one with spaces in it would
+	if err := json.Unmarshal(cfg.JSON, &ct); err != nil {
+		// An object whose "type" or "universe_domain" isn't a string: name
+		// the field, never its value.
+		var typeErr *json.UnmarshalTypeError
+		if errors.As(err, &typeErr) && typeErr.Field != "" {
+			return nil, ct, fmt.Errorf("oauth2lib: Config.JSON field %q must be a string", typeErr.Field)
+		}
+		return nil, ct, errors.New("oauth2lib: Config.JSON is not a JSON object")
+	}
+	// Trim each scope and drop empty ones, as the providers do (cleanScopes),
+	// so []string{""} means no scopes. cleanScopes returns a new slice.
+	scopes := cleanScopes(cfg.Scopes)
+	for _, s := range scopes {
+		// Scopes are sent space-separated, so one with a space inside would
 		// silently become several.
-		if s == "" || strings.ContainsFunc(s, unicode.IsSpace) {
-			return nil, ct, fmt.Errorf("oauth2lib: Config.Scopes has an empty scope or one with spaces: %q", s)
+		if strings.ContainsFunc(s, unicode.IsSpace) {
+			return nil, ct, fmt.Errorf("oauth2lib: Config.Scopes has a scope with spaces in it: %q", s)
 		}
 	}
 	c := *cfg
 	c.JSON = bytes.Clone(cfg.JSON)
-	c.Scopes = slices.Clone(cfg.Scopes)
+	c.Scopes = scopes
 	return &c, ct, nil
 }

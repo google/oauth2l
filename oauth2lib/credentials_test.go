@@ -20,8 +20,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 )
@@ -190,19 +192,26 @@ func TestBuildCredentialsErrors(t *testing.T) {
 		{name: "not_json", cfg: &Config{Client: client, JSON: []byte(`{"refresh_token":"secret-rt"`)}, want: "not a JSON object"},
 		{name: "json_null", cfg: &Config{Client: client, JSON: []byte(" null ")}, want: "not a JSON object"},
 		{name: "json_array", cfg: &Config{Client: client, JSON: []byte(`["secret-rt"]`)}, want: "not a JSON object"},
+		{name: "nbsp_padded_json", cfg: &Config{Client: client, JSON: append([]byte("\u00a0"), userJSON(t, nil)...)}, want: "not a JSON object"},
+		{name: "vertical_tab_padded_json", cfg: &Config{Client: client, JSON: append(userJSON(t, nil), '\v')}, want: "not a JSON object"},
+		{name: "json_string", cfg: &Config{Client: client, JSON: []byte(`"secret-rt"`)}, want: "not a JSON object"},
+		{name: "type_not_string", cfg: &Config{Client: client, JSON: []byte(`{"type":123,"refresh_token":"secret-rt"}`)}, want: `field "type" must be a string`},
+		{name: "universe_domain_not_string", cfg: &Config{Client: client, JSON: []byte(`{"type":"authorized_user","universe_domain":{"secret-rt":1}}`)}, want: `field "universe_domain" must be a string`},
 		{name: "no_type", cfg: &Config{Client: client, JSON: []byte(`{}`)}, want: `no "type"`},
 		{name: "unknown_type", cfg: &Config{Client: client, JSON: []byte(`{"type":"gdch_service_account"}`)}, want: `unsupported credential type "gdch_service_account"`},
 		{name: "impersonated", cfg: &Config{Client: client, JSON: []byte(`{"type":"impersonated_service_account"}`)}, want: "not supported yet"},
 		{name: "external_account", cfg: &Config{Client: client, JSON: []byte(`{"type":"external_account"}`)}, want: "external_account credentials are not supported"},
 		{name: "external_account_authorized_user", cfg: &Config{Client: client, JSON: []byte(`{"type":"external_account_authorized_user"}`)}, want: "external_account_authorized_user credentials are not supported"},
-		{name: "empty_scope", cfg: &Config{Client: client, JSON: userJSON(t, nil), Scopes: []string{"a", ""}}, want: "empty scope"},
 		{name: "scope_with_space", cfg: &Config{Client: client, JSON: userJSON(t, nil), Scopes: []string{"a b"}}, want: "with spaces"},
 		{name: "scope_with_unicode_space", cfg: &Config{Client: client, JSON: userJSON(t, nil), Scopes: []string{"a\u00a0b"}}, want: "with spaces"},
 		{name: "user_missing_fields", cfg: &Config{Client: client, JSON: userJSON(t, map[string]any{"client_secret": nil})}, want: "missing client_secret"},
 		{name: "user_bad_token_url", cfg: &Config{Client: client, JSON: userJSON(t, nil), TokenURL: "/token"}, want: "token URL must be"},
 		{name: "sa_missing_key", cfg: &Config{Client: client, JSON: saJSON(t, map[string]any{"private_key": nil})}, want: "missing private_key"},
 		{name: "sa_self_signed_no_scopes", cfg: &Config{Client: client, JSON: saJSON(t, nil), UseSelfSignedJWT: true}, want: "needs Config.Scopes"},
+		{name: "sa_self_signed_blank_scopes", cfg: &Config{Client: client, JSON: saJSON(t, nil), UseSelfSignedJWT: true, Scopes: []string{"", " "}}, want: "needs Config.Scopes"},
 	}
+	_, keyPEM := testServiceAccountKey(t)
+	keyLine := strings.Split(keyPEM, "\n")[1] // raw base64 key material, without the PEM header
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			creds, err := BuildCredentials(t.Context(), tc.cfg)
@@ -212,10 +221,41 @@ func TestBuildCredentialsErrors(t *testing.T) {
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("BuildCredentials(%s) error = %q, want it to contain %q", tc.name, err, tc.want)
 			}
-			for _, secret := range []string{"secret-rt", "client-secret", "PRIVATE KEY"} {
+			for _, secret := range []string{"secret-rt", "refresh-1", "client-secret", "PRIVATE KEY", keyLine} {
 				if strings.Contains(err.Error(), secret) {
 					t.Errorf("BuildCredentials(%s) error = %q, which leaks %q from the JSON", tc.name, err, secret)
 				}
+			}
+		})
+	}
+}
+
+func TestBuildCredentialsCleansScopes(t *testing.T) {
+	tests := []struct {
+		name       string
+		jsonScopes any
+		cfgScopes  []string
+		want       string // the scope parameter sent
+	}{
+		{name: "trims_and_drops_empty", cfgScopes: []string{" s1 ", "", "s2"}, want: "s1 s2"},
+		{name: "blank_config_uses_json", jsonScopes: []string{"j1"}, cfgScopes: []string{"", " "}, want: "j1"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newFakeServer(t, fakeResponse{body: okTokenBody})
+			creds, err := BuildCredentials(t.Context(), &Config{
+				JSON:   userJSON(t, map[string]any{"token_uri": srv.URL + "/token", "scopes": tc.jsonScopes}),
+				Client: srv.Client(),
+				Scopes: tc.cfgScopes,
+			})
+			if err != nil {
+				t.Fatalf("BuildCredentials(%s) error = %v, want nil", tc.name, err)
+			}
+			if _, err := creds.Token(t.Context()); err != nil {
+				t.Fatalf("Token() error = %v", err)
+			}
+			if forms := srv.recordedForms(); len(forms) != 1 || forms[0].Get("scope") != tc.want {
+				t.Errorf("BuildCredentials(%s): server got forms %v, want scope %q", tc.name, forms, tc.want)
 			}
 		})
 	}
@@ -299,12 +339,19 @@ func TestBuildCredentialsCopiesConfig(t *testing.T) {
 }
 
 func TestBuildCredentialsLogsNoSecrets(t *testing.T) {
+	// With debug logging on, go/auth writes to stderr when it gets a nil
+	// logger, so stderr is captured as well as Config.Logger.
 	t.Setenv("GOOGLE_SDK_GO_LOGGING_LEVEL", "debug")
-	const tokenBody = `{"access_token":"secret-at","expires_in":3600}`
+	_, keyPEM := testServiceAccountKey(t)
+	keyLine := strings.Split(keyPEM, "\n")[1] // raw base64 key material
+	// The user token response carries an id_token and a rotated refresh token.
+	const userBody = `{"access_token":"secret-at","expires_in":3600,"id_token":"secret-idt","refresh_token":"secret-rt-2"}`
 	tests := []struct {
 		name     string
 		json     func(srv *fakeServer) []byte
 		self     bool // UseSelfSignedJWT: no request is made
+		rapt     bool
+		body     string
 		wantType string
 	}{
 		{
@@ -312,11 +359,14 @@ func TestBuildCredentialsLogsNoSecrets(t *testing.T) {
 			json: func(srv *fakeServer) []byte {
 				return userJSON(t, map[string]any{"token_uri": srv.URL + "/token", "refresh_token": "secret-rt"})
 			},
+			rapt:     true,
+			body:     userBody,
 			wantType: "authorized_user",
 		},
 		{
 			name:     "service_account_2lo",
 			json:     func(srv *fakeServer) []byte { return saJSON(t, map[string]any{"token_uri": srv.URL + "/token"}) },
+			body:     `{"access_token":"secret-at","expires_in":3600}`,
 			wantType: "service_account",
 		},
 		{
@@ -327,40 +377,89 @@ func TestBuildCredentialsLogsNoSecrets(t *testing.T) {
 		},
 	}
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			var srv *fakeServer
-			if tc.self {
-				srv = newFakeServer(t) // fails the test if any request arrives
-			} else {
-				srv = newFakeServer(t, fakeResponse{body: tokenBody})
-			}
-			var logs bytes.Buffer
-			logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-			creds, err := BuildCredentials(t.Context(), &Config{
-				JSON:             tc.json(srv),
-				Client:           srv.Client(),
-				Scopes:           []string{"s1"},
-				UseSelfSignedJWT: tc.self,
-				Logger:           logger,
+		for _, debugLogger := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/debug_logger_%v", tc.name, debugLogger), func(t *testing.T) {
+				var srv *fakeServer
+				if tc.self {
+					srv = newFakeServer(t) // fails the test if any request arrives
+				} else {
+					srv = newFakeServer(t, fakeResponse{body: tc.body})
+				}
+				var logs bytes.Buffer
+				cfg := &Config{
+					JSON:             tc.json(srv),
+					Client:           srv.Client(),
+					Scopes:           []string{"s1"},
+					UseSelfSignedJWT: tc.self,
+				}
+				if debugLogger {
+					cfg.Logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+				}
+				if tc.rapt {
+					cfg.RAPT = func(context.Context) (string, error) { return "secret-rapt", nil }
+				}
+
+				stderr := captureStderr(t)
+				creds, err := BuildCredentials(t.Context(), cfg)
+				if err != nil {
+					t.Fatalf("BuildCredentials(%s) error = %v", tc.name, err)
+				}
+				tok, err := creds.Token(t.Context())
+				if err != nil {
+					t.Fatalf("BuildCredentials(%s).Token() error = %v", tc.name, err)
+				}
+				outputs := map[string]string{"stderr": stderr(), "Config.Logger": logs.String()}
+
+				if debugLogger {
+					for _, want := range []string{"type=" + tc.wantType, "universe_domain=googleapis.com"} {
+						if !strings.Contains(outputs["Config.Logger"], want) {
+							t.Errorf("BuildCredentials(%s): Config.Logger output = %q, want it to contain %q", tc.name, outputs["Config.Logger"], want)
+						}
+					}
+				}
+				secrets := []string{tok.Value, "eyJ", "assertion", "secret-at", "secret-rt", "secret-rt-2",
+					"secret-rapt", "secret-idt", "client-secret", "PRIVATE KEY", keyLine}
+				for where, out := range outputs {
+					for _, secret := range secrets {
+						if strings.Contains(out, secret) {
+							t.Errorf("BuildCredentials(%s): %s contains %q: %s", tc.name, where, secret, out)
+						}
+					}
+				}
 			})
-			if err != nil {
-				t.Fatalf("BuildCredentials(%s) error = %v", tc.name, err)
-			}
-			if _, err := creds.Token(t.Context()); err != nil {
-				t.Fatalf("Token() error = %v", err)
-			}
-			got := logs.String()
-			for _, want := range []string{"type=" + tc.wantType, "universe_domain=googleapis.com"} {
-				if !strings.Contains(got, want) {
-					t.Errorf("logs = %q, want them to contain %q", got, want)
-				}
-			}
-			for _, secret := range []string{"secret-at", "secret-rt", "client-secret", "PRIVATE KEY"} {
-				if strings.Contains(got, secret) {
-					t.Errorf("logs contain %q: %s", secret, got)
-				}
-			}
-		})
+		}
+	}
+}
+
+// captureStderr redirects os.Stderr to a pipe until the returned function is
+// called, which restores it and returns what was written.
+func captureStderr(t *testing.T) func() string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := os.Stderr
+	os.Stderr = w
+	done := false
+	restore := func() {
+		if !done {
+			done = true
+			os.Stderr = orig
+			w.Close()
+		}
+	}
+	t.Cleanup(func() {
+		restore()
+		r.Close()
+	})
+	return func() string {
+		restore()
+		out, err := io.ReadAll(r)
+		if err != nil {
+			t.Fatalf("reading stderr: %v", err)
+		}
+		return string(out)
 	}
 }
 
