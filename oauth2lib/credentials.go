@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"unicode"
 
 	"cloud.google.com/go/auth"
 )
@@ -184,18 +185,19 @@ func validateConfig(cfg *Config) (*Config, credentialType, error) {
 	if cfg.Client == nil {
 		return nil, ct, errors.New("oauth2lib: Config.Client is nil")
 	}
-	if len(bytes.TrimSpace(cfg.JSON)) == 0 {
+	trimmed := bytes.TrimSpace(cfg.JSON)
+	if len(trimmed) == 0 {
 		return nil, ct, errors.New("oauth2lib: Config.JSON is empty")
 	}
 	// The JSON holds secrets, so the parse error (which can quote it) is not
-	// wrapped.
-	if err := json.Unmarshal(cfg.JSON, &ct); err != nil {
+	// wrapped. json.Unmarshal accepts null without error, so reject it here.
+	if bytes.Equal(trimmed, []byte("null")) || json.Unmarshal(trimmed, &ct) != nil {
 		return nil, ct, errors.New("oauth2lib: Config.JSON is not a JSON object")
 	}
 	for _, s := range cfg.Scopes {
 		// Scopes are sent space-separated, so one with spaces in it would
 		// silently become several.
-		if s == "" || strings.ContainsFunc(s, isSpace) {
+		if s == "" || strings.ContainsFunc(s, unicode.IsSpace) {
 			return nil, ct, fmt.Errorf("oauth2lib: Config.Scopes has an empty scope or one with spaces: %q", s)
 		}
 	}
@@ -203,8 +205,4 @@ func validateConfig(cfg *Config) (*Config, credentialType, error) {
 	c.JSON = bytes.Clone(cfg.JSON)
 	c.Scopes = slices.Clone(cfg.Scopes)
 	return &c, ct, nil
-}
-
-func isSpace(r rune) bool {
-	return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\f' || r == '\v'
 }
