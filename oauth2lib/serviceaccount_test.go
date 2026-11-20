@@ -21,6 +21,7 @@ import (
 	"crypto"
 	"crypto/ecdh"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
@@ -375,15 +376,23 @@ func TestServiceAccountSelfSignedJWT(t *testing.T) {
 func TestServiceAccountUniverseDomain(t *testing.T) {
 	client := newFakeServer(t).Client()
 	for _, tc := range []struct {
-		name, cfg string
-		json      any
-		want      string
+		name, cfg      string
+		json           any
+		want           string
+		wantSelfSigned bool
 	}{
-		{"default", "", nil, "googleapis.com"},
-		{"json", "", "example-universe.com", "example-universe.com"},
-		{"config_without_json", "other.example", nil, "other.example"},
-		{"json_overrides_config", "other.example", "example-universe.com", "example-universe.com"},
-		{"json_overrides_default_config", "googleapis.com", "example-universe.com", "example-universe.com"},
+		{"default", "", nil, "googleapis.com", false},
+		{"json", "", "example-universe.com", "example-universe.com", true},
+		{"config_without_json", "other.example", nil, "other.example", true},
+		{"json_overrides_config", "other.example", "example-universe.com", "example-universe.com", true},
+		{"json_overrides_default_config", "googleapis.com", "example-universe.com", "example-universe.com", true},
+		{"blank_json_is_missing", "", "   ", "googleapis.com", false},
+		{"blank_json_uses_config", "other.example", " ", "other.example", true},
+		{"json_is_trimmed", "", " example-universe.com ", "example-universe.com", true},
+		{"padded_default_json", "", " googleapis.com ", "googleapis.com", false},
+		{"blank_config", " ", nil, "googleapis.com", false},
+		{"config_is_trimmed", " other.example ", nil, "other.example", true},
+		{"padded_default_config", " googleapis.com ", nil, "googleapis.com", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := Config{
@@ -399,8 +408,8 @@ func TestServiceAccountUniverseDomain(t *testing.T) {
 			if p.universeDomain != tc.want {
 				t.Errorf("universeDomain = %q, want %q", p.universeDomain, tc.want)
 			}
-			if !p.selfSignedJWT && tc.want != "googleapis.com" {
-				t.Errorf("selfSignedJWT = false for universe %q, want true", tc.want)
+			if p.selfSignedJWT != tc.wantSelfSigned {
+				t.Errorf("selfSignedJWT = %v, want %v", p.selfSignedJWT, tc.wantSelfSigned)
 			}
 		})
 	}
@@ -422,6 +431,7 @@ func TestNewServiceAccountTokenProviderErrors(t *testing.T) {
 		{"ec_sec1_key", Config{JSON: saJSON(t, map[string]any{"private_key": ecKeyPEM(t, false)}), Client: client}, "is an EC key"},
 		{"bad_key", Config{JSON: saJSON(t, map[string]any{"private_key": "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n"}), Client: client}, "not a PKCS #8"},
 		{"self_signed_without_scopes", Config{JSON: saJSON(t, nil), Client: client, UseSelfSignedJWT: true}, "needs Config.Scopes"},
+		{"self_signed_bad_client_id", Config{JSON: saJSON(t, map[string]any{"client_id": 12345}), Client: client, UseSelfSignedJWT: true, Scopes: []string{"s"}}, "self-signed JWT"},
 		{"self_signed_blank_scopes", Config{JSON: saJSON(t, nil), Client: client, UseSelfSignedJWT: true, Scopes: []string{"", " "}}, "needs Config.Scopes"},
 		{"truncated_json", Config{JSON: saJSON(t, nil)[:200], Client: client}, "parsing service_account JSON"},
 		{"relative_token_url", Config{JSON: saJSON(t, nil), TokenURL: "/token", Client: client}, "token URL must be"},
@@ -504,6 +514,55 @@ func TestServiceAccountConcurrentTokens(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestServiceAccountSelfSignedJWTErrorIsRefreshError(t *testing.T) {
+	srv := newFakeServer(t) // any request fails the test
+	p := newTestSAProvider(t, srv, Config{UseSelfSignedJWT: true, Scopes: []string{"s"}})
+	// Corrupt the stored key after a successful build, so signing fails at
+	// Token time.
+	p.jsonData = saJSON(t, map[string]any{"private_key": "not a key"})
+	_, err := p.Token(t.Context())
+	var re *RefreshError
+	if !errors.As(err, &re) || re.Kind != KindUnknown {
+		t.Fatalf("Token() error = %v (%T), want a *RefreshError of kind KindUnknown", err, err)
+	}
+}
+
+// TestServiceAccountEd25519KeyFailsAtToken documents that, as in Python's
+// google-auth (whose default backend loads any PEM key and fails when it
+// signs), an Ed25519 key is accepted at build time and every Token call fails
+// with a KindUnknown *RefreshError, without sending a request.
+func TestServiceAccountEd25519KeyFailsAtToken(t *testing.T) {
+	for _, self := range []bool{false, true} {
+		t.Run(fmt.Sprintf("self_signed_%v", self), func(t *testing.T) {
+			srv := newFakeServer(t) // any request fails the test
+			p := newTestSAProvider(t, srv, Config{
+				JSON:             saJSON(t, map[string]any{"token_uri": srv.URL + "/token", "private_key": ed25519PKCS8(t)}),
+				Scopes:           []string{"s"},
+				UseSelfSignedJWT: self,
+			})
+			_, err := p.Token(t.Context())
+			var re *RefreshError
+			if !errors.As(err, &re) || re.Kind != KindUnknown {
+				t.Fatalf("Token() error = %v (%T), want a *RefreshError of kind KindUnknown", err, err)
+			}
+		})
+	}
+}
+
+// ed25519PKCS8 returns a PEM PKCS #8 Ed25519 key.
+func ed25519PKCS8(t *testing.T) string {
+	t.Helper()
+	_, k, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
 }
 
 // x25519PKCS8 returns a PEM PKCS #8 X25519 key, which parses but can't sign.

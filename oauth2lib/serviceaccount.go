@@ -108,9 +108,13 @@ func newServiceAccountTokenProvider(cfg *Config) (*serviceAccountTokenProvider, 
 	// universe_domain wins, and Config.UniverseDomain is used only when the
 	// JSON has none. That way UniverseDomain always reports the key's real
 	// universe, and the caller can check it against its own configuration.
-	p := &serviceAccountTokenProvider{universeDomain: f.UniverseDomain}
+	// Surrounding spaces are ignored, so a blank value counts as missing (as
+	// in Go gcloud's normalizeUniverseDomain).
+	fileUniverse := strings.TrimSpace(f.UniverseDomain)
+	cfgUniverse := strings.TrimSpace(cfg.UniverseDomain)
+	p := &serviceAccountTokenProvider{universeDomain: fileUniverse}
 	if p.universeDomain == "" {
-		p.universeDomain = cfg.UniverseDomain
+		p.universeDomain = cfgUniverse
 	}
 	if p.universeDomain == "" {
 		p.universeDomain = defaultUniverseDomain
@@ -122,8 +126,8 @@ func newServiceAccountTokenProvider(cfg *Config) (*serviceAccountTokenProvider, 
 	// the caller's configuration is enough, even if the other one is the
 	// default.
 	p.selfSignedJWT = cfg.UseSelfSignedJWT ||
-		(f.UniverseDomain != "" && f.UniverseDomain != defaultUniverseDomain) ||
-		(cfg.UniverseDomain != "" && cfg.UniverseDomain != defaultUniverseDomain)
+		(fileUniverse != "" && fileUniverse != defaultUniverseDomain) ||
+		(cfgUniverse != "" && cfgUniverse != defaultUniverseDomain)
 	scopes := cleanScopes(cfg.Scopes) // a new slice, so later changes by the caller can't affect it
 	if p.selfSignedJWT {
 		if len(scopes) == 0 {
@@ -138,6 +142,13 @@ func newServiceAccountTokenProvider(cfg *Config) (*serviceAccountTokenProvider, 
 			UniverseDomain:   p.universeDomain,
 			Client:           cfg.Client,
 			Logger:           discardLogger,
+		}
+		// go/auth parses the JSON into its own struct, with more typed fields
+		// (project_id, client_id, auth_uri) than serviceAccountJSON. Build
+		// the credentials once now, which makes no network call and starts no
+		// goroutine, so such a JSON fails here instead of on every Token call.
+		if _, err := credentials.NewCredentialsFromJSON(credentials.ServiceAccount, p.jsonData, p.jsonOpts); err != nil {
+			return nil, fmt.Errorf("oauth2lib: self-signed JWT: %w", err)
 		}
 		return p, nil
 	}
@@ -249,16 +260,18 @@ func (p *serviceAccountTokenProvider) selfSignedToken(ctx context.Context) (*aut
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	// Only a done ctx returns ctx's error; every other failure is a
+	// *RefreshError, as errors.go documents.
 	creds, err := credentials.NewCredentialsFromJSON(credentials.ServiceAccount, p.jsonData, p.jsonOpts)
 	if err != nil {
-		return nil, fmt.Errorf("oauth2lib: self-signed JWT: %w", err)
+		return nil, &RefreshError{Kind: KindUnknown, Err: fmt.Errorf("self-signed JWT: %w", err)}
 	}
 	tok, err := creds.Token(ctx)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
 		}
-		return nil, fmt.Errorf("oauth2lib: self-signed JWT: %w", err)
+		return nil, &RefreshError{Kind: KindUnknown, Err: fmt.Errorf("self-signed JWT: %w", err)}
 	}
 	return newServiceAccountToken(tok), nil
 }
