@@ -125,7 +125,7 @@ func TestBuildCredentialsServiceAccount(t *testing.T) {
 
 func TestBuildCredentialsSelfSignedJWT(t *testing.T) {
 	// The client fails every request: a self-signed JWT makes no network call.
-	client := &http.Client{Transport: failTransport{}}
+	client := noNetworkClient(t)
 	creds, err := BuildCredentials(t.Context(), &Config{
 		JSON:             saJSON(t, nil),
 		Client:           client,
@@ -165,7 +165,7 @@ func TestBuildCredentialsUniverseDomain(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			creds, err := BuildCredentials(t.Context(), &Config{
 				JSON:           tc.json,
-				Client:         http.DefaultClient, // never used: no Token call
+				Client:         noNetworkClient(t), // no Token call, so no request
 				Scopes:         scopes,
 				UniverseDomain: tc.config,
 			})
@@ -180,7 +180,7 @@ func TestBuildCredentialsUniverseDomain(t *testing.T) {
 }
 
 func TestBuildCredentialsErrors(t *testing.T) {
-	client := http.DefaultClient
+	client := noNetworkClient(t)
 	tests := []struct {
 		name string
 		cfg  *Config
@@ -261,51 +261,50 @@ func TestBuildCredentialsCleansScopes(t *testing.T) {
 	}
 }
 
-func TestBuildCredentialsIgnoresOptionsForOtherTypes(t *testing.T) {
-	t.Run("self_signed_jwt_on_authorized_user", func(t *testing.T) {
-		srv := newFakeServer(t, fakeResponse{body: okTokenBody})
-		creds, err := BuildCredentials(t.Context(), &Config{
-			JSON:             userJSON(t, map[string]any{"token_uri": srv.URL + "/token"}),
-			Client:           srv.Client(),
-			UseSelfSignedJWT: true,
-		})
-		if err != nil {
-			t.Fatalf("BuildCredentials(UseSelfSignedJWT: true) error = %v, want nil", err)
-		}
-		if _, err := creds.Token(t.Context()); err != nil {
-			t.Fatalf("Token() error = %v", err)
-		}
-		if forms := srv.recordedForms(); len(forms) != 1 || forms[0].Get("grant_type") != "refresh_token" {
-			t.Errorf("server got forms %v, want one refresh_token grant", forms)
-		}
+func TestBuildCredentialsIgnoresSelfSignedJWTForAuthorizedUser(t *testing.T) {
+	srv := newFakeServer(t, fakeResponse{body: okTokenBody})
+	creds, err := BuildCredentials(t.Context(), &Config{
+		JSON:             userJSON(t, map[string]any{"token_uri": srv.URL + "/token"}),
+		Client:           srv.Client(),
+		UseSelfSignedJWT: true,
 	})
-	t.Run("rapt_on_service_account", func(t *testing.T) {
-		srv := newFakeServer(t, fakeResponse{body: `{"access_token":"sa-at","expires_in":3600}`})
-		creds, err := BuildCredentials(t.Context(), &Config{
-			JSON:   saJSON(t, map[string]any{"token_uri": srv.URL + "/token"}),
-			Client: srv.Client(),
-			Scopes: []string{"s1"},
-			RAPT: func(context.Context) (string, error) {
-				t.Error("Config.RAPT was called for service_account credentials")
-				return "rapt", nil
-			},
-		})
-		if err != nil {
-			t.Fatalf("BuildCredentials(RAPT set) error = %v, want nil", err)
-		}
-		if _, err := creds.Token(t.Context()); err != nil {
-			t.Fatalf("Token() error = %v", err)
-		}
-		if forms := srv.recordedForms(); len(forms) != 1 || forms[0].Has("rapt") {
-			t.Errorf("server got forms %v, want one request without rapt", forms)
-		}
+	if err != nil {
+		t.Fatalf("BuildCredentials(UseSelfSignedJWT: true) error = %v, want nil", err)
+	}
+	if _, err := creds.Token(t.Context()); err != nil {
+		t.Fatalf("Token() error = %v", err)
+	}
+	if forms := srv.recordedForms(); len(forms) != 1 || forms[0].Get("grant_type") != "refresh_token" {
+		t.Errorf("server got forms %v, want one refresh_token grant", forms)
+	}
+}
+
+func TestBuildCredentialsIgnoresRAPTForServiceAccount(t *testing.T) {
+	srv := newFakeServer(t, fakeResponse{body: `{"access_token":"sa-at","expires_in":3600}`})
+	creds, err := BuildCredentials(t.Context(), &Config{
+		JSON:   saJSON(t, map[string]any{"token_uri": srv.URL + "/token"}),
+		Client: srv.Client(),
+		Scopes: []string{"s1"},
+		RAPT: func(context.Context) (string, error) {
+			t.Error("Config.RAPT was called for service_account credentials")
+			return "rapt", nil
+		},
 	})
+	if err != nil {
+		t.Fatalf("BuildCredentials(RAPT set) error = %v, want nil", err)
+	}
+	if _, err := creds.Token(t.Context()); err != nil {
+		t.Fatalf("Token() error = %v", err)
+	}
+	if forms := srv.recordedForms(); len(forms) != 1 || forms[0].Has("rapt") {
+		t.Errorf("server got forms %v, want one request without rapt", forms)
+	}
 }
 
 func TestBuildCredentialsCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	_, err := BuildCredentials(ctx, &Config{JSON: userJSON(t, nil), Client: http.DefaultClient})
+	_, err := BuildCredentials(ctx, &Config{JSON: userJSON(t, nil), Client: noNetworkClient(t)})
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("BuildCredentials() error = %v, want context.Canceled", err)
 	}
@@ -377,57 +376,59 @@ func TestBuildCredentialsLogsNoSecrets(t *testing.T) {
 		},
 	}
 	for _, tc := range tests {
-		for _, debugLogger := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/debug_logger_%v", tc.name, debugLogger), func(t *testing.T) {
-				var srv *fakeServer
-				if tc.self {
-					srv = newFakeServer(t) // fails the test if any request arrives
-				} else {
-					srv = newFakeServer(t, fakeResponse{body: tc.body})
-				}
-				var logs bytes.Buffer
-				cfg := &Config{
-					JSON:             tc.json(srv),
-					Client:           srv.Client(),
-					Scopes:           []string{"s1"},
-					UseSelfSignedJWT: tc.self,
-				}
-				if debugLogger {
-					cfg.Logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
-				}
-				if tc.rapt {
-					cfg.RAPT = func(context.Context) (string, error) { return "secret-rapt", nil }
-				}
+		t.Run(tc.name, func(t *testing.T) {
+			for _, debugLogger := range []bool{false, true} {
+				t.Run(fmt.Sprintf("debug_logger_%v", debugLogger), func(t *testing.T) {
+					var srv *fakeServer
+					if tc.self {
+						srv = newFakeServer(t) // fails the test if any request arrives
+					} else {
+						srv = newFakeServer(t, fakeResponse{body: tc.body})
+					}
+					var logs bytes.Buffer
+					cfg := &Config{
+						JSON:             tc.json(srv),
+						Client:           srv.Client(),
+						Scopes:           []string{"s1"},
+						UseSelfSignedJWT: tc.self,
+					}
+					if debugLogger {
+						cfg.Logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+					}
+					if tc.rapt {
+						cfg.RAPT = func(context.Context) (string, error) { return "secret-rapt", nil }
+					}
 
-				stderr := captureStderr(t)
-				creds, err := BuildCredentials(t.Context(), cfg)
-				if err != nil {
-					t.Fatalf("BuildCredentials(%s) error = %v", tc.name, err)
-				}
-				tok, err := creds.Token(t.Context())
-				if err != nil {
-					t.Fatalf("BuildCredentials(%s).Token() error = %v", tc.name, err)
-				}
-				outputs := map[string]string{"stderr": stderr(), "Config.Logger": logs.String()}
+					stderr := captureStderr(t)
+					creds, err := BuildCredentials(t.Context(), cfg)
+					if err != nil {
+						t.Fatalf("BuildCredentials(%s) error = %v", tc.name, err)
+					}
+					tok, err := creds.Token(t.Context())
+					if err != nil {
+						t.Fatalf("BuildCredentials(%s).Token() error = %v", tc.name, err)
+					}
+					outputs := map[string]string{"stderr": stderr(), "Config.Logger": logs.String()}
 
-				if debugLogger {
-					for _, want := range []string{"type=" + tc.wantType, "universe_domain=googleapis.com"} {
-						if !strings.Contains(outputs["Config.Logger"], want) {
-							t.Errorf("BuildCredentials(%s): Config.Logger output = %q, want it to contain %q", tc.name, outputs["Config.Logger"], want)
+					if debugLogger {
+						for _, want := range []string{"type=" + tc.wantType, "universe_domain=googleapis.com"} {
+							if !strings.Contains(outputs["Config.Logger"], want) {
+								t.Errorf("BuildCredentials(%s): Config.Logger output = %q, want it to contain %q", tc.name, outputs["Config.Logger"], want)
+							}
 						}
 					}
-				}
-				secrets := []string{tok.Value, "eyJ", "assertion", "secret-at", "secret-rt", "secret-rt-2",
-					"secret-rapt", "secret-idt", "client-secret", "PRIVATE KEY", keyLine}
-				for where, out := range outputs {
-					for _, secret := range secrets {
-						if strings.Contains(out, secret) {
-							t.Errorf("BuildCredentials(%s): %s contains %q: %s", tc.name, where, secret, out)
+					secrets := []string{tok.Value, "eyJ", "assertion", "secret-at", "secret-rt", "secret-rt-2",
+						"secret-rapt", "secret-idt", "client-secret", "PRIVATE KEY", keyLine}
+					for where, out := range outputs {
+						for _, secret := range secrets {
+							if strings.Contains(out, secret) {
+								t.Errorf("BuildCredentials(%s): %s contains %q: %s", tc.name, where, secret, out)
+							}
 						}
 					}
-				}
-			})
-		}
+				})
+			}
+		})
 	}
 }
 
@@ -437,7 +438,7 @@ func captureStderr(t *testing.T) func() string {
 	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("os.Pipe() failed: %v", err)
 	}
 	orig := os.Stderr
 	os.Stderr = w
@@ -463,9 +464,16 @@ func captureStderr(t *testing.T) func() string {
 	}
 }
 
-// failTransport fails every request, for tests that must make no network call.
-type failTransport struct{}
+// noNetworkClient returns a client for tests that must make no network call:
+// any request fails the test, even if the caller ignores the error.
+func noNetworkClient(t *testing.T) *http.Client {
+	return &http.Client{Transport: failTransport{t: t}}
+}
 
-func (failTransport) RoundTrip(*http.Request) (*http.Response, error) {
+// failTransport fails the test and returns an error for every request.
+type failTransport struct{ t *testing.T }
+
+func (f failTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	f.t.Errorf("unexpected request: %s %s", req.Method, req.URL.Redacted())
 	return nil, errors.New("failTransport: unexpected request")
 }
