@@ -38,6 +38,10 @@ jobs:
       matrix:
         # The go line in oauth2lib/go.mod, and the Go version Go gcloud uses.
         go-version: ['1.26.0', '1.27.3']
+    env:
+      # Fail instead of downloading a newer Go when go.mod asks for one, so
+      # each leg really tests matrix.go-version.
+      GOTOOLCHAIN: local
     defaults:
       run:
         working-directory: oauth2lib

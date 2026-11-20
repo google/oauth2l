@@ -116,6 +116,8 @@ func TestUserTokenScopes(t *testing.T) {
 		{"config_overrides_json", []string{"a"}, []string{"x", "y"}, "x y"},
 		{"json_list_drops_empty_items", []string{"a", "", " b "}, nil, "a b"},
 		{"empty_config_uses_json", []string{"a"}, []string{}, "a"},
+		{"config_trimmed", nil, []string{" a ", "", "b"}, "a b"},
+		{"blank_config_uses_json", []string{"a"}, []string{"", " "}, "a"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -279,6 +281,17 @@ func TestUserTokenMetadataAndRotation(t *testing.T) {
 	}
 }
 
+func TestUserTokenEchoedRefreshTokenNotReported(t *testing.T) {
+	srv := newFakeServer(t, fakeResponse{body: `{"access_token":"at-1","refresh_token":"refresh-1"}`})
+	tok, err := newTestUserProvider(t, srv, Config{}).Token(t.Context())
+	if err != nil {
+		t.Fatalf("Token() error = %v", err)
+	}
+	if _, ok := tok.Metadata[MetadataRefreshToken]; ok {
+		t.Errorf("Token().Metadata = %v, want no %s when the sent refresh token is echoed", tok.Metadata, MetadataRefreshToken)
+	}
+}
+
 func TestUserTokenNoExpiresIn(t *testing.T) {
 	srv := newFakeServer(t, fakeResponse{body: `{"access_token":"at-1"}`})
 	tok, err := newTestUserProvider(t, srv, Config{}).Token(t.Context())
@@ -388,6 +401,7 @@ func TestNewUserTokenProviderErrors(t *testing.T) {
 		{"relative_token_url", Config{JSON: userJSON(t, nil), TokenURL: "/token", Client: client}, "token URL must be"},
 		{"unparsable_token_uri", Config{JSON: userJSON(t, map[string]any{"token_uri": "https://a b\x7f/"}), Client: client}, "token URL must be"},
 		{"token_uri_without_host", Config{JSON: userJSON(t, map[string]any{"token_uri": "https:///token"}), Client: client}, "token URL must be"},
+		{"non_http_token_url", Config{JSON: userJSON(t, nil), TokenURL: "file://host/token", Client: client}, "token URL must be"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

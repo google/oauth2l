@@ -345,6 +345,7 @@ func classifyTransportError(ctx context.Context, err error) error {
 		return ctxErr
 	}
 	kind := KindTransient
+	var cause error // the error that made kind non-transient
 	var verifyErr *tls.CertificateVerificationError
 	var unknownAuthority x509.UnknownAuthorityError
 	var hostnameErr x509.HostnameError
@@ -354,28 +355,49 @@ func classifyTransportError(ctx context.Context, err error) error {
 	case errors.Is(err, ErrAccessDenied):
 		// The caller's certificate callback or signer refused to provide a
 		// client certificate, for example because the device is not trusted.
-		kind = KindAccessDenied
-	case errors.As(err, &verifyErr), errors.As(err, &unknownAuthority),
-		errors.As(err, &hostnameErr), errors.As(err, &certInvalid):
-		// The client rejected the server's certificate, for example behind a
-		// TLS-inspecting proxy without the proxy's CA. Retrying won't help.
-		kind = KindUnknown
+		kind, cause = KindAccessDenied, ErrAccessDenied
+	// The client rejected the server's certificate, for example behind a
+	// TLS-inspecting proxy without the proxy's CA. Retrying won't help.
+	case errors.As(err, &verifyErr):
+		kind, cause = KindUnknown, verifyErr
+	case errors.As(err, &unknownAuthority):
+		kind, cause = KindUnknown, unknownAuthority
+	case errors.As(err, &hostnameErr):
+		kind, cause = KindUnknown, hostnameErr
+	case errors.As(err, &certInvalid):
+		kind, cause = KindUnknown, certInvalid
 	case errors.As(err, &opErr) && opErr.Op == "remote error" && isClientCertAlert(opErr.Err):
-		kind = KindAccessDenied
+		kind, cause = KindAccessDenied, opErr
 	}
 	// Only now keep context errors that didn't come from ctx out of the
 	// chain, so errors.Is(err, context.DeadlineExceeded) or context.Canceled
 	// only matches when the caller's own context ended. Doing this after
 	// choosing kind means an error that also wraps ErrAccessDenied or a
 	// certificate error keeps that classification.
-	switch {
-	case errors.Is(err, context.DeadlineExceeded):
-		err = &timeoutError{msg: err.Error()}
-	case errors.Is(err, context.Canceled):
-		err = errors.New(err.Error())
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		switch {
+		case cause != nil:
+			// Keep the error that decided kind, and don't report a timeout
+			// for an error that must not be retried.
+			err = &detachedError{msg: err.Error(), cause: cause}
+		case errors.Is(err, context.DeadlineExceeded):
+			err = &timeoutError{msg: err.Error()}
+		default:
+			err = errors.New(err.Error())
+		}
 	}
 	return &RefreshError{Kind: kind, Err: err}
 }
+
+// detachedError keeps the original message and the error that decided the
+// kind, but not the context error it also wrapped.
+type detachedError struct {
+	msg   string
+	cause error
+}
+
+func (e *detachedError) Error() string { return e.msg }
+func (e *detachedError) Unwrap() error { return e.cause }
 
 // timeoutError is a timeout from the HTTP client or dialer, not from the
 // caller's context. It keeps the original message and reports Timeout like a

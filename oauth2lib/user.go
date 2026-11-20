@@ -99,7 +99,7 @@ func newUserTokenProvider(cfg *Config) (*userTokenProvider, error) {
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("oauth2lib: authorized_user JSON is missing %s", strings.Join(missing, ", "))
 	}
-	scopes := cfg.Scopes
+	scopes := cleanScopes(cfg.Scopes)
 	if len(scopes) == 0 {
 		s, err := parseJSONScopes(f.Scopes)
 		if err != nil {
@@ -136,13 +136,7 @@ func parseJSONScopes(raw json.RawMessage) ([]string, error) {
 	}
 	var list []string
 	if err := json.Unmarshal(raw, &list); err == nil {
-		var scopes []string
-		for _, s := range list {
-			if s = strings.TrimSpace(s); s != "" {
-				scopes = append(scopes, s)
-			}
-		}
-		return scopes, nil
+		return cleanScopes(list), nil
 	}
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
@@ -151,13 +145,25 @@ func parseJSONScopes(raw json.RawMessage) ([]string, error) {
 	return nil, errors.New(`oauth2lib: authorized_user JSON "scopes" must be a list or a space-separated string`)
 }
 
+// cleanScopes returns scopes in a new slice, with surrounding spaces trimmed
+// and empty entries dropped, so that []string{""} means no scopes.
+func cleanScopes(scopes []string) []string {
+	var out []string
+	for _, s := range scopes {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // validateTokenURL rejects token URLs that could never be sent, so that a
 // bad Config.TokenURL or token_uri fails when the credentials are built
 // rather than on the first Token call. The URL is not included in the error.
 func validateTokenURL(tokenURL string) error {
 	u, err := url.Parse(tokenURL)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return errors.New("oauth2lib: token URL must be an absolute URL with a scheme and host")
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return errors.New("oauth2lib: token URL must be an absolute http or https URL")
 	}
 	return nil
 }
@@ -226,9 +232,10 @@ func (p *userTokenProvider) parseResponse(status int, body []byte, sentRefreshTo
 	}
 
 	metadata := map[string]interface{}{}
-	if resp.RefreshToken != "" {
+	if resp.RefreshToken != "" && resp.RefreshToken != sentRefreshToken {
 		// Like Python gcloud, keep the new refresh token even if the scope
-		// check below fails.
+		// check below fails. An echoed, unchanged token is not reported, so
+		// callers only save the credentials when the token really changed.
 		p.mu.Lock()
 		if p.refreshToken == sentRefreshToken {
 			p.refreshToken = resp.RefreshToken

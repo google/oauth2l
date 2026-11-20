@@ -35,11 +35,12 @@ GOCLOUD = {
 }
 
 
-def mod(requires=None, go="1.26.0", replace=None):
+def mod(requires=None, go="1.26.0", replace=None, toolchain=None):
     if requires is None:
         requires = {"cloud.google.com/go/auth": "v0.23.0"}
     return {
         "Go": go,
+        "Toolchain": toolchain,
         "Require": [{"Path": p, "Version": v} for p, v in requires.items()],
         "Replace": replace,
     }
@@ -69,6 +70,18 @@ class CheckRequirementsTest(unittest.TestCase):
 
     def test_same_go_allowed(self):
         self.assertEqual(compat.check_requirements(mod(go="1.27.3"), GOCLOUD), [])
+
+    def test_two_part_go_versions(self):
+        self.assertEqual(compat.check_requirements(mod(go="1.28.0"), dict(GOCLOUD, Go="1.28")), [])
+        self.assertEqual(compat.check_requirements(mod(go="1.27"), GOCLOUD), [])
+
+    def test_newer_toolchain_rejected(self):
+        errors = compat.check_requirements(mod(toolchain="go1.28.0"), GOCLOUD)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("toolchain go1.28.0", errors[0])
+
+    def test_older_toolchain_allowed(self):
+        self.assertEqual(compat.check_requirements(mod(toolchain="go1.27.3"), GOCLOUD), [])
 
     def test_unknown_module_rejected(self):
         errors = compat.check_requirements(mod({"example.com/new": "v1.0.0"}), GOCLOUD)
@@ -129,8 +142,9 @@ class CheckImportsTest(unittest.TestCase):
         self.assertEqual(len(errors), 2)
 
     def test_patched_package(self):
-        errors = compat.check_imports({"m/p": ["cloud.google.com/go/auth/httptransport"]})
-        self.assertEqual(len(errors), 1)
+        errors = compat.check_imports({"m/p": ["cloud.google.com/go/auth/httptransport",
+                                               "cloud.google.com/go/auth/credentials/impersonate"]})
+        self.assertEqual(len(errors), 2)
 
     def test_prefix_not_matched(self):
         self.assertEqual(compat.check_imports({"m/p": ["crypto/rsa2", "example.com/crypto/rsa"]}), [])

@@ -643,6 +643,20 @@ func TestClassifyTransportErrorKindBeforeDetachingContext(t *testing.T) {
 			if tc.want == KindAccessDenied && !errors.Is(err, ErrAccessDenied) {
 				t.Errorf("classifyTransportError(%v) = %v, want it to match ErrAccessDenied", tc.in, err)
 			}
+			if !strings.Contains(err.Error(), tc.in.Error()) {
+				t.Errorf("classifyTransportError(%v).Error() = %q, want the original message kept", tc.in, err.Error())
+			}
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				t.Errorf("classifyTransportError(%v) = %v, must not report a timeout", tc.in, err)
+			}
 		})
+	}
+
+	// The certificate error is still there for errors.As.
+	in := errors.Join(context.DeadlineExceeded, &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}})
+	var verifyErr *tls.CertificateVerificationError
+	if err := classifyTransportError(t.Context(), in); !errors.As(err, &verifyErr) {
+		t.Errorf("classifyTransportError(%v) = %v, want it to keep the *tls.CertificateVerificationError", in, err)
 	}
 }

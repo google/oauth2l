@@ -37,6 +37,9 @@ steps:
   - -c
   - |
     TAG="${TAG_NAME}"
+    # Only vX.Y.Z tags release the CLI. Skip other tags, such as the
+    # oauth2lib/vX.Y.Z tags of the nested oauth2lib module.
+    [[ -n "$${TAG}" && ! "$${TAG}" =~ ^v[0-9] ]] && echo "not a CLI release tag" && exit 0
     REF="${TAG//v}"
     [[ -z "$${REF}" && "${BRANCH_NAME}" == "master" ]] && REF="latest"
     [[ -z "$${REF}" ]] && echo "not a tag or master branch" && exit 0
@@ -50,6 +53,9 @@ steps:
   - -c
   - |
     TAG="${TAG_NAME}"
+    # Only vX.Y.Z tags release the CLI. Skip other tags, such as the
+    # oauth2lib/vX.Y.Z tags of the nested oauth2lib module.
+    [[ -n "$${TAG}" && ! "$${TAG}" =~ ^v[0-9] ]] && echo "not a CLI release tag" && exit 0
     REF="${TAG//v}"
     [[ -z "$${REF}" && "${BRANCH_NAME}" == "master" ]] && REF="latest"
     [[ -z "$${REF}" ]] && echo "not a tag or master branch" && exit 0

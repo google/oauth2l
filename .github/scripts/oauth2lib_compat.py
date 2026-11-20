@@ -48,10 +48,13 @@ TEST_ONLY_MODULES = {
 }
 
 # Packages that non-test code must not import: google3's copy of
-# cloud.google.com/go/auth changes httptransport (it adds a ctx parameter), and
-# google3's nogo check blocks these crypto packages.
+# cloud.google.com/go/auth changes httptransport and every constructor in
+# credentials/impersonate (it adds a ctx parameter), and google3's nogo check
+# blocks these crypto packages.
 FORBIDDEN_IMPORTS = [
     (re.compile(r"cloud\.google\.com/go/auth/httptransport"),
+     "google3 patches this package"),
+    (re.compile(r"cloud\.google\.com/go/auth/credentials/impersonate"),
      "google3 patches this package"),
     (re.compile(r"crypto/(cipher|des|dsa|elliptic|ed25519|md5|rc4|rsa|sha1)"),
      "google3 blocks this crypto package"),
@@ -84,7 +87,12 @@ def parse_version(version):
 
 
 def go_version_key(version):
-    return tuple(int(part) for part in re.findall(r"\d+", version))
+    """Returns a sortable key for a Go version such as 1.26 or 1.26.0."""
+    match = re.fullmatch(r"(?:go)?(\d+)\.(\d+)(?:\.(\d+))?", version)
+    if not match:
+        raise ValueError(f"unrecognized Go version {version!r}")
+    major, minor, patch = match.groups()
+    return (int(major), int(minor), int(patch or 0))
 
 
 def run_go(args, cwd=MODULE_DIR):
@@ -105,6 +113,9 @@ def check_requirements(go_mod, gocloud_go_mod):
     go_version = go_mod.get("Go", "")
     if go_version_key(go_version) > go_version_key(max_go):
         errors.append(f"go.mod: go {go_version} is newer than Go gcloud's Go {max_go}")
+    toolchain = go_mod.get("Toolchain")
+    if toolchain and go_version_key(toolchain) > go_version_key(max_go):
+        errors.append(f"go.mod: toolchain {toolchain} is newer than Go gcloud's Go {max_go}")
     for req in go_mod.get("Require") or []:
         path, version = req["Path"], req["Version"]
         limit = pins.get(path) or TEST_ONLY_MODULES.get(path)
