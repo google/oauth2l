@@ -97,7 +97,18 @@ type credentialType struct {
 }
 
 // BuildCredentials returns credentials for cfg.JSON, which must be an
-// authorized_user or service_account credential file.
+// authorized_user, service_account or impersonated_service_account
+// credential file.
+//
+// For impersonated_service_account, the source credentials inside the JSON
+// keep their own token_uri (Config.TokenURL is not applied to them), a
+// service_account source gets the cloud-platform scope and an authorized_user
+// source keeps its own scopes, as in google-auth. The impersonated token gets
+// Config.Scopes, or the JSON's "scopes" when Config.Scopes is empty, and
+// each Token call refreshes the source and then calls IAM, as Impersonate
+// describes. UniverseDomain returns the source's universe domain, and a
+// Config.UniverseDomain other than googleapis.com also picks the IAM host
+// (ImpersonationConfig.UniverseDomain).
 //
 // The returned credentials' TokenProvider is not cached: each Token call
 // blocks on a new token request (or, for a self-signed JWT, signs a new JWT
@@ -156,7 +167,14 @@ func BuildCredentials(ctx context.Context, cfg *Config) (*auth.Credentials, erro
 		tp = p
 		universe = p.universeDomain
 	case "impersonated_service_account":
-		return nil, errors.New("oauth2lib: impersonated_service_account credentials are not supported yet")
+		creds, universe, err := buildImpersonatedFromJSON(ctx, c)
+		if err != nil {
+			return nil, err
+		}
+		logger.DebugContext(ctx, "oauth2lib: built credentials",
+			slog.String("type", ct.Type),
+			slog.String("universe_domain", universe))
+		return creds, nil
 	case "external_account", "external_account_authorized_user":
 		return nil, fmt.Errorf("oauth2lib: %s credentials are not supported", ct.Type)
 	case "":
