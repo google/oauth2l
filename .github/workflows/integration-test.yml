@@ -30,3 +30,48 @@ jobs:
     - name: Unit Test
       run: go test -v -short ./...
 
+  # oauth2lib is a separate Go module, so the root module's ./... patterns
+  # above do not include it.
+  oauth2lib:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # The go line in oauth2lib/go.mod, and the Go version Go gcloud uses.
+        go-version: ['1.26.0', '1.27.3']
+    env:
+      # Fail instead of downloading a newer Go when go.mod asks for one, so
+      # each leg really tests matrix.go-version.
+      GOTOOLCHAIN: local
+    defaults:
+      run:
+        working-directory: oauth2lib
+    steps:
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        persist-credentials: false
+
+    - name: Set up Go
+      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+      with:
+        go-version: ${{ matrix.go-version }}
+        cache-dependency-path: oauth2lib/go.sum
+
+    - name: Check go.mod and go.sum are tidy
+      if: matrix.go-version == '1.27.3'
+      run: go mod tidy -diff
+
+    - name: Vet
+      run: go vet ./...
+
+    - name: Test
+      run: go test -v -race ./...
+
+    - name: Compatibility check tests
+      if: matrix.go-version == '1.27.3'
+      working-directory: .
+      run: python3 -m unittest discover -s .github/scripts -p '*_test.py'
+
+    - name: Go gcloud and google3 compatibility
+      if: matrix.go-version == '1.27.3'
+      working-directory: .
+      run: python3 .github/scripts/oauth2lib_compat.py
