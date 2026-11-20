@@ -199,7 +199,7 @@ func TestBuildCredentialsErrors(t *testing.T) {
 		{name: "universe_domain_not_string", cfg: &Config{Client: client, JSON: []byte(`{"type":"authorized_user","universe_domain":{"secret-rt":1}}`)}, want: `field "universe_domain" must be a string`},
 		{name: "no_type", cfg: &Config{Client: client, JSON: []byte(`{}`)}, want: `no "type"`},
 		{name: "unknown_type", cfg: &Config{Client: client, JSON: []byte(`{"type":"gdch_service_account"}`)}, want: `unsupported credential type "gdch_service_account"`},
-		{name: "impersonated", cfg: &Config{Client: client, JSON: []byte(`{"type":"impersonated_service_account"}`)}, want: "not supported yet"},
+		{name: "impersonated", cfg: &Config{Client: client, JSON: []byte(`{"type":"impersonated_service_account"}`)}, want: "target service account"},
 		{name: "external_account", cfg: &Config{Client: client, JSON: []byte(`{"type":"external_account"}`)}, want: "external_account credentials are not supported"},
 		{name: "external_account_authorized_user", cfg: &Config{Client: client, JSON: []byte(`{"type":"external_account_authorized_user"}`)}, want: "external_account_authorized_user credentials are not supported"},
 		{name: "scope_with_space", cfg: &Config{Client: client, JSON: userJSON(t, nil), Scopes: []string{"a b"}}, want: "with spaces"},
