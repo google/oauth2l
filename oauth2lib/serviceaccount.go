@@ -112,13 +112,7 @@ func newServiceAccountTokenProvider(cfg *Config) (*serviceAccountTokenProvider, 
 	// in Go gcloud's normalizeUniverseDomain).
 	fileUniverse := strings.TrimSpace(f.UniverseDomain)
 	cfgUniverse := strings.TrimSpace(cfg.UniverseDomain)
-	p := &serviceAccountTokenProvider{universeDomain: fileUniverse}
-	if p.universeDomain == "" {
-		p.universeDomain = cfgUniverse
-	}
-	if p.universeDomain == "" {
-		p.universeDomain = defaultUniverseDomain
-	}
+	p := &serviceAccountTokenProvider{universeDomain: resolveUniverseDomain(fileUniverse, cfgUniverse)}
 
 	// Outside the Google universe there is no token endpoint for the JWT
 	// bearer grant, so tokens must be self-signed. As in Python gcloud
