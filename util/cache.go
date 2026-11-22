@@ -123,7 +123,9 @@ func InsertAuthCache(settings *Settings, token *auth.Token) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(CacheLocation, data, 0666)
+	// The cache contains OAuth tokens and embeds the credentials JSON (including
+	// service account private keys) in its keys, so it must be owner-only.
+	return os.WriteFile(CacheLocation, data, 0600)
 }
 
 // InsertCache inserts the given oauth2.Token into the cache for settings.
@@ -147,7 +149,7 @@ func ClearCache() error {
 func loadCache() (map[string][]byte, error) {
 	if _, err := os.Stat(CacheLocation); os.IsNotExist(err) {
 		// Create the cache file if not existing.
-		f, err := os.OpenFile(CacheLocation, os.O_RDONLY|os.O_CREATE, 0666)
+		f, err := os.OpenFile(CacheLocation, os.O_RDONLY|os.O_CREATE, 0600)
 		if err != nil {
 			log.Fatal(err)
 			return nil, err
