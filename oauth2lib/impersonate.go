@@ -39,9 +39,12 @@ const (
 	// maxLifetime is the longest lifetime IAM can grant (with the
 	// constraints/iam.allowServiceAccountCredentialLifetimeExtension policy).
 	maxLifetime = 12 * time.Hour
-	// cloudPlatformScope is the scope google-auth gives a service account
-	// source of impersonated credentials (iam._IAM_SCOPE).
-	cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
+	// iamScope is the scope google-auth gives a service account source of
+	// impersonated credentials (google/auth/iam.py _IAM_SCOPE), which Python
+	// gcloud uses for both flag/property and file impersonation. go/auth's
+	// impersonated_service_account handling uses cloud-platform instead;
+	// oauth2lib follows Python gcloud, and IAM accepts either scope.
+	iamScope = "https://www.googleapis.com/auth/iam"
 )
 
 // ImpersonationConfig describes service account impersonation. The caller
@@ -417,7 +420,7 @@ func targetFromImpersonationURL(u string) (string, error) {
 // buildImpersonatedFromJSON builds credentials for impersonated_service_account
 // JSON for BuildCredentials. The source keeps its own token_uri and gets
 // Config's RAPT, UseSelfSignedJWT, UniverseDomain, Client and Logger. As in
-// google-auth, a service_account source gets the cloud-platform scope and an
+// google-auth, a service_account source gets the iam scope and an
 // authorized_user source keeps its own scopes. The impersonated token gets
 // Config.Scopes, or the JSON's scopes if Config.Scopes is empty.
 func buildImpersonatedFromJSON(ctx context.Context, c *Config) (*auth.Credentials, string, error) {
@@ -436,7 +439,7 @@ func buildImpersonatedFromJSON(ctx context.Context, c *Config) (*auth.Credential
 		Logger:           c.Logger,
 	}
 	if st.Type == "service_account" {
-		srcCfg.Scopes = []string{cloudPlatformScope}
+		srcCfg.Scopes = []string{iamScope}
 	}
 	source, err := BuildCredentials(ctx, srcCfg)
 	if err != nil {

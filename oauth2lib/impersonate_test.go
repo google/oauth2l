@@ -706,11 +706,10 @@ func TestBuildCredentialsImpersonatedServiceAccountSource(t *testing.T) {
 	if len(forms) != 1 {
 		t.Fatalf("token endpoint got %d requests, want 1", len(forms))
 	}
-	// As in google-auth, a service account source gets the cloud-platform
-	// scope.
+	// As in google-auth, a service account source gets the iam scope.
 	_, claims := verifyJWT(t, forms[0].Get("assertion"))
-	if claims["scope"] != cloudPlatformScope {
-		t.Errorf("source assertion scope = %v, want %s", claims["scope"], cloudPlatformScope)
+	if claims["scope"] != iamScope {
+		t.Errorf("source assertion scope = %v, want %s", claims["scope"], iamScope)
 	}
 	reqs := srv.requests()
 	if len(reqs) != 1 || reqs[0].auth != "Bearer sa-at" || reqs[0].body != `{"delegates":null,"scope":["json-scope"],"lifetime":"3600s"}` {

@@ -103,8 +103,8 @@ type credentialType struct {
 //
 // For impersonated_service_account, the source credentials inside the JSON
 // keep their own token_uri (Config.TokenURL is not applied to them), a
-// service_account source gets the cloud-platform scope and an authorized_user
-// source keeps its own scopes, as in google-auth. The impersonated token gets
+// service_account source gets the iam scope and an authorized_user source
+// keeps its own scopes, as in google-auth. The impersonated token gets
 // Config.Scopes, or the JSON's "scopes" when Config.Scopes is empty, and
 // each Token call refreshes the source and then calls IAM, as Impersonate
 // describes. UniverseDomain returns the source's universe domain, and a
