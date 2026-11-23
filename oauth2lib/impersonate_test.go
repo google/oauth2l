@@ -245,6 +245,28 @@ func (rt *recordingTransport) RoundTrip(r *http.Request) (*http.Response, error)
 	}, nil
 }
 
+// TestImpersonateTrimsDelegatesAndScopes checks that the request carries
+// the trimmed values that were validated, with empty scopes dropped, as for
+// Config.Scopes.
+func TestImpersonateTrimsDelegatesAndScopes(t *testing.T) {
+	srv := newFakeIAM(t, fakeResponse{body: okIAMBody})
+	source, _ := newSource("")
+	cfg := testImpersonationConfig(srv, source)
+	cfg.Delegates = []string{" d1@p.iam.gserviceaccount.com\t"}
+	cfg.Scopes = []string{" s1 ", "", "s2\n"}
+	creds, err := Impersonate(t.Context(), cfg)
+	if err != nil {
+		t.Fatalf("Impersonate() error = %v", err)
+	}
+	if _, err := creds.Token(t.Context()); err != nil {
+		t.Fatalf("Token() error = %v", err)
+	}
+	want := `{"delegates":["d1@p.iam.gserviceaccount.com"],"scope":["s1","s2"],"lifetime":"3600s"}`
+	if got := srv.requests()[0].body; got != want {
+		t.Errorf("body = %s, want %s", got, want)
+	}
+}
+
 func TestImpersonateEndpoint(t *testing.T) {
 	tests := []struct {
 		name, universe, cfgUniverse, endpoint, want string
@@ -297,7 +319,7 @@ func TestImpersonateEndpoint(t *testing.T) {
 
 func TestImpersonateConfigErrors(t *testing.T) {
 	source, _ := newSource("")
-	client := &http.Client{Transport: &recordingTransport{}}
+	client := noNetworkClient(t) // building never makes a request
 	valid := func() *ImpersonationConfig {
 		return &ImpersonationConfig{Source: source, Target: testTarget, Scopes: []string{"s"}, Client: client}
 	}
@@ -313,8 +335,10 @@ func TestImpersonateConfigErrors(t *testing.T) {
 		{"target_with_slash", func(c *ImpersonationConfig) *ImpersonationConfig { c.Target = "a/b"; return c }, "not a service account"},
 		{"target_with_colon", func(c *ImpersonationConfig) *ImpersonationConfig { c.Target = "a:b"; return c }, "not a service account"},
 		{"empty_delegate", func(c *ImpersonationConfig) *ImpersonationConfig { c.Delegates = []string{"d", ""}; return c }, "empty delegate"},
+		{"blank_delegate", func(c *ImpersonationConfig) *ImpersonationConfig { c.Delegates = []string{"d", " \t"}; return c }, "empty delegate"},
+		{"delegate_with_space", func(c *ImpersonationConfig) *ImpersonationConfig { c.Delegates = []string{"a b"}; return c }, "delegate with spaces"},
 		{"no_scopes", func(c *ImpersonationConfig) *ImpersonationConfig { c.Scopes = nil; return c }, "Scopes is empty"},
-		{"empty_scope", func(c *ImpersonationConfig) *ImpersonationConfig { c.Scopes = []string{""}; return c }, "empty scope"},
+		{"only_empty_scopes", func(c *ImpersonationConfig) *ImpersonationConfig { c.Scopes = []string{"", " "}; return c }, "Scopes is empty"},
 		{"scope_with_space", func(c *ImpersonationConfig) *ImpersonationConfig { c.Scopes = []string{"a b"}; return c }, "with spaces"},
 		{"negative_lifetime", func(c *ImpersonationConfig) *ImpersonationConfig { c.Lifetime = -time.Second; return c }, "Lifetime"},
 		{"sub_second_lifetime", func(c *ImpersonationConfig) *ImpersonationConfig { c.Lifetime = 500 * time.Millisecond; return c }, "Lifetime"},
@@ -569,6 +593,10 @@ func TestParseImpersonatedServiceAccountJSONErrors(t *testing.T) {
 		{"empty", nil, "not a valid JSON object"},
 		{"null", []byte("null"), "not a valid JSON object"},
 		{"not_json", []byte("{"), "not a valid JSON object"},
+		{"array", []byte(`["secret"]`), "not a valid JSON object"},
+		{"nbsp_padded", append([]byte("\u00a0"), impersonatedJSON(t, user, nil)...), "not a valid JSON object"},
+		{"delegates_not_list", impersonatedJSON(t, user, map[string]any{"delegates": "d@p.iam.gserviceaccount.com"}), `field "delegates" has the wrong type`},
+		{"scopes_not_list", impersonatedJSON(t, user, map[string]any{"scopes": "a b"}), `field "scopes" has the wrong type`},
 		{"wrong_type", userJSON(t, nil), `"authorized_user", want impersonated_service_account`},
 		{"no_url", impersonatedJSON(t, user, map[string]any{"service_account_impersonation_url": nil}), "target service account"},
 		{"url_without_method", impersonatedJSON(t, user, map[string]any{
@@ -715,3 +743,72 @@ func TestBuildCredentialsImpersonatedErrors(t *testing.T) {
 type emptyTokenProvider struct{}
 
 func (emptyTokenProvider) Token(context.Context) (*auth.Token, error) { return &auth.Token{}, nil }
+
+// TestBuildCredentialsImpersonatedLogsNoSecrets mirrors
+// TestBuildCredentialsLogsNoSecrets for impersonated_service_account JSON:
+// neither Config.Logger nor stderr (go/auth's debug logging) may contain the
+// source or impersonated tokens, the assertion or the private key.
+func TestBuildCredentialsImpersonatedLogsNoSecrets(t *testing.T) {
+	t.Setenv("GOOGLE_SDK_GO_LOGGING_LEVEL", "debug")
+	_, keyPEM := testServiceAccountKey(t)
+	keyLine := strings.Split(keyPEM, "\n")[1]
+	const impBody = `{"accessToken":"secret-imp-at","expireTime":"` + testExpireTime + `"}`
+	tests := []struct {
+		name      string
+		source    func(srv *fakeIAM) []byte
+		tokenBody string
+	}{
+		{
+			name: "authorized_user_source",
+			source: func(srv *fakeIAM) []byte {
+				return userJSON(t, map[string]any{"token_uri": srv.URL + "/token", "refresh_token": "secret-rt"})
+			},
+			tokenBody: `{"access_token":"secret-src-at","expires_in":3600,"refresh_token":"secret-rt-2"}`,
+		},
+		{
+			name:      "service_account_source",
+			source:    func(srv *fakeIAM) []byte { return saJSON(t, map[string]any{"token_uri": srv.URL + "/token"}) },
+			tokenBody: `{"access_token":"secret-src-at","expires_in":3600}`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, debugLogger := range []bool{false, true} {
+				t.Run(fmt.Sprintf("debug_logger_%v", debugLogger), func(t *testing.T) {
+					srv := newFakeIAM(t, fakeResponse{body: impBody})
+					srv.tokenResps = []fakeResponse{{body: tc.tokenBody}}
+					var logs bytes.Buffer
+					cfg := &Config{
+						JSON:   impersonatedJSON(t, tc.source(srv), map[string]any{"scopes": []string{"s1"}}),
+						Client: &http.Client{Transport: iamRedirect{srv}},
+					}
+					if debugLogger {
+						cfg.Logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+					}
+					stderr := captureStderr(t)
+					creds, err := BuildCredentials(t.Context(), cfg)
+					if err != nil {
+						t.Fatalf("BuildCredentials(%s) error = %v", tc.name, err)
+					}
+					tok, err := creds.Token(t.Context())
+					if err != nil {
+						t.Fatalf("BuildCredentials(%s).Token() error = %v", tc.name, err)
+					}
+					outputs := map[string]string{"stderr": stderr(), "Config.Logger": logs.String()}
+					if debugLogger && !strings.Contains(outputs["Config.Logger"], "type=impersonated_service_account") {
+						t.Errorf("BuildCredentials(%s): Config.Logger output = %q, want the credential type", tc.name, outputs["Config.Logger"])
+					}
+					secrets := []string{tok.Value, "secret-imp-at", "secret-src-at", "secret-rt", "secret-rt-2",
+						"eyJ", "assertion", "client-secret", "PRIVATE KEY", keyLine}
+					for where, out := range outputs {
+						for _, secret := range secrets {
+							if strings.Contains(out, secret) {
+								t.Errorf("BuildCredentials(%s): %s contains %q: %s", tc.name, where, secret, out)
+							}
+						}
+					}
+				})
+			}
+		})
+	}
+}

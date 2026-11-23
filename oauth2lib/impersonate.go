@@ -24,7 +24,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -56,12 +55,15 @@ type ImpersonationConfig struct {
 	// Target is the email or unique ID of the service account to
 	// impersonate.
 	Target string
-	// Delegates is the delegation chain, sent to IAM as given. Each
-	// delegate needs the Service Account Token Creator role on the next one,
-	// and the last one on Target.
+	// Delegates is the delegation chain: service account emails, unique IDs
+	// or projects/-/serviceAccounts/ resource names, sent to IAM with
+	// surrounding spaces trimmed. Each delegate needs the Service Account
+	// Token Creator role on the next one, and the last one on Target.
 	Delegates []string
-	// Scopes are the scopes of the impersonated token. At least one is
-	// required. Go gcloud passes gcloud's default scopes.
+	// Scopes are the scopes of the impersonated token. Surrounding spaces
+	// are trimmed and empty entries dropped, as for Config.Scopes; at least
+	// one must remain, and a scope with a space inside it is an error. Go
+	// gcloud passes gcloud's default scopes.
 	Scopes []string
 	// Lifetime is the impersonated token's lifetime, in whole seconds. 0
 	// means 1 hour; the maximum is 12 hours.
@@ -175,17 +177,29 @@ func newImpersonatedTokenProvider(ctx context.Context, cfg *ImpersonationConfig)
 	if strings.ContainsAny(target, "/:?#") || strings.ContainsFunc(target, unicode.IsSpace) {
 		return nil, fmt.Errorf("oauth2lib: ImpersonationConfig.Target %q is not a service account email or unique ID", target)
 	}
+	// Delegates are trimmed before they are checked, so the request carries
+	// exactly what was validated. Resource names (with "/") are allowed,
+	// since IAM accepts them.
+	var delegates []string
 	for _, d := range cfg.Delegates {
-		if strings.TrimSpace(d) == "" {
+		d = strings.TrimSpace(d)
+		if d == "" {
 			return nil, errors.New("oauth2lib: ImpersonationConfig.Delegates has an empty delegate")
 		}
+		if strings.ContainsFunc(d, unicode.IsSpace) {
+			return nil, fmt.Errorf("oauth2lib: ImpersonationConfig.Delegates has a delegate with spaces in it: %q", d)
+		}
+		delegates = append(delegates, d)
 	}
-	if len(cfg.Scopes) == 0 {
+	// The same rules as Config.Scopes (validateConfig): trim, drop empty
+	// entries, and reject inner spaces. cleanScopes returns a new slice.
+	scopes := cleanScopes(cfg.Scopes)
+	if len(scopes) == 0 {
 		return nil, errors.New("oauth2lib: ImpersonationConfig.Scopes is empty")
 	}
-	for _, s := range cfg.Scopes {
-		if s == "" || strings.ContainsFunc(s, unicode.IsSpace) {
-			return nil, fmt.Errorf("oauth2lib: ImpersonationConfig.Scopes has an empty scope or one with spaces: %q", s)
+	for _, s := range scopes {
+		if strings.ContainsFunc(s, unicode.IsSpace) {
+			return nil, fmt.Errorf("oauth2lib: ImpersonationConfig.Scopes has a scope with spaces in it: %q", s)
 		}
 	}
 	lifetime := cfg.Lifetime
@@ -200,11 +214,10 @@ func newImpersonatedTokenProvider(ctx context.Context, cfg *ImpersonationConfig)
 	if err != nil {
 		return nil, fmt.Errorf("oauth2lib: getting the source credentials' universe domain: %w", err)
 	}
-	// The credentials report Source's universe, as in google-auth.
-	universe = strings.TrimSpace(universe)
-	if universe == "" {
-		universe = defaultUniverseDomain
-	}
+	// The credentials report Source's universe (trimmed, googleapis.com if
+	// empty), as in google-auth. There is no JSON here, so Source's universe
+	// takes resolveUniverseDomain's first slot.
+	universe = resolveUniverseDomain(universe, "")
 
 	// The IAM host follows Python gcloud: the endpoint override, then a
 	// non-default configured universe (GetEffectiveIamEndpoint), then
@@ -225,13 +238,9 @@ func newImpersonatedTokenProvider(ctx context.Context, cfg *ImpersonationConfig)
 		endpoint += "/"
 	}
 
-	var delegates []string
-	if len(cfg.Delegates) > 0 {
-		delegates = slices.Clone(cfg.Delegates)
-	}
 	body, err := json.Marshal(generateAccessTokenRequest{
 		Delegates: delegates,
-		Scope:     slices.Clone(cfg.Scopes),
+		Scope:     scopes,
 		Lifetime:  fmt.Sprintf("%ds", int64(lifetime/time.Second)),
 	})
 	if err != nil {
@@ -347,11 +356,22 @@ type impersonatedServiceAccountJSON struct {
 // sourceJSON, apply their own overrides to base, set Source, Client and the
 // other fields, and call Impersonate.
 func ParseImpersonatedServiceAccountJSON(b []byte) (sourceJSON []byte, base *ImpersonationConfig, err error) {
-	trimmed := bytes.TrimSpace(b)
-	var f impersonatedServiceAccountJSON
 	// The JSON holds secrets, so the parse error (which can quote it) is
-	// not wrapped.
-	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) || json.Unmarshal(trimmed, &f) != nil {
+	// not wrapped. As in validateConfig, parse b itself rather than the
+	// trimmed bytes: bytes.TrimSpace also strips Unicode spaces (such as
+	// U+00A0) that encoding/json rejects. Requiring '{' also rejects null,
+	// arrays and strings.
+	trimmed := bytes.TrimSpace(b)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return nil, nil, errors.New("oauth2lib: impersonated_service_account JSON is not a valid JSON object")
+	}
+	var f impersonatedServiceAccountJSON
+	if err := json.Unmarshal(b, &f); err != nil {
+		// A field with the wrong JSON type: name the field, never its value.
+		var typeErr *json.UnmarshalTypeError
+		if errors.As(err, &typeErr) && typeErr.Field != "" {
+			return nil, nil, fmt.Errorf("oauth2lib: impersonated_service_account JSON field %q has the wrong type", typeErr.Field)
+		}
 		return nil, nil, errors.New("oauth2lib: impersonated_service_account JSON is not a valid JSON object")
 	}
 	if f.Type != "impersonated_service_account" {
