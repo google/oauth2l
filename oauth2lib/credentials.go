@@ -52,7 +52,10 @@ type Config struct {
 	// credentials can't reveal a mismatch with core/universe_domain. Go
 	// gcloud's file-override path already resolves it this way. For service
 	// accounts, a non-default value also turns on self-signed JWTs, as in
-	// Python gcloud. Leading and trailing spaces are ignored.
+	// Python gcloud. Leading and trailing spaces are ignored. Ignored for
+	// impersonated_service_account: as in google-auth, the source's own
+	// universe_domain decides the universe and the IAM host (use Impersonate
+	// to pick the IAM host from a configured universe).
 	UniverseDomain string
 	// Client is used for every network call. It must not add its own
 	// Authorization header.
@@ -60,11 +63,14 @@ type Config struct {
 	// RAPT returns the latest reauth proof token before each user refresh.
 	// ("", nil) omits rapt, (t, nil) sends rapt=t, and an error stops Token
 	// before any request is made. Nil to never send a RAPT. Ignored for
-	// credentials other than authorized_user, as in Python gcloud.
+	// credentials other than authorized_user, including an authorized_user
+	// source inside impersonated_service_account, as in Python gcloud.
 	RAPT func(ctx context.Context) (string, error)
 	// UseSelfSignedJWT makes service account credentials sign a JWT locally
 	// instead of calling the token endpoint. Ignored for credentials other
-	// than service_account, as in Python gcloud (creds.UseSelfSignedJwt).
+	// than service_account, including a service_account source inside
+	// impersonated_service_account, as in Python gcloud
+	// (creds.UseSelfSignedJwt).
 	UseSelfSignedJWT bool
 	// Logger receives debug logs. Nil discards them.
 	Logger *slog.Logger
@@ -102,21 +108,26 @@ type credentialType struct {
 // credential file.
 //
 // For impersonated_service_account, the source credentials inside the JSON
-// keep their own token_uri (Config.TokenURL is not applied to them), a
-// service_account source gets the iam scope and an authorized_user source
-// keeps its own scopes, as in google-auth. The impersonated token gets
-// Config.Scopes, or the JSON's "scopes" when Config.Scopes is empty, and
-// each Token call refreshes the source and then calls IAM, as Impersonate
-// describes. UniverseDomain returns the source's universe domain, and a
-// Config.UniverseDomain other than googleapis.com also picks the IAM host
-// (ImpersonationConfig.UniverseDomain).
+// are built from that JSON alone, as in google-auth: they keep their own
+// token_uri and universe_domain (Config.TokenURL, UniverseDomain, RAPT and
+// UseSelfSignedJWT are not applied to them), a service_account source gets
+// the iam scope, and an authorized_user source keeps its own scopes. The
+// impersonated token gets Config.Scopes, or the JSON's "scopes" when
+// Config.Scopes is empty, and each Token call refreshes the source and then
+// calls IAM, as Impersonate describes. UniverseDomain returns the source's
+// universe domain, and IAM is called at https://iamcredentials.<that
+// universe>/. Python gcloud's credential file override uses the file's
+// scopes when it has any and gcloud's default scopes otherwise; to do the
+// same, pass Config.Scopes only when the JSON has none
+// (ParseImpersonatedServiceAccountJSON returns them).
 //
 // The returned credentials' TokenProvider is not cached: each Token call
 // blocks on a new token request (or, for a self-signed JWT, signs a new JWT
 // locally) and returns a *RefreshError when the token endpoint fails, or
 // the context's error when ctx is done. JSON returns a copy of cfg.JSON, and
 // UniverseDomain returns the JSON's universe_domain, else
-// cfg.UniverseDomain, else googleapis.com (surrounding spaces ignored).
+// cfg.UniverseDomain, else googleapis.com (surrounding spaces ignored); for
+// impersonated_service_account it is the source's, as described above.
 //
 // BuildCredentials reads no files, environment variables or gcloud
 // properties, and makes no network calls. cfg is copied, so changing it

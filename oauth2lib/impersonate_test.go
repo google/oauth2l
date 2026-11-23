@@ -343,6 +343,8 @@ func TestImpersonateConfigErrors(t *testing.T) {
 		{"negative_lifetime", func(c *ImpersonationConfig) *ImpersonationConfig { c.Lifetime = -time.Second; return c }, "Lifetime"},
 		{"sub_second_lifetime", func(c *ImpersonationConfig) *ImpersonationConfig { c.Lifetime = 500 * time.Millisecond; return c }, "Lifetime"},
 		{"fractional_lifetime", func(c *ImpersonationConfig) *ImpersonationConfig { c.Lifetime = 1500 * time.Millisecond; return c }, "Lifetime"},
+		{"endpoint_bare_query", func(c *ImpersonationConfig) *ImpersonationConfig { c.Endpoint = "https://iam.example/?"; return c }, "without a query or fragment"},
+		{"endpoint_bare_fragment", func(c *ImpersonationConfig) *ImpersonationConfig { c.Endpoint = "https://iam.example/#"; return c }, "without a query or fragment"},
 		{"lifetime_over_12h", func(c *ImpersonationConfig) *ImpersonationConfig { c.Lifetime = 12*time.Hour + time.Second; return c }, "Lifetime"},
 		{"endpoint_no_scheme", func(c *ImpersonationConfig) *ImpersonationConfig {
 			c.Endpoint = "iamcredentials.googleapis.com"
@@ -410,6 +412,7 @@ func TestImpersonateTokenErrors(t *testing.T) {
 		{name: "no_access_token", resp: fakeResponse{body: `{"expireTime":"` + testExpireTime + `"}`}, wantKind: KindUnknown, wantStatus: 200, wantDesc: "no accessToken"},
 		{name: "bad_expire_time", resp: fakeResponse{body: `{"accessToken":"x","expireTime":"tomorrow"}`}, wantKind: KindUnknown, wantStatus: 200, wantDesc: "invalid expireTime"},
 		{name: "no_expire_time", resp: fakeResponse{body: `{"accessToken":"x"}`}, wantKind: KindUnknown, wantStatus: 200, wantDesc: "invalid expireTime"},
+		{name: "zero_expire_time", resp: fakeResponse{body: `{"accessToken":"x","expireTime":"0001-01-01T00:00:00Z"}`}, wantKind: KindUnknown, wantStatus: 200, wantDesc: "invalid expireTime"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -606,7 +609,15 @@ func TestParseImpersonatedServiceAccountJSONErrors(t *testing.T) {
 			"service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/:generateAccessToken",
 		}), "target service account"},
 		{"no_source", impersonatedJSON(t, user, map[string]any{"source_credentials": nil}), `no "source_credentials"`},
+		{"url_target_with_query", impersonatedJSON(t, user, map[string]any{
+			"service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/a?x=1:generateAccessToken",
+		}), "target service account"},
+		{"url_blank_target", impersonatedJSON(t, user, map[string]any{
+			"service_account_impersonation_url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/ :generateAccessToken",
+		}), "target service account"},
 		{"source_not_object", impersonatedJSON(t, []byte(`"x"`), nil), "not a JSON object"},
+		{"source_type_not_string", impersonatedJSON(t, []byte(`{"type":123}`), nil), `"source_credentials" field "type" must be a string`},
+		{"source_universe_not_string", impersonatedJSON(t, []byte(`{"type":"authorized_user","universe_domain":["client-secret"]}`), nil), `"source_credentials" field "universe_domain" must be a string`},
 		{"source_no_type", impersonatedJSON(t, []byte(`{"client_id":"x"}`), nil), `has no "type"`},
 		{"source_external_account", impersonatedJSON(t, []byte(`{"type":"external_account"}`), nil), `"external_account" are not supported`},
 		{"nested_impersonation", impersonatedJSON(t, impersonatedJSON(t, user, nil), nil), `"impersonated_service_account" are not supported`},
@@ -646,8 +657,11 @@ func TestBuildCredentialsImpersonatedUserSource(t *testing.T) {
 		JSON:     js,
 		Scopes:   []string{"s1"},
 		TokenURL: "https://not-used.example/token", // not applied to the source
-		RAPT:     func(context.Context) (string, error) { return "rapt-1", nil },
-		Client:   &http.Client{Transport: iamRedirect{srv}},
+		RAPT: func(context.Context) (string, error) { // not applied to the source
+			t.Error("Config.RAPT called for an impersonated_service_account source")
+			return "rapt-1", nil
+		},
+		Client: &http.Client{Transport: iamRedirect{srv}},
 	})
 	if err != nil {
 		t.Fatalf("BuildCredentials() error = %v", err)
@@ -663,9 +677,9 @@ func TestBuildCredentialsImpersonatedUserSource(t *testing.T) {
 	if len(forms) != 1 {
 		t.Fatalf("token endpoint got %d requests, want 1", len(forms))
 	}
-	// The user source keeps its own (empty) scopes, and gets the RAPT.
-	if forms[0].Has("scope") || forms[0].Get("rapt") != "rapt-1" || forms[0].Get("grant_type") != "refresh_token" {
-		t.Errorf("source refresh form = %v, want a refresh_token grant with rapt and no scope", forms[0])
+	// The user source keeps its own (empty) scopes and gets no RAPT.
+	if forms[0].Has("scope") || forms[0].Has("rapt") || forms[0].Get("grant_type") != "refresh_token" {
+		t.Errorf("source refresh form = %v, want a refresh_token grant with no rapt or scope", forms[0])
 	}
 	reqs := srv.requests()
 	if len(reqs) != 1 {
@@ -728,6 +742,7 @@ func TestBuildCredentialsImpersonatedErrors(t *testing.T) {
 		{"no_scopes", &Config{JSON: impersonatedJSON(t, user, nil), Client: client}, `need Config.Scopes or "scopes"`},
 		{"bad_source", &Config{JSON: impersonatedJSON(t, []byte(`{"type":"authorized_user"}`), nil), Scopes: []string{"s"}, Client: client}, "source credentials"},
 		{"bad_url", &Config{JSON: impersonatedJSON(t, user, map[string]any{"service_account_impersonation_url": "x"}), Scopes: []string{"s"}, Client: client}, "target service account"},
+		{"blank_json_delegate", &Config{JSON: impersonatedJSON(t, user, map[string]any{"delegates": []string{" "}}), Scopes: []string{"s"}, Client: client}, "impersonated_service_account JSON: oauth2lib: ImpersonationConfig.Delegates has an empty delegate"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -736,6 +751,196 @@ func TestBuildCredentialsImpersonatedErrors(t *testing.T) {
 				t.Errorf("BuildCredentials() error = %v, want it to contain %q", err, tt.want)
 			}
 		})
+	}
+}
+
+// TestBuildCredentialsImpersonatedUniverseDomain checks that, as in
+// google-auth, the source of impersonated_service_account JSON is built from
+// its own universe_domain, so Config.UniverseDomain doesn't change the
+// reported universe.
+func TestBuildCredentialsImpersonatedUniverseDomain(t *testing.T) {
+	tests := []struct {
+		name, sourceUniverse, cfgUniverse, want string
+	}{
+		{"source_without_universe", "", "", "googleapis.com"},
+		{"config_universe_ignored", "", "other.example", "googleapis.com"},
+		{"source_universe", "example.com", "", "example.com"},
+		{"source_universe_wins_over_config", "example.com", "other.example", "example.com"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var extra map[string]any
+			if tt.sourceUniverse != "" {
+				extra = map[string]any{"universe_domain": tt.sourceUniverse}
+			}
+			creds, err := BuildCredentials(t.Context(), &Config{
+				JSON:           impersonatedJSON(t, userJSON(t, extra), map[string]any{"scopes": []string{"s"}}),
+				UniverseDomain: tt.cfgUniverse,
+				Client:         noNetworkClient(t),
+			})
+			if err != nil {
+				t.Fatalf("BuildCredentials() error = %v", err)
+			}
+			if ud, _ := creds.UniverseDomain(t.Context()); ud != tt.want {
+				t.Errorf("UniverseDomain() = %q, want %q", ud, tt.want)
+			}
+		})
+	}
+}
+
+// TestBuildCredentialsImpersonatedIAMHost checks that IAM is called in the
+// source's universe, as in Python gcloud's file path, whatever
+// Config.UniverseDomain says.
+func TestBuildCredentialsImpersonatedIAMHost(t *testing.T) {
+	for _, tt := range []struct{ name, sourceUniverse, cfgUniverse, wantHost string }{
+		{"default", "", "other.example", "iamcredentials.googleapis.com"},
+		{"source_universe", "example.com", "other.example", "iamcredentials.example.com"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			extra := map[string]any{"token_uri": "https://oauth2.example/token"}
+			if tt.sourceUniverse != "" {
+				extra["universe_domain"] = tt.sourceUniverse
+			}
+			rt := &hostRecorder{tokenBody: `{"access_token":"user-at","expires_in":3600}`}
+			creds, err := BuildCredentials(t.Context(), &Config{
+				JSON:           impersonatedJSON(t, userJSON(t, extra), map[string]any{"scopes": []string{"s"}}),
+				UniverseDomain: tt.cfgUniverse,
+				Client:         &http.Client{Transport: rt},
+			})
+			if err != nil {
+				t.Fatalf("BuildCredentials() error = %v", err)
+			}
+			creds.Token(t.Context()) // fails at IAM on purpose; only the hosts matter
+			if len(rt.hosts) != 2 || rt.hosts[1] != tt.wantHost {
+				t.Errorf("requests went to %v, want the source refresh and then %s", rt.hosts, tt.wantHost)
+			}
+		})
+	}
+}
+
+// hostRecorder answers token requests with tokenBody and fails every other
+// request, recording each request's host.
+type hostRecorder struct {
+	mu        sync.Mutex
+	hosts     []string
+	tokenBody string
+}
+
+func (h *hostRecorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	h.mu.Lock()
+	h.hosts = append(h.hosts, req.URL.Host)
+	h.mu.Unlock()
+	if req.Body != nil {
+		req.Body.Close()
+	}
+	if strings.HasSuffix(req.URL.Path, "/token") {
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}},
+			Body: io.NopCloser(strings.NewReader(h.tokenBody)), Request: req}, nil
+	}
+	return nil, errors.New("hostRecorder: no IAM server")
+}
+
+// TestBuildCredentialsImpersonatedSourceIgnoresSelfSignedOptions checks that
+// neither Config.UseSelfSignedJWT nor a non-default Config.UniverseDomain
+// makes a googleapis.com service account source self-sign: as in Python
+// gcloud, the source still exchanges a JWT assertion at its token endpoint.
+func TestBuildCredentialsImpersonatedSourceIgnoresSelfSignedOptions(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		cfg  func(*Config)
+	}{
+		{"use_self_signed_jwt", func(c *Config) { c.UseSelfSignedJWT = true }},
+		{"non_default_config_universe", func(c *Config) { c.UniverseDomain = "other.example" }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newFakeIAM(t, fakeResponse{body: okIAMBody})
+			srv.tokenResps = []fakeResponse{{body: `{"access_token":"sa-at","expires_in":3600}`}}
+			src := saJSON(t, map[string]any{"token_uri": srv.URL + "/token", "universe_domain": "googleapis.com"})
+			cfg := &Config{
+				JSON:   impersonatedJSON(t, src, map[string]any{"scopes": []string{"s"}}),
+				Client: &http.Client{Transport: iamRedirect{srv}},
+			}
+			tt.cfg(cfg)
+			creds, err := BuildCredentials(t.Context(), cfg)
+			if err != nil {
+				t.Fatalf("BuildCredentials() error = %v", err)
+			}
+			if _, err := creds.Token(t.Context()); err != nil {
+				t.Fatalf("Token() error = %v", err)
+			}
+			if forms := srv.forms(); len(forms) != 1 || forms[0].Get("assertion") == "" {
+				t.Errorf("token endpoint forms = %v, want one JWT assertion exchange", forms)
+			}
+			if reqs := srv.requests(); len(reqs) != 1 || reqs[0].auth != "Bearer sa-at" {
+				t.Errorf("IAM requests = %+v, want one with the exchanged source token", reqs)
+			}
+		})
+	}
+}
+
+// TestBuildCredentialsImpersonatedNonDefaultUniverseSource covers a service
+// account source in another universe: it self-signs a JWT (no token
+// endpoint call) and IAM is called in that universe.
+func TestBuildCredentialsImpersonatedNonDefaultUniverseSource(t *testing.T) {
+	rt := &hostRecorder{}
+	src := saJSON(t, map[string]any{"universe_domain": "example.com"})
+	creds, err := BuildCredentials(t.Context(), &Config{
+		JSON:   impersonatedJSON(t, src, map[string]any{"scopes": []string{"s"}}),
+		Client: &http.Client{Transport: rt},
+	})
+	if err != nil {
+		t.Fatalf("BuildCredentials() error = %v", err)
+	}
+	if ud, _ := creds.UniverseDomain(t.Context()); ud != "example.com" {
+		t.Errorf("UniverseDomain() = %q, want example.com", ud)
+	}
+	creds.Token(t.Context()) // fails at IAM on purpose; only the hosts matter
+	if len(rt.hosts) != 1 || rt.hosts[0] != "iamcredentials.example.com" {
+		t.Errorf("requests went to %v, want only iamcredentials.example.com", rt.hosts)
+	}
+}
+
+// typedSource returns a fixed token with the given type.
+type typedSource struct{ typ string }
+
+func (s typedSource) Token(context.Context) (*auth.Token, error) {
+	return &auth.Token{Value: "src-token", Type: s.typ}, nil
+}
+
+// TestImpersonateSourceTokenType checks that the source token's type is sent
+// as given, and that an empty type is sent as Bearer.
+func TestImpersonateSourceTokenType(t *testing.T) {
+	for _, tt := range []struct{ typ, want string }{{"", "Bearer src-token"}, {"MAC", "MAC src-token"}} {
+		srv := newFakeIAM(t, fakeResponse{body: okIAMBody})
+		source := auth.NewCredentials(&auth.CredentialsOptions{TokenProvider: typedSource{tt.typ}})
+		creds, err := Impersonate(t.Context(), testImpersonationConfig(srv, source))
+		if err != nil {
+			t.Fatalf("Impersonate() error = %v", err)
+		}
+		if _, err := creds.Token(t.Context()); err != nil {
+			t.Fatalf("Token() error = %v", err)
+		}
+		if reqs := srv.requests(); len(reqs) != 1 || reqs[0].auth != tt.want {
+			t.Errorf("source type %q: IAM requests = %+v, want Authorization %q", tt.typ, reqs, tt.want)
+		}
+	}
+}
+
+// TestImpersonateFractionalExpireTime checks that IAM's expireTime with
+// fractional seconds is accepted.
+func TestImpersonateFractionalExpireTime(t *testing.T) {
+	srv := newFakeIAM(t, fakeResponse{body: `{"accessToken":"imp-token","expireTime":"2030-01-02T03:04:05.123456789Z"}`})
+	source, _ := newSource("")
+	creds, err := Impersonate(t.Context(), testImpersonationConfig(srv, source))
+	if err != nil {
+		t.Fatalf("Impersonate() error = %v", err)
+	}
+	tok, err := creds.Token(t.Context())
+	if err != nil {
+		t.Fatalf("Token() error = %v", err)
+	}
+	if want := time.Date(2030, 1, 2, 3, 4, 5, 123456789, time.UTC); !tok.Expiry.Equal(want) {
+		t.Errorf("Token().Expiry = %v, want %v", tok.Expiry, want)
 	}
 }
 
