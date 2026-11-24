@@ -52,10 +52,9 @@ type Config struct {
 	// credentials can't reveal a mismatch with core/universe_domain. Go
 	// gcloud's file-override path already resolves it this way. For service
 	// accounts, a non-default value also turns on self-signed JWTs, as in
-	// Python gcloud. Leading and trailing spaces are ignored. Ignored for
-	// impersonated_service_account: as in google-auth, the source's own
-	// universe_domain decides the universe and the IAM host (use Impersonate
-	// to pick the IAM host from a configured universe).
+	// Python gcloud. Leading and trailing spaces are ignored. For
+	// impersonated_service_account, it is used for a source without
+	// universe_domain when the file has no top-level universe_domain either.
 	UniverseDomain string
 	// Client is used for every network call. It must not add its own
 	// Authorization header.
@@ -108,18 +107,23 @@ type credentialType struct {
 // credential file.
 //
 // For impersonated_service_account, the source credentials inside the JSON
-// are built from that JSON alone, as in google-auth: they keep their own
-// token_uri and universe_domain (Config.TokenURL, UniverseDomain, RAPT and
-// UseSelfSignedJWT are not applied to them), a service_account source gets
-// the iam scope, and an authorized_user source keeps its own scopes. The
-// impersonated token gets Config.Scopes, or the JSON's "scopes" when
-// Config.Scopes is empty, and each Token call refreshes the source and then
-// calls IAM, as Impersonate describes. UniverseDomain returns the source's
-// universe domain, and IAM is called at https://iamcredentials.<that
-// universe>/. Python gcloud's credential file override uses the file's
-// scopes when it has any and gcloud's default scopes otherwise; to do the
-// same, pass Config.Scopes only when the JSON has none
-// (ParseImpersonatedServiceAccountJSON returns them).
+// are built from that JSON, as in google-auth: they keep their own token_uri
+// (Config.TokenURL, RAPT and UseSelfSignedJWT are not applied to them, as in
+// Python gcloud), a service_account source gets IAMScope, and an
+// authorized_user source keeps its own scopes. A source without
+// universe_domain uses the file's top-level universe_domain, else
+// Config.UniverseDomain, else googleapis.com. These options are ignored for
+// the source rather than rejected, as for other credential types, so callers
+// can pass the same Config for every credential; a caller that needs them
+// on the source builds it itself with ParseImpersonatedServiceAccountJSON,
+// BuildCredentials and Impersonate. The impersonated token gets
+// Config.Scopes, or the JSON's "scopes" when Config.Scopes is empty, and
+// each Token call refreshes the source and then calls IAM, as Impersonate
+// describes. UniverseDomain returns the source's universe domain, and IAM is
+// called at https://iamcredentials.<that universe>/. Python gcloud's
+// credential file override uses the file's scopes when it has any and
+// gcloud's default scopes otherwise; to do the same, pass Config.Scopes only
+// when the JSON has none (ParseImpersonatedServiceAccountJSON returns them).
 //
 // The returned credentials' TokenProvider is not cached: each Token call
 // blocks on a new token request (or, for a self-signed JWT, signs a new JWT
@@ -171,14 +175,12 @@ func BuildCredentials(ctx context.Context, cfg *Config) (*auth.Credentials, erro
 		tp = p
 		universe = p.universeDomain
 	case "impersonated_service_account":
-		creds, universe, err := buildImpersonatedFromJSON(ctx, c)
+		p, err := buildImpersonatedFromJSON(ctx, c)
 		if err != nil {
 			return nil, err
 		}
-		logger.DebugContext(ctx, "oauth2lib: built credentials",
-			slog.String("type", ct.Type),
-			slog.String("universe_domain", universe))
-		return creds, nil
+		tp = p
+		universe = p.universeDomain
 	case "external_account", "external_account_authorized_user":
 		return nil, fmt.Errorf("oauth2lib: %s credentials are not supported", ct.Type)
 	case "":

@@ -39,13 +39,15 @@ const (
 	// maxLifetime is the longest lifetime IAM can grant (with the
 	// constraints/iam.allowServiceAccountCredentialLifetimeExtension policy).
 	maxLifetime = 12 * time.Hour
-	// iamScope is the scope google-auth gives a service account source of
-	// impersonated credentials (google/auth/iam.py _IAM_SCOPE), which Python
-	// gcloud uses for both flag/property and file impersonation. go/auth's
-	// impersonated_service_account handling uses cloud-platform instead;
-	// oauth2lib follows Python gcloud, and IAM accepts either scope.
-	iamScope = "https://www.googleapis.com/auth/iam"
 )
+
+// IAMScope is the scope google-auth gives a service account source of
+// impersonated credentials (google/auth/iam.py _IAM_SCOPE), which Python
+// gcloud uses for both flag/property and file impersonation. BuildCredentials
+// gives it to a service_account source in impersonated_service_account JSON;
+// callers that build the source themselves should do the same. go/auth uses
+// cloud-platform here instead, and IAM accepts either scope.
+const IAMScope = "https://www.googleapis.com/auth/iam"
 
 // ImpersonationConfig describes service account impersonation. The caller
 // (for example Go gcloud) resolves every field.
@@ -54,9 +56,9 @@ type ImpersonationConfig struct {
 	// once for every Token call on the impersonated credentials, so it
 	// should be uncached (for example from BuildCredentials) when the caller
 	// wants a fresh source token each time. Source is used as given: Python
-	// gcloud gives a service account source the iam scope
-	// (https://www.googleapis.com/auth/iam) for the IAM call, and any scope
-	// that allows calling IAM, such as cloud-platform, also works.
+	// gcloud gives a service account source IAMScope for the IAM call, and
+	// any scope that allows calling IAM, such as cloud-platform, also works.
+	// The credentials report Source's universe domain, as in google-auth.
 	Source *auth.Credentials
 	// Target is the email or unique ID of the service account to
 	// impersonate.
@@ -76,23 +78,13 @@ type ImpersonationConfig struct {
 	Lifetime time.Duration
 	// Endpoint is the IAM Credentials API base URL, such as
 	// https://iamcredentials.googleapis.com/ or a regional or mTLS
-	// endpoint; Go gcloud passes an explicit
-	// api_endpoint_overrides/iamcredentials here. The request goes to
+	// endpoint. The request goes to
 	// <Endpoint>v1/projects/-/serviceAccounts/<Target>:generateAccessToken.
-	// If empty, the host is chosen as in Python gcloud:
-	// https://iamcredentials.<UniverseDomain>/ when UniverseDomain is set
-	// and not googleapis.com, else https://iamcredentials.<Source's
-	// universe>/, else https://iamcredentials.googleapis.com/.
+	// If empty, IAM is called at https://iamcredentials.<Source's universe>/,
+	// as google-auth does. Go gcloud passes the result of Python gcloud's
+	// GetEffectiveIamEndpoint here (api_endpoint_overrides/iamcredentials, or
+	// iamcredentials.<core/universe_domain> when that is not googleapis.com).
 	Endpoint string
-	// UniverseDomain is the caller's configured universe (Go gcloud passes
-	// core/universe_domain). When Endpoint is empty and UniverseDomain is set
-	// to something other than googleapis.com, IAM is called at
-	// https://iamcredentials.<UniverseDomain>/, as Python gcloud's
-	// GetEffectiveIamEndpoint does. It never changes the credentials'
-	// reported universe, which is always Source's, as in google-auth, and a
-	// value that differs from Source's is not an error. Leading and trailing
-	// spaces are ignored.
-	UniverseDomain string
 	// Client is used for every IAM call. It must not add its own
 	// Authorization header.
 	Client *http.Client
@@ -102,8 +94,8 @@ type ImpersonationConfig struct {
 
 // String describes c without calling Source.
 func (c ImpersonationConfig) String() string {
-	return fmt.Sprintf("oauth2lib.ImpersonationConfig{Target:%q Delegates:%q Scopes:%q Lifetime:%v Endpoint:%q UniverseDomain:%q}",
-		c.Target, c.Delegates, c.Scopes, c.Lifetime, c.Endpoint, c.UniverseDomain)
+	return fmt.Sprintf("oauth2lib.ImpersonationConfig{Target:%q Delegates:%q Scopes:%q Lifetime:%v Endpoint:%q}",
+		c.Target, c.Delegates, c.Scopes, c.Lifetime, c.Endpoint)
 }
 
 // GoString makes %#v print the same as String.
@@ -117,7 +109,6 @@ func (c ImpersonationConfig) LogValue() slog.Value {
 		slog.Any("scopes", c.Scopes),
 		slog.Duration("lifetime", c.Lifetime),
 		slog.String("endpoint", c.Endpoint),
-		slog.String("universe_domain", c.UniverseDomain),
 	)
 }
 
@@ -184,19 +175,9 @@ func newImpersonatedTokenProvider(ctx context.Context, cfg *ImpersonationConfig)
 	if !isServiceAccountID(target) {
 		return nil, fmt.Errorf("oauth2lib: ImpersonationConfig.Target %q is not a service account email or unique ID", target)
 	}
-	// Delegates are trimmed before they are checked, so the request carries
-	// exactly what was validated. Resource names (with "/") are allowed,
-	// since IAM accepts them.
-	var delegates []string
-	for _, d := range cfg.Delegates {
-		d = strings.TrimSpace(d)
-		if d == "" {
-			return nil, errors.New("oauth2lib: ImpersonationConfig.Delegates has an empty delegate")
-		}
-		if strings.ContainsFunc(d, unicode.IsSpace) {
-			return nil, fmt.Errorf("oauth2lib: ImpersonationConfig.Delegates has a delegate with spaces in it: %q", d)
-		}
-		delegates = append(delegates, d)
+	delegates, err := cleanDelegates(cfg.Delegates, "ImpersonationConfig.Delegates")
+	if err != nil {
+		return nil, err
 	}
 	// The same rules as Config.Scopes (validateConfig): trim, drop empty
 	// entries, and reject inner spaces. cleanScopes returns a new slice.
@@ -226,17 +207,16 @@ func newImpersonatedTokenProvider(ctx context.Context, cfg *ImpersonationConfig)
 	// takes resolveUniverseDomain's first slot.
 	universe = resolveUniverseDomain(universe, "")
 
-	// The IAM host follows Python gcloud: the endpoint override, then a
-	// non-default configured universe (GetEffectiveIamEndpoint), then
-	// Source's universe (google-auth's _make_iam_token_request), then
-	// googleapis.com (already folded into universe above).
+	// As in google-auth: the endpoint override, else Source's universe
+	// (already googleapis.com when Source reports none).
 	endpoint := cfg.Endpoint
 	if endpoint == "" {
-		iamUniverse := universe
-		if u := strings.TrimSpace(cfg.UniverseDomain); u != "" && u != defaultUniverseDomain {
-			iamUniverse = u
+		// The universe becomes part of a host name; reject anything that
+		// would change the host, port or path (for example "x@attacker").
+		if strings.ContainsAny(universe, "/:@\\?#") || strings.ContainsFunc(universe, unicode.IsSpace) {
+			return nil, errors.New("oauth2lib: universe domain is not a valid domain name for the IAM endpoint")
 		}
-		endpoint = "https://iamcredentials." + iamUniverse + "/"
+		endpoint = "https://iamcredentials." + universe + "/"
 	}
 	if err := validateEndpoint(endpoint); err != nil {
 		return nil, err
@@ -270,8 +250,9 @@ func validateEndpoint(endpoint string) error {
 	// Check for '?' and '#' in the string itself: url.Parse leaves RawQuery
 	// and Fragment empty for a bare trailing "?" or "#", and the IAM path is
 	// appended to the endpoint as a string.
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || strings.ContainsAny(endpoint, "?#") {
-		return errors.New("oauth2lib: IAM endpoint must be an absolute http or https URL without a query or fragment")
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" || u.User != nil ||
+		strings.ContainsAny(endpoint, "?#") || strings.ContainsFunc(endpoint, unicode.IsSpace) {
+		return errors.New("oauth2lib: IAM endpoint must be an absolute http or https URL with a host name and without user info, spaces, a query or a fragment")
 	}
 	return nil
 }
@@ -316,7 +297,7 @@ func (p *impersonatedTokenProvider) Token(ctx context.Context) (*auth.Token, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(p.body))
 	if err != nil {
-		return nil, fmt.Errorf("oauth2lib: building the IAM request: %w", err)
+		return nil, &RefreshError{Kind: KindUnknown, Err: fmt.Errorf("building the IAM request: %w", err)}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", srcType+" "+src.Value)
@@ -354,20 +335,71 @@ type impersonatedServiceAccountJSON struct {
 	SourceCredentials              json.RawMessage `json:"source_credentials"`
 	Delegates                      []string        `json:"delegates"`
 	Scopes                         []string        `json:"scopes"`
+	UniverseDomain                 string          `json:"universe_domain"`
 }
 
-// ParseImpersonatedServiceAccountJSON splits impersonated_service_account
-// JSON into its source_credentials JSON and a base ImpersonationConfig with
-// Target, Delegates and Scopes set. Like google-auth, it reads only the
-// target from service_account_impersonation_url, so Endpoint stays empty.
+// ImpersonatedServiceAccount is a parsed impersonated_service_account
+// credential file.
+type ImpersonatedServiceAccount struct {
+	// SourceJSON is the source_credentials JSON, an authorized_user or
+	// service_account credential file. It holds secrets.
+	SourceJSON []byte
+	// SourceType is the source's "type": "authorized_user" or
+	// "service_account". A service_account source needs IAMScope.
+	SourceType string
+	// Target is the service account to impersonate, read from
+	// service_account_impersonation_url as google-auth does.
+	Target string
+	// Delegates are the file's delegates, trimmed and checked like
+	// ImpersonationConfig.Delegates.
+	Delegates []string
+	// Scopes are the file's scopes, trimmed with empty entries dropped and
+	// checked like ImpersonationConfig.Scopes.
+	Scopes []string
+	// UniverseDomain is the file's top-level universe_domain, trimmed. Files
+	// written by gcloud and google-auth have none.
+	UniverseDomain string
+
+	// sourceUniverseDomain is the source's own universe_domain, trimmed.
+	sourceUniverseDomain string
+}
+
+// String describes a without the contents of SourceJSON, which holds secrets.
+func (a ImpersonatedServiceAccount) String() string {
+	return fmt.Sprintf("oauth2lib.ImpersonatedServiceAccount{SourceType:%q Target:%q Delegates:%q Scopes:%q UniverseDomain:%q SourceJSON:[REDACTED %d bytes]}",
+		a.SourceType, a.Target, a.Delegates, a.Scopes, a.UniverseDomain, len(a.SourceJSON))
+}
+
+// GoString makes %#v print the same as String, so it does not dump SourceJSON.
+func (a ImpersonatedServiceAccount) GoString() string { return a.String() }
+
+// LogValue implements slog.LogValuer without the contents of SourceJSON.
+func (a ImpersonatedServiceAccount) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("source_type", a.SourceType),
+		slog.String("target", a.Target),
+		slog.Any("delegates", a.Delegates),
+		slog.Any("scopes", a.Scopes),
+		slog.String("universe_domain", a.UniverseDomain),
+		slog.Int("source_json_bytes", len(a.SourceJSON)),
+	)
+}
+
+// ParseImpersonatedServiceAccountJSON parses impersonated_service_account
+// JSON. Like google-auth, it reads only the target from
+// service_account_impersonation_url; the IAM host comes from the source's
+// universe or ImpersonationConfig.Endpoint.
 //
 // The source must be authorized_user or service_account JSON; other source
 // types, including nested impersonated_service_account, are rejected, as in
 // google-auth (external_account_authorized_user sources are not supported
-// yet). Callers that cache the source credential can build it from
-// sourceJSON, apply their own overrides to base, set Source, Client and the
-// other fields, and call Impersonate.
-func ParseImpersonatedServiceAccountJSON(b []byte) (sourceJSON []byte, base *ImpersonationConfig, err error) {
+// yet). BuildCredentials uses it for impersonated_service_account JSON.
+// Callers that cache the source credential, or need source options that
+// BuildCredentials does not apply (such as RAPT or TokenURL), build the
+// source from SourceJSON with BuildCredentials and their own Config (adding
+// IAMScope for a service_account source), and call Impersonate with Target,
+// Delegates, Scopes and their own overrides.
+func ParseImpersonatedServiceAccountJSON(b []byte) (*ImpersonatedServiceAccount, error) {
 	// The JSON holds secrets, so the parse error (which can quote it) is
 	// not wrapped. As in validateConfig, parse b itself rather than the
 	// trimmed bytes: bytes.TrimSpace also strips Unicode spaces (such as
@@ -375,30 +407,40 @@ func ParseImpersonatedServiceAccountJSON(b []byte) (sourceJSON []byte, base *Imp
 	// arrays and strings.
 	trimmed := bytes.TrimSpace(b)
 	if len(trimmed) == 0 || trimmed[0] != '{' {
-		return nil, nil, errors.New("oauth2lib: impersonated_service_account JSON is not a valid JSON object")
+		return nil, errors.New("oauth2lib: impersonated_service_account JSON is not a valid JSON object")
 	}
 	var f impersonatedServiceAccountJSON
 	if err := json.Unmarshal(b, &f); err != nil {
 		// A field with the wrong JSON type: name the field, never its value.
 		var typeErr *json.UnmarshalTypeError
 		if errors.As(err, &typeErr) && typeErr.Field != "" {
-			return nil, nil, fmt.Errorf("oauth2lib: impersonated_service_account JSON field %q has the wrong type", typeErr.Field)
+			return nil, fmt.Errorf("oauth2lib: impersonated_service_account JSON field %q has the wrong type", typeErr.Field)
 		}
-		return nil, nil, errors.New("oauth2lib: impersonated_service_account JSON is not a valid JSON object")
+		return nil, errors.New("oauth2lib: impersonated_service_account JSON is not a valid JSON object")
 	}
 	if f.Type != "impersonated_service_account" {
-		return nil, nil, fmt.Errorf("oauth2lib: credential type is %q, want impersonated_service_account", f.Type)
+		return nil, fmt.Errorf("oauth2lib: credential type is %q, want impersonated_service_account", f.Type)
 	}
 	target, err := targetFromImpersonationURL(f.ServiceAccountImpersonationURL)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
+	}
+	delegates, err := cleanDelegates(f.Delegates, `impersonated_service_account "delegates"`)
+	if err != nil {
+		return nil, err
+	}
+	scopes := cleanScopes(f.Scopes)
+	for _, s := range scopes {
+		if strings.ContainsFunc(s, unicode.IsSpace) {
+			return nil, fmt.Errorf(`oauth2lib: impersonated_service_account "scopes" has a scope with spaces in it: %q`, s)
+		}
 	}
 	src := bytes.TrimSpace(f.SourceCredentials)
 	if len(src) == 0 || bytes.Equal(src, []byte("null")) {
-		return nil, nil, errors.New(`oauth2lib: impersonated_service_account JSON has no "source_credentials"`)
+		return nil, errors.New(`oauth2lib: impersonated_service_account JSON has no "source_credentials"`)
 	}
 	if src[0] != '{' {
-		return nil, nil, errors.New(`oauth2lib: impersonated_service_account "source_credentials" is not a JSON object`)
+		return nil, errors.New(`oauth2lib: impersonated_service_account "source_credentials" is not a JSON object`)
 	}
 	var st credentialType
 	if err := json.Unmarshal(src, &st); err != nil {
@@ -406,35 +448,64 @@ func ParseImpersonatedServiceAccountJSON(b []byte) (sourceJSON []byte, base *Imp
 		// never its value.
 		var typeErr *json.UnmarshalTypeError
 		if errors.As(err, &typeErr) && typeErr.Field != "" {
-			return nil, nil, fmt.Errorf(`oauth2lib: impersonated_service_account "source_credentials" field %q must be a string`, typeErr.Field)
+			return nil, fmt.Errorf(`oauth2lib: impersonated_service_account "source_credentials" field %q must be a string`, typeErr.Field)
 		}
-		return nil, nil, errors.New(`oauth2lib: impersonated_service_account "source_credentials" is not a JSON object`)
+		return nil, errors.New(`oauth2lib: impersonated_service_account "source_credentials" is not a JSON object`)
 	}
 	switch st.Type {
 	case "authorized_user", "service_account":
 	case "":
-		return nil, nil, errors.New(`oauth2lib: impersonated_service_account "source_credentials" has no "type"`)
+		return nil, errors.New(`oauth2lib: impersonated_service_account "source_credentials" has no "type"`)
 	default:
-		return nil, nil, fmt.Errorf("oauth2lib: impersonated_service_account source credentials of type %q are not supported", st.Type)
+		return nil, fmt.Errorf("oauth2lib: impersonated_service_account source credentials of type %q are not supported", st.Type)
 	}
-	return bytes.Clone(src), &ImpersonationConfig{
-		Target:    target,
-		Delegates: f.Delegates,
-		Scopes:    cleanScopes(f.Scopes),
+	return &ImpersonatedServiceAccount{
+		SourceJSON:           bytes.Clone(src),
+		SourceType:           st.Type,
+		Target:               target,
+		Delegates:            delegates,
+		Scopes:               scopes,
+		UniverseDomain:       strings.TrimSpace(f.UniverseDomain),
+		sourceUniverseDomain: strings.TrimSpace(st.UniverseDomain),
 	}, nil
 }
 
+// cleanDelegates trims each delegate and rejects empty ones and ones with
+// spaces inside, naming field in the error. Resource names (with "/") are
+// allowed, since IAM accepts them. It returns a new slice (nil when there
+// are no delegates), so the request carries exactly what was checked.
+func cleanDelegates(ds []string, field string) ([]string, error) {
+	var out []string
+	for _, d := range ds {
+		d = strings.TrimSpace(d)
+		if d == "" {
+			return nil, fmt.Errorf("oauth2lib: %s has an empty delegate", field)
+		}
+		if strings.ContainsFunc(d, unicode.IsSpace) {
+			return nil, fmt.Errorf("oauth2lib: %s has a delegate with spaces in it: %q", field, d)
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
 // targetFromImpersonationURL returns the service account between the last
-// "/" and ":generateAccessToken", as google-auth does. The target must pass
-// the same check as ImpersonationConfig.Target, so a bad URL is reported as
-// such.
+// "/" and ":generateAccessToken", as google-auth does, percent-decoded:
+// Impersonate escapes it again, so a "%40" in the URL reaches IAM as "%40"
+// (google-auth sends the extracted text as is). The decoded target must pass
+// the same check as ImpersonationConfig.Target, so an encoded "/" or "?" is
+// rejected here and a bad URL is reported as such.
 func targetFromImpersonationURL(u string) (string, error) {
 	start := strings.LastIndex(u, "/")
 	end := strings.Index(u, ":generateAccessToken")
-	if start == -1 || end == -1 || start > end || !isServiceAccountID(u[start+1:end]) {
+	if start == -1 || end == -1 || start > end {
 		return "", errors.New(`oauth2lib: cannot read the target service account from "service_account_impersonation_url"`)
 	}
-	return u[start+1 : end], nil
+	target, err := url.PathUnescape(u[start+1 : end])
+	if err != nil || !isServiceAccountID(target) {
+		return "", errors.New(`oauth2lib: cannot read the target service account from "service_account_impersonation_url"`)
+	}
+	return target, nil
 }
 
 // isServiceAccountID reports whether s can be a service account email or
@@ -444,46 +515,59 @@ func isServiceAccountID(s string) bool {
 	return s != "" && !strings.ContainsAny(s, "/:?#") && !strings.ContainsFunc(s, unicode.IsSpace)
 }
 
-// buildImpersonatedFromJSON builds credentials for impersonated_service_account
-// JSON for BuildCredentials. As in google-auth, the source is built from its
-// own JSON: it keeps its token_uri and universe_domain and gets only
-// Config's Client and Logger (not RAPT or UseSelfSignedJWT, as in Python
-// gcloud). A service_account source gets the iam scope and an
-// authorized_user source keeps its own scopes. The impersonated token gets
-// Config.Scopes, or the JSON's scopes if Config.Scopes is empty, and IAM is
-// called in the source's universe.
-func buildImpersonatedFromJSON(ctx context.Context, c *Config) (*auth.Credentials, string, error) {
-	sourceJSON, base, err := ParseImpersonatedServiceAccountJSON(c.JSON)
+// buildImpersonatedFromJSON returns the token provider for
+// impersonated_service_account JSON, for BuildCredentials. As in google-auth,
+// the source is built from its own JSON: it keeps its token_uri and gets only
+// Config's Client and Logger (not TokenURL, RAPT or UseSelfSignedJWT, as in
+// Python gcloud). A source without universe_domain gets the file's
+// top-level universe_domain, else Config.UniverseDomain (the same JSON, then
+// Config, then googleapis.com order as the other types). A service_account
+// source gets IAMScope and an authorized_user source keeps its own scopes.
+// The impersonated token gets Config.Scopes, or the JSON's scopes if
+// Config.Scopes is empty, and IAM is called in the source's universe.
+func buildImpersonatedFromJSON(ctx context.Context, c *Config) (*impersonatedTokenProvider, error) {
+	f, err := ParseImpersonatedServiceAccountJSON(c.JSON)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	var st credentialType
-	_ = json.Unmarshal(sourceJSON, &st) // checked by ParseImpersonatedServiceAccountJSON
 	srcCfg := &Config{
-		JSON:   sourceJSON,
+		JSON:   f.SourceJSON,
 		Client: c.Client,
 		Logger: c.Logger,
 	}
-	if st.Type == "service_account" {
-		srcCfg.Scopes = []string{iamScope}
+	// Only a source without its own universe_domain gets the fallback, so a
+	// source that says googleapis.com keeps it (and doesn't self-sign).
+	if f.sourceUniverseDomain == "" {
+		srcCfg.UniverseDomain = f.UniverseDomain
+		if srcCfg.UniverseDomain == "" {
+			srcCfg.UniverseDomain = c.UniverseDomain
+		}
+	}
+	if f.SourceType == "service_account" {
+		srcCfg.Scopes = []string{IAMScope}
 	}
 	source, err := BuildCredentials(ctx, srcCfg)
 	if err != nil {
-		return nil, "", fmt.Errorf("oauth2lib: impersonated_service_account source credentials: %w", err)
+		return nil, fmt.Errorf("oauth2lib: impersonated_service_account source credentials: %w", err)
 	}
-	base.Source = source
-	base.Client = c.Client
+	base := &ImpersonationConfig{
+		Source:    source,
+		Target:    f.Target,
+		Delegates: f.Delegates,
+		Scopes:    f.Scopes,
+		Client:    c.Client,
+	}
 	if len(c.Scopes) > 0 {
 		base.Scopes = c.Scopes
 	}
 	if len(base.Scopes) == 0 {
-		return nil, "", errors.New("oauth2lib: impersonated_service_account credentials need Config.Scopes or \"scopes\" in the JSON")
+		return nil, errors.New("oauth2lib: impersonated_service_account credentials need Config.Scopes or \"scopes\" in the JSON")
 	}
 	p, err := newImpersonatedTokenProvider(ctx, base)
 	if err != nil {
 		// The fields come from the JSON (or Config.Scopes), not from an
 		// ImpersonationConfig the caller set, so say where they came from.
-		return nil, "", fmt.Errorf("oauth2lib: impersonated_service_account JSON: %w", err)
+		return nil, fmt.Errorf("oauth2lib: impersonated_service_account JSON: %w", err)
 	}
-	return p.credentials(ctx, c.JSON, discardLogger), p.universeDomain, nil
+	return p, nil
 }
