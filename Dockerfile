@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM golang:1.27.3 AS builder
+FROM golang:1.27.4 AS builder
 
 ENV GO111MODULE=on \
   CGO_ENABLED=0 \
