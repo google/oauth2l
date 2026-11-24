@@ -52,7 +52,9 @@ type Config struct {
 	// credentials can't reveal a mismatch with core/universe_domain. Go
 	// gcloud's file-override path already resolves it this way. For service
 	// accounts, a non-default value also turns on self-signed JWTs, as in
-	// Python gcloud. Leading and trailing spaces are ignored.
+	// Python gcloud. Leading and trailing spaces are ignored. For
+	// impersonated_service_account, it is used for a source without
+	// universe_domain when the file has no top-level universe_domain either.
 	UniverseDomain string
 	// Client is used for every network call. It must not add its own
 	// Authorization header.
@@ -60,11 +62,14 @@ type Config struct {
 	// RAPT returns the latest reauth proof token before each user refresh.
 	// ("", nil) omits rapt, (t, nil) sends rapt=t, and an error stops Token
 	// before any request is made. Nil to never send a RAPT. Ignored for
-	// credentials other than authorized_user, as in Python gcloud.
+	// credentials other than authorized_user, including an authorized_user
+	// source inside impersonated_service_account, as in Python gcloud.
 	RAPT func(ctx context.Context) (string, error)
 	// UseSelfSignedJWT makes service account credentials sign a JWT locally
 	// instead of calling the token endpoint. Ignored for credentials other
-	// than service_account, as in Python gcloud (creds.UseSelfSignedJwt).
+	// than service_account, including a service_account source inside
+	// impersonated_service_account, as in Python gcloud
+	// (creds.UseSelfSignedJwt).
 	UseSelfSignedJWT bool
 	// Logger receives debug logs. Nil discards them.
 	Logger *slog.Logger
@@ -98,14 +103,35 @@ type credentialType struct {
 }
 
 // BuildCredentials returns credentials for cfg.JSON, which must be an
-// authorized_user or service_account credential file.
+// authorized_user, service_account or impersonated_service_account
+// credential file.
+//
+// For impersonated_service_account, the source credentials inside the JSON
+// are built from that JSON, as in google-auth: they keep their own token_uri
+// (Config.TokenURL, RAPT and UseSelfSignedJWT are not applied to them, as in
+// Python gcloud), a service_account source gets IAMScope, and an
+// authorized_user source keeps its own scopes. A source without
+// universe_domain uses the file's top-level universe_domain, else
+// Config.UniverseDomain, else googleapis.com. These options are ignored for
+// the source rather than rejected, as for other credential types, so callers
+// can pass the same Config for every credential; a caller that needs them
+// on the source builds it itself with ParseImpersonatedServiceAccountJSON,
+// BuildCredentials and Impersonate. The impersonated token gets
+// Config.Scopes, or the JSON's "scopes" when Config.Scopes is empty, and
+// each Token call refreshes the source and then calls IAM, as Impersonate
+// describes. UniverseDomain returns the source's universe domain, and IAM is
+// called at https://iamcredentials.<that universe>/. Python gcloud's
+// credential file override uses the file's scopes when it has any and
+// gcloud's default scopes otherwise; to do the same, pass Config.Scopes only
+// when the JSON has none (ParseImpersonatedServiceAccountJSON returns them).
 //
 // The returned credentials' TokenProvider is not cached: each Token call
 // blocks on a new token request (or, for a self-signed JWT, signs a new JWT
 // locally) and returns a *RefreshError when the token endpoint fails, or
 // the context's error when ctx is done. JSON returns a copy of cfg.JSON, and
 // UniverseDomain returns the JSON's universe_domain, else
-// cfg.UniverseDomain, else googleapis.com (surrounding spaces ignored).
+// cfg.UniverseDomain, else googleapis.com (surrounding spaces ignored); for
+// impersonated_service_account it is the source's, as described above.
 //
 // BuildCredentials reads no files, environment variables or gcloud
 // properties, and makes no network calls. cfg is copied, so changing it
@@ -149,7 +175,12 @@ func BuildCredentials(ctx context.Context, cfg *Config) (*auth.Credentials, erro
 		tp = p
 		universe = p.universeDomain
 	case "impersonated_service_account":
-		return nil, errors.New("oauth2lib: impersonated_service_account credentials are not supported yet")
+		p, err := buildImpersonatedFromJSON(ctx, c)
+		if err != nil {
+			return nil, err
+		}
+		tp = p
+		universe = p.universeDomain
 	case "external_account", "external_account_authorized_user":
 		return nil, fmt.Errorf("oauth2lib: %s credentials are not supported", ct.Type)
 	case "":
