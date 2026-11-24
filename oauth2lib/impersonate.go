@@ -81,9 +81,13 @@ type ImpersonationConfig struct {
 	// endpoint. The request goes to
 	// <Endpoint>v1/projects/-/serviceAccounts/<Target>:generateAccessToken.
 	// If empty, IAM is called at https://iamcredentials.<Source's universe>/,
-	// as google-auth does. Go gcloud passes the result of Python gcloud's
-	// GetEffectiveIamEndpoint here (api_endpoint_overrides/iamcredentials, or
-	// iamcredentials.<core/universe_domain> when that is not googleapis.com).
+	// as google-auth does. Set it only for an explicit override: Go gcloud
+	// passes api_endpoint_overrides/iamcredentials, or
+	// https://iamcredentials.<core/universe_domain>/ when core/universe_domain
+	// is not googleapis.com (Python gcloud's GetEffectiveIamEndpoint), and
+	// leaves it empty otherwise. Passing https://iamcredentials.googleapis.com/
+	// explicitly would ignore Source's universe, while Python only swaps in
+	// the source's universe when the endpoint is the default one.
 	Endpoint string
 	// Client is used for every IAM call. It must not add its own
 	// Authorization header.
@@ -359,15 +363,45 @@ type ImpersonatedServiceAccount struct {
 	// UniverseDomain is the file's top-level universe_domain, trimmed. Files
 	// written by gcloud and google-auth have none.
 	UniverseDomain string
+	// SourceUniverseDomain is the source's own universe_domain, trimmed;
+	// empty when the source JSON has none.
+	SourceUniverseDomain string
+}
 
-	// sourceUniverseDomain is the source's own universe_domain, trimmed.
-	sourceUniverseDomain string
+// SourceConfig returns the Config that BuildCredentials uses to build a's
+// source credentials: SourceJSON, cfg's Client and Logger, IAMScope for a
+// service_account source and, for a source without universe_domain, a's
+// UniverseDomain, else cfg's UniverseDomain. A source with its own
+// universe_domain gets no UniverseDomain, so a googleapis.com service account
+// does not switch to a self-signed JWT. cfg's TokenURL, RAPT,
+// UseSelfSignedJWT and Scopes are not copied, as in Python gcloud; callers
+// that need them on the source set them on the result before calling
+// BuildCredentials. cfg may be nil.
+func (a *ImpersonatedServiceAccount) SourceConfig(cfg *Config) *Config {
+	if cfg == nil {
+		cfg = &Config{}
+	}
+	src := &Config{
+		JSON:   bytes.Clone(a.SourceJSON),
+		Client: cfg.Client,
+		Logger: cfg.Logger,
+	}
+	if a.SourceUniverseDomain == "" {
+		src.UniverseDomain = a.UniverseDomain
+		if src.UniverseDomain == "" {
+			src.UniverseDomain = cfg.UniverseDomain
+		}
+	}
+	if a.SourceType == "service_account" {
+		src.Scopes = []string{IAMScope}
+	}
+	return src
 }
 
 // String describes a without the contents of SourceJSON, which holds secrets.
 func (a ImpersonatedServiceAccount) String() string {
-	return fmt.Sprintf("oauth2lib.ImpersonatedServiceAccount{SourceType:%q Target:%q Delegates:%q Scopes:%q UniverseDomain:%q SourceJSON:[REDACTED %d bytes]}",
-		a.SourceType, a.Target, a.Delegates, a.Scopes, a.UniverseDomain, len(a.SourceJSON))
+	return fmt.Sprintf("oauth2lib.ImpersonatedServiceAccount{SourceType:%q Target:%q Delegates:%q Scopes:%q UniverseDomain:%q SourceUniverseDomain:%q SourceJSON:[REDACTED %d bytes]}",
+		a.SourceType, a.Target, a.Delegates, a.Scopes, a.UniverseDomain, a.SourceUniverseDomain, len(a.SourceJSON))
 }
 
 // GoString makes %#v print the same as String, so it does not dump SourceJSON.
@@ -381,6 +415,7 @@ func (a ImpersonatedServiceAccount) LogValue() slog.Value {
 		slog.Any("delegates", a.Delegates),
 		slog.Any("scopes", a.Scopes),
 		slog.String("universe_domain", a.UniverseDomain),
+		slog.String("source_universe_domain", a.SourceUniverseDomain),
 		slog.Int("source_json_bytes", len(a.SourceJSON)),
 	)
 }
@@ -396,9 +431,9 @@ func (a ImpersonatedServiceAccount) LogValue() slog.Value {
 // yet). BuildCredentials uses it for impersonated_service_account JSON.
 // Callers that cache the source credential, or need source options that
 // BuildCredentials does not apply (such as RAPT or TokenURL), build the
-// source from SourceJSON with BuildCredentials and their own Config (adding
-// IAMScope for a service_account source), and call Impersonate with Target,
-// Delegates, Scopes and their own overrides.
+// source with BuildCredentials(ctx, a.SourceConfig(cfg)) plus their own
+// options, and call Impersonate with Target, Delegates, Scopes and their own
+// overrides; this matches what BuildCredentials does for the same JSON.
 func ParseImpersonatedServiceAccountJSON(b []byte) (*ImpersonatedServiceAccount, error) {
 	// The JSON holds secrets, so the parse error (which can quote it) is
 	// not wrapped. As in validateConfig, parse b itself rather than the
@@ -466,7 +501,7 @@ func ParseImpersonatedServiceAccountJSON(b []byte) (*ImpersonatedServiceAccount,
 		Delegates:            delegates,
 		Scopes:               scopes,
 		UniverseDomain:       strings.TrimSpace(f.UniverseDomain),
-		sourceUniverseDomain: strings.TrimSpace(st.UniverseDomain),
+		SourceUniverseDomain: strings.TrimSpace(st.UniverseDomain),
 	}, nil
 }
 
@@ -490,9 +525,11 @@ func cleanDelegates(ds []string, field string) ([]string, error) {
 }
 
 // targetFromImpersonationURL returns the service account between the last
-// "/" and ":generateAccessToken", as google-auth does, percent-decoded:
-// Impersonate escapes it again, so a "%40" in the URL reaches IAM as "%40"
-// (google-auth sends the extracted text as is). The decoded target must pass
+// "/" and ":generateAccessToken", as google-auth does, percent-decoded.
+// Impersonate escapes the target again with url.PathEscape, so an encoded
+// "%40" is not sent double-escaped as "%2540" (PathEscape keeps "@", so IAM
+// gets a literal "@", which it treats like google-auth's "%40"). The decoded
+// target must pass
 // the same check as ImpersonationConfig.Target, so an encoded "/" or "?" is
 // rejected here and a bad URL is reported as such.
 func targetFromImpersonationURL(u string) (string, error) {
@@ -530,23 +567,7 @@ func buildImpersonatedFromJSON(ctx context.Context, c *Config) (*impersonatedTok
 	if err != nil {
 		return nil, err
 	}
-	srcCfg := &Config{
-		JSON:   f.SourceJSON,
-		Client: c.Client,
-		Logger: c.Logger,
-	}
-	// Only a source without its own universe_domain gets the fallback, so a
-	// source that says googleapis.com keeps it (and doesn't self-sign).
-	if f.sourceUniverseDomain == "" {
-		srcCfg.UniverseDomain = f.UniverseDomain
-		if srcCfg.UniverseDomain == "" {
-			srcCfg.UniverseDomain = c.UniverseDomain
-		}
-	}
-	if f.SourceType == "service_account" {
-		srcCfg.Scopes = []string{IAMScope}
-	}
-	source, err := BuildCredentials(ctx, srcCfg)
+	source, err := BuildCredentials(ctx, f.SourceConfig(c))
 	if err != nil {
 		return nil, fmt.Errorf("oauth2lib: impersonated_service_account source credentials: %w", err)
 	}

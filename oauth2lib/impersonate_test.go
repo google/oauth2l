@@ -351,6 +351,18 @@ func TestImpersonateConfigErrors(t *testing.T) {
 			c.Source, _ = newSource("example.com:8443")
 			return c
 		}, "not a valid domain name"},
+		{"source_universe_with_backslash", func(c *ImpersonationConfig) *ImpersonationConfig {
+			c.Source, _ = newSource(`example.com\x`)
+			return c
+		}, "not a valid domain name"},
+		{"source_universe_with_query", func(c *ImpersonationConfig) *ImpersonationConfig {
+			c.Source, _ = newSource("example.com?x")
+			return c
+		}, "not a valid domain name"},
+		{"source_universe_with_fragment", func(c *ImpersonationConfig) *ImpersonationConfig {
+			c.Source, _ = newSource("example.com#x")
+			return c
+		}, "not a valid domain name"},
 		{"source_universe_with_slash", func(c *ImpersonationConfig) *ImpersonationConfig { c.Source, _ = newSource("example.com/x"); return c }, "not a valid domain name"},
 		{"source_universe_with_at", func(c *ImpersonationConfig) *ImpersonationConfig {
 			c.Source, _ = newSource("x@attacker.example")
@@ -1084,8 +1096,8 @@ func TestParseImpersonatedServiceAccountJSONDetails(t *testing.T) {
 }
 
 // TestBuildCredentialsImpersonatedEncodedTarget checks that a percent-encoded
-// target in service_account_impersonation_url reaches IAM escaped once, as
-// google-auth sends it.
+// target in service_account_impersonation_url is not double-escaped: "%40"
+// is decoded, and url.PathEscape sends a literal "@" (not "%2540").
 func TestBuildCredentialsImpersonatedEncodedTarget(t *testing.T) {
 	srv := newFakeIAM(t, fakeResponse{body: okIAMBody})
 	srv.tokenResps = []fakeResponse{{body: `{"access_token":"user-at","expires_in":3600}`}}
@@ -1105,5 +1117,124 @@ func TestBuildCredentialsImpersonatedEncodedTarget(t *testing.T) {
 	}
 	if reqs := srv.requests(); len(reqs) != 1 || reqs[0].path != testIAMPath {
 		t.Errorf("IAM requests = %+v, want one to %s", reqs, testIAMPath)
+	}
+}
+
+// TestBuildCredentialsImpersonatedServiceAccountSourceFallbackSelfSigns
+// checks a service_account source without universe_domain whose universe
+// comes from the file's top-level universe_domain or Config.UniverseDomain:
+// outside googleapis.com it self-signs (no token endpoint call) and IAM is
+// called in that universe.
+func TestBuildCredentialsImpersonatedServiceAccountSourceFallbackSelfSigns(t *testing.T) {
+	for _, tt := range []struct{ name, fileUniverse, cfgUniverse, wantHost string }{
+		{name: "file_universe", fileUniverse: "file.example", wantHost: "iamcredentials.file.example"},
+		{name: "config_universe", cfgUniverse: "other.example", wantHost: "iamcredentials.other.example"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			outer := map[string]any{"scopes": []string{"s"}}
+			if tt.fileUniverse != "" {
+				outer["universe_domain"] = tt.fileUniverse
+			}
+			rt := &hostRecorder{}
+			creds, err := BuildCredentials(t.Context(), &Config{
+				JSON:           impersonatedJSON(t, saJSON(t, map[string]any{"token_uri": "https://oauth2.example/token"}), outer),
+				UniverseDomain: tt.cfgUniverse,
+				Client:         &http.Client{Transport: rt},
+			})
+			if err != nil {
+				t.Fatalf("BuildCredentials() error = %v", err)
+			}
+			creds.Token(t.Context()) // fails at IAM on purpose; only the hosts matter
+			if len(rt.hosts) != 1 || rt.hosts[0] != tt.wantHost {
+				t.Errorf("requests went to %v, want only %s (a self-signed source makes no token request)", rt.hosts, tt.wantHost)
+			}
+		})
+	}
+}
+
+// TestImpersonatedServiceAccountSourceConfig checks the source Config that
+// BuildCredentials uses for impersonated_service_account JSON.
+func TestImpersonatedServiceAccountSourceConfig(t *testing.T) {
+	client := noNetworkClient(t)
+	logger := slog.New(slog.DiscardHandler)
+	cfg := &Config{
+		UniverseDomain:   "other.example",
+		Client:           client,
+		Logger:           logger,
+		TokenURL:         "https://not-used.example/token",
+		RAPT:             func(context.Context) (string, error) { return "r", nil },
+		UseSelfSignedJWT: true,
+		Scopes:           []string{"target-scope"},
+	}
+	tests := []struct {
+		name         string
+		source       []byte
+		outer        map[string]any
+		wantUniverse string
+		wantScopes   []string
+	}{
+		{name: "sa_own_universe", source: saJSON(t, map[string]any{"universe_domain": "googleapis.com"}), outer: map[string]any{"universe_domain": "file.example"}, wantScopes: []string{IAMScope}},
+		{name: "sa_file_universe", source: saJSON(t, nil), outer: map[string]any{"universe_domain": "file.example"}, wantUniverse: "file.example", wantScopes: []string{IAMScope}},
+		{name: "user_config_universe", source: userJSON(t, nil), wantUniverse: "other.example"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, err := ParseImpersonatedServiceAccountJSON(impersonatedJSON(t, tt.source, tt.outer))
+			if err != nil {
+				t.Fatalf("ParseImpersonatedServiceAccountJSON() error = %v", err)
+			}
+			got := a.SourceConfig(cfg)
+			if !bytes.Equal(got.JSON, tt.source) || got.Client != client || got.Logger != logger ||
+				got.UniverseDomain != tt.wantUniverse || !reflect.DeepEqual(got.Scopes, tt.wantScopes) ||
+				got.TokenURL != "" || got.RAPT != nil || got.UseSelfSignedJWT {
+				t.Errorf("SourceConfig() = %v (Scopes %q, RAPT set %t, UseSelfSignedJWT %t), want the source JSON, cfg's Client and Logger, UniverseDomain %q, Scopes %q and nothing else",
+					got, got.Scopes, got.RAPT != nil, got.UseSelfSignedJWT, tt.wantUniverse, tt.wantScopes)
+			}
+		})
+	}
+	if got := (&ImpersonatedServiceAccount{SourceJSON: []byte("{}")}).SourceConfig(nil); got == nil || got.Client != nil || string(got.JSON) != "{}" {
+		t.Errorf("SourceConfig(nil) = %v, want a Config with only JSON set", got)
+	}
+}
+
+// TestImpersonatedServiceAccountSplitPathMatchesBuildCredentials builds a
+// googleapis.com service account source in a file with another top-level
+// universe both ways (BuildCredentials, and the documented
+// ParseImpersonatedServiceAccountJSON + SourceConfig + Impersonate path) and
+// checks both send the same requests: a JWT exchange at the token endpoint,
+// then IAM in googleapis.com.
+func TestImpersonatedServiceAccountSplitPathMatchesBuildCredentials(t *testing.T) {
+	js := impersonatedJSON(t,
+		saJSON(t, map[string]any{"token_uri": "https://oauth2.example/token", "universe_domain": "googleapis.com"}),
+		map[string]any{"scopes": []string{"s"}, "universe_domain": "other.example"})
+	want := []string{"oauth2.example", "iamcredentials.googleapis.com"}
+
+	rt := &hostRecorder{tokenBody: `{"access_token":"sa-at","expires_in":3600}`}
+	creds, err := BuildCredentials(t.Context(), &Config{JSON: js, Client: &http.Client{Transport: rt}})
+	if err != nil {
+		t.Fatalf("BuildCredentials() error = %v", err)
+	}
+	creds.Token(t.Context()) // fails at IAM on purpose; only the hosts matter
+	if !reflect.DeepEqual(rt.hosts, want) {
+		t.Errorf("BuildCredentials: requests went to %v, want %v", rt.hosts, want)
+	}
+
+	rt2 := &hostRecorder{tokenBody: `{"access_token":"sa-at","expires_in":3600}`}
+	client := &http.Client{Transport: rt2}
+	a, err := ParseImpersonatedServiceAccountJSON(js)
+	if err != nil {
+		t.Fatalf("ParseImpersonatedServiceAccountJSON() error = %v", err)
+	}
+	source, err := BuildCredentials(t.Context(), a.SourceConfig(&Config{Client: client}))
+	if err != nil {
+		t.Fatalf("BuildCredentials(SourceConfig()) error = %v", err)
+	}
+	imp, err := Impersonate(t.Context(), &ImpersonationConfig{Source: source, Target: a.Target, Delegates: a.Delegates, Scopes: a.Scopes, Client: client})
+	if err != nil {
+		t.Fatalf("Impersonate() error = %v", err)
+	}
+	imp.Token(t.Context()) // fails at IAM on purpose; only the hosts matter
+	if !reflect.DeepEqual(rt2.hosts, want) {
+		t.Errorf("split path: requests went to %v, want %v", rt2.hosts, want)
 	}
 }
