@@ -1,0 +1,48 @@
+{
+  "name": "user_refresh",
+  "description": "authorized_user refresh with no scopes, at the default token URL.",
+  "python": "googlecloudsdk/core/credentials/google_auth_credentials.py _RefreshGrant; google/oauth2/_client.py refresh_grant",
+  "input": {
+    "config": {
+      "credentials_json": {
+        "type": "authorized_user",
+        "client_id": "client-id.apps.googleusercontent.com",
+        "client_secret": "fake-client-secret",
+        "refresh_token": "fake-refresh-token"
+      }
+    }
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://oauth2.googleapis.com/token",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "form": {
+          "grant_type": "refresh_token",
+          "client_id": "client-id.apps.googleusercontent.com",
+          "client_secret": "fake-client-secret",
+          "refresh_token": "fake-refresh-token"
+        }
+      },
+      "response": {
+        "body": {
+          "access_token": "fake-access-token",
+          "expires_in": 3600,
+          "token_type": "Bearer"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "token": {
+      "value": "fake-access-token",
+      "type": "Bearer",
+      "metadata": {},
+      "expires_in_seconds": 3600
+    },
+    "universe_domain": "googleapis.com"
+  }
+}
