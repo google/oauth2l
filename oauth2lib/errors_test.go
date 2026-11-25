@@ -43,6 +43,9 @@ type fakeResponse struct {
 	contentType string
 	closeConn   bool          // close the connection without answering
 	delay       time.Duration // wait first; stops early if the client cancels
+	// arrived, if set, is closed when the request arrives, so a test can
+	// act while the request is in flight. Use each response once.
+	arrived chan struct{}
 }
 
 // fakeServer is a minimal fake token endpoint: it answers requests with the
@@ -81,6 +84,9 @@ func (f *fakeServer) serve(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeFake(t testing.TB, w http.ResponseWriter, r *http.Request, resp fakeResponse) {
+	if resp.arrived != nil {
+		close(resp.arrived)
+	}
 	if resp.delay > 0 {
 		select {
 		case <-time.After(resp.delay):
