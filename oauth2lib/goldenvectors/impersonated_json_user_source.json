@@ -1,6 +1,6 @@
 {
   "name": "impersonated_json_user_source",
-  "description": "impersonated_service_account JSON with an authorized_user source: refresh, then IAM generateAccessToken with the source token.",
+  "description": "impersonated_service_account JSON with an authorized_user source: refresh, then IAM generateAccessToken with the source token. The file's \"delegates\": [] is sent to IAM as null; Python sends [] (README: Known differences from Python).",
   "python": "googlecloudsdk/core/credentials/google_auth_credentials.py _RefreshGrant; google/oauth2/_client.py refresh_grant; google/auth/impersonated_credentials.py _make_iam_token_request",
   "input": {
     "config": {

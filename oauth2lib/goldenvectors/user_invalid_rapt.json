@@ -41,7 +41,7 @@
   ],
   "expected": {
     "error": {
-      "kind": "reauth required",
+      "kind": "reauth_required",
       "code": "invalid_grant",
       "subtype": "invalid_rapt",
       "description": "reauth related error (invalid_rapt)",

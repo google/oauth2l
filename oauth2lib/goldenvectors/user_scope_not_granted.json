@@ -44,7 +44,7 @@
   ],
   "expected": {
     "error": {
-      "kind": "invalid grant",
+      "kind": "invalid_grant",
       "status_code": 200,
       "description": "Not all requested scopes were granted by the authorization server, missing scopes openid.",
       "is": [

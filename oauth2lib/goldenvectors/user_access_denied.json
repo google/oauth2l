@@ -38,7 +38,7 @@
   ],
   "expected": {
     "error": {
-      "kind": "access denied",
+      "kind": "access_denied",
       "code": "access_denied",
       "description": "Request denied",
       "status_code": 403,

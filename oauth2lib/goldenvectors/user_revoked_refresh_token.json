@@ -38,7 +38,7 @@
   ],
   "expected": {
     "error": {
-      "kind": "invalid grant",
+      "kind": "invalid_grant",
       "code": "invalid_grant",
       "description": "Token has been expired or revoked.",
       "status_code": 400,

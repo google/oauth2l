@@ -38,7 +38,7 @@
   ],
   "expected": {
     "error": {
-      "kind": "access denied",
+      "kind": "access_denied",
       "code": "access_denied",
       "description": "Account restricted",
       "status_code": 400,

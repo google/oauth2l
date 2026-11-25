@@ -26,13 +26,18 @@
 package goldenvectors
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"path"
+	"slices"
 	"sort"
 	"strings"
+	"time"
 )
 
 // FS holds the vector files, one JSON-encoded Vector per file.
@@ -53,6 +58,46 @@ const (
 	ErrInvalidGrant   = "ErrInvalidGrant"
 	ErrTransient      = "ErrTransient"
 )
+
+var sentinels = []string{ErrReauthRequired, ErrAccessDenied, ErrCAADenied, ErrInvalidGrant, ErrTransient}
+
+// Error kind ids used in Error.Kind, one for each oauth2lib.ErrorKind. They
+// are stable ids, not ErrorKind.String().
+const (
+	KindUnknown        = "unknown"         // oauth2lib.KindUnknown
+	KindReauthRequired = "reauth_required" // oauth2lib.KindReauthRequired
+	KindAccessDenied   = "access_denied"   // oauth2lib.KindAccessDenied
+	KindInvalidGrant   = "invalid_grant"   // oauth2lib.KindInvalidGrant
+	KindTransient      = "transient"       // oauth2lib.KindTransient
+)
+
+var kinds = []string{KindUnknown, KindReauthRequired, KindAccessDenied, KindInvalidGrant, KindTransient}
+
+// Transport error types used in TransportError.Type. Each one says what
+// error the client must get instead of a response.
+const (
+	// TransportErrorNetwork is a plain network error, such as a reset
+	// connection: errors.New(Message).
+	TransportErrorNetwork = ""
+	// TransportErrorClientCertRefused means the client's certificate
+	// callback or signer (for example the enterprise certificate proxy)
+	// refused to provide a client certificate. The error wraps
+	// oauth2lib.ErrAccessDenied, for example
+	// fmt.Errorf("%s: %w", Message, oauth2lib.ErrAccessDenied).
+	TransportErrorClientCertRefused = "client_cert_refused"
+	// TransportErrorClientTimeout means http.Client.Timeout expired. The
+	// test gives the vector's client a short Timeout, and the transport
+	// waits until the request's context is done and returns its error, so
+	// net/http builds its real timeout error. Message only describes it.
+	TransportErrorClientTimeout = "client_timeout"
+	// TransportErrorServerCertUntrusted means the client rejected the
+	// server's certificate, for example behind a TLS-inspecting proxy. The
+	// error wraps a *tls.CertificateVerificationError whose Err is an
+	// x509.UnknownAuthorityError.
+	TransportErrorServerCertUntrusted = "server_cert_untrusted"
+)
+
+var transportErrorTypes = []string{TransportErrorNetwork, TransportErrorClientCertRefused, TransportErrorClientTimeout, TransportErrorServerCertUntrusted}
 
 // Vector is one test case.
 type Vector struct {
@@ -155,8 +200,18 @@ type Response struct {
 	// Body is sent as JSON with Content-Type application/json.
 	Body json.RawMessage `json:"body,omitempty"`
 	// BodyText, if set instead of Body, is sent as text/plain.
-	BodyText       string `json:"body_text,omitempty"`
-	TransportError string `json:"transport_error,omitempty"`
+	BodyText       string          `json:"body_text,omitempty"`
+	TransportError *TransportError `json:"transport_error,omitempty"`
+}
+
+// TransportError is an error the client gets instead of a response. It is
+// only allowed on the last exchange.
+type TransportError struct {
+	// Message is the error text.
+	Message string `json:"message"`
+	// Type is one of the TransportError* constants; empty means
+	// TransportErrorNetwork.
+	Type string `json:"type,omitempty"`
 }
 
 // Expected is the outcome of Token. Exactly one of Token and Error is set.
@@ -185,7 +240,7 @@ type Token struct {
 
 // Error is the expected *oauth2lib.RefreshError.
 type Error struct {
-	// Kind is the ErrorKind's String, such as "reauth required".
+	// Kind is one of the Kind* ids, such as "reauth_required".
 	Kind        string `json:"kind"`
 	Code        string `json:"code,omitempty"`
 	Subtype     string `json:"subtype,omitempty"`
@@ -196,8 +251,118 @@ type Error struct {
 	Is []string `json:"is,omitempty"`
 }
 
+// Validate reports every problem in v's shape: missing or conflicting
+// fields, unknown kinds, sentinels and transport error types, and an expiry
+// that isn't RFC 3339. It does not check that oauth2lib behaves as v says.
+func (v Vector) Validate() error {
+	var errs []error
+	add := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
+
+	if v.Name == "" {
+		add("name is empty")
+	}
+	if v.Description == "" {
+		add("description is empty")
+	}
+
+	switch in := v.Input; {
+	case (in.Config == nil) == (in.Impersonation == nil):
+		add("input must set exactly one of config and impersonation")
+	case in.Config != nil:
+		if isEmptyJSON(in.Config.CredentialsJSON) {
+			add("input.config.credentials_json is empty")
+		}
+	default:
+		if isEmptyJSON(in.Impersonation.Source.CredentialsJSON) {
+			add("input.impersonation.source.credentials_json is empty")
+		}
+		if in.Impersonation.Target == "" {
+			add("input.impersonation.target is empty")
+		}
+	}
+
+	for i, ex := range v.Exchanges {
+		r := ex.Request
+		if r.Method == "" || r.URL == "" {
+			add("exchange %d: request needs method and url", i)
+		}
+		if len(r.JSON) > 0 && (r.Form != nil || r.Assertion != nil) {
+			add("exchange %d: request has both a JSON and a form body", i)
+		}
+		if _, ok := r.Form["assertion"]; ok && r.Assertion != nil {
+			add("exchange %d: form.assertion and assertion are both set", i)
+		}
+		resp := ex.Response
+		bodies := 0
+		for _, set := range []bool{len(resp.Body) > 0, resp.BodyText != "", resp.TransportError != nil} {
+			if set {
+				bodies++
+			}
+		}
+		if bodies > 1 {
+			add("exchange %d: response sets more than one of body, body_text and transport_error", i)
+		}
+		if te := resp.TransportError; te != nil {
+			if te.Message == "" {
+				add("exchange %d: transport_error.message is empty", i)
+			}
+			if !slices.Contains(transportErrorTypes, te.Type) {
+				add("exchange %d: transport_error.type %q is unknown", i, te.Type)
+			}
+			if resp.Status != 0 {
+				add("exchange %d: response sets both status and transport_error", i)
+			}
+			if i != len(v.Exchanges)-1 {
+				add("exchange %d: transport_error must be on the last exchange", i)
+			}
+		}
+	}
+
+	want := v.Expected
+	if (want.Token == nil) == (want.Error == nil) {
+		add("expected must set exactly one of token and error")
+	}
+	if want.UniverseDomain == "" {
+		add("expected.universe_domain is empty")
+	}
+	if tok := want.Token; tok != nil {
+		if (tok.Value == "") == (tok.JWT == nil) {
+			add("expected.token must set exactly one of value and jwt")
+		}
+		if tok.Type == "" {
+			add("expected.token.type is empty")
+		}
+		if tok.ExpiresInSeconds != nil && tok.Expiry != "" {
+			add("expected.token sets both expires_in_seconds and expiry")
+		}
+		if tok.Expiry != "" {
+			if _, err := time.Parse(time.RFC3339, tok.Expiry); err != nil {
+				add("expected.token.expiry %q is not RFC 3339", tok.Expiry)
+			}
+		}
+	}
+	if e := want.Error; e != nil {
+		if !slices.Contains(kinds, e.Kind) {
+			add("expected.error.kind %q is unknown", e.Kind)
+		}
+		for _, s := range e.Is {
+			if !slices.Contains(sentinels, s) {
+				add("expected.error.is has unknown sentinel %q", s)
+			}
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// isEmptyJSON reports whether b is missing, blank or null.
+func isEmptyJSON(b json.RawMessage) bool {
+	b = bytes.TrimSpace(b)
+	return len(b) == 0 || bytes.Equal(b, []byte("null"))
+}
+
 // All returns every vector, sorted by name. It fails if a file doesn't
-// parse, has unknown fields, or its name doesn't match the file name.
+// parse, has unknown fields or trailing data, fails Validate, or its name
+// doesn't match the file name.
 func All() ([]Vector, error) {
 	names, err := fs.Glob(FS, "*.json")
 	if err != nil {
@@ -210,16 +375,32 @@ func All() ([]Vector, error) {
 		if err != nil {
 			return nil, err
 		}
-		dec := json.NewDecoder(strings.NewReader(string(b)))
-		dec.DisallowUnknownFields()
-		var v Vector
-		if err := dec.Decode(&v); err != nil {
-			return nil, fmt.Errorf("goldenvectors: %s: %w", name, err)
-		}
-		if want := strings.TrimSuffix(path.Base(name), ".json"); v.Name != want {
-			return nil, fmt.Errorf("goldenvectors: %s: name is %q, want %q", name, v.Name, want)
+		v, err := decode(name, b)
+		if err != nil {
+			return nil, err
 		}
 		vectors = append(vectors, v)
 	}
 	return vectors, nil
+}
+
+// decode parses and checks the vector in file name.
+func decode(name string, b []byte) (Vector, error) {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	var v Vector
+	if err := dec.Decode(&v); err != nil {
+		return Vector{}, fmt.Errorf("goldenvectors: %s: %w", name, err)
+	}
+	var extra json.RawMessage
+	if err := dec.Decode(&extra); err != io.EOF {
+		return Vector{}, fmt.Errorf("goldenvectors: %s: data after the vector", name)
+	}
+	if want := strings.TrimSuffix(path.Base(name), ".json"); v.Name != want {
+		return Vector{}, fmt.Errorf("goldenvectors: %s: name is %q, want %q", name, v.Name, want)
+	}
+	if err := v.Validate(); err != nil {
+		return Vector{}, fmt.Errorf("goldenvectors: %s: %w", name, err)
+	}
+	return v, nil
 }

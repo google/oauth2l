@@ -17,8 +17,11 @@ package oauth2lib
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -33,9 +36,15 @@ import (
 	"github.com/google/oauth2l/oauth2lib/goldenvectors"
 )
 
+// vectorClientTimeout is the http.Client.Timeout of a vector with a
+// client_timeout transport error.
+const vectorClientTimeout = 200 * time.Millisecond
+
 // TestGoldenVectors runs every vector in goldenvectors: it builds the
 // credentials, calls Token once, and checks each request, the token or
-// error, and the universe domain.
+// error, and the universe domain. An impersonated_service_account vector
+// also runs as "<name>/parse_and_impersonate", with the credentials built
+// the way a caller that builds the source itself would.
 func TestGoldenVectors(t *testing.T) {
 	vectors, err := goldenvectors.All()
 	if err != nil {
@@ -46,29 +55,39 @@ func TestGoldenVectors(t *testing.T) {
 	}
 	_, keyPEM := testServiceAccountKey(t)
 	for _, v := range vectors {
-		t.Run(v.Name, func(t *testing.T) { runGoldenVector(t, v, keyPEM) })
+		t.Run(v.Name, func(t *testing.T) {
+			runGoldenVector(t, v, func(ctx context.Context, client *http.Client) *auth.Credentials {
+				return buildVectorCredentials(ctx, t, v.Input, keyPEM, client)
+			})
+		})
+		if isImpersonatedJSONVector(t, v) {
+			t.Run(v.Name+"/parse_and_impersonate", func(t *testing.T) {
+				runGoldenVector(t, v, func(ctx context.Context, client *http.Client) *auth.Credentials {
+					return parseAndImpersonate(ctx, t, *v.Input.Config, keyPEM, client)
+				})
+			})
+		}
 	}
 }
 
-func runGoldenVector(t *testing.T, v goldenvectors.Vector, keyPEM string) {
-	rt := &vectorTransport{t: t, exchanges: v.Exchanges}
-	client := &http.Client{Transport: rt}
-	ctx := t.Context()
-
-	var creds *auth.Credentials
-	switch in := v.Input; {
+// buildVectorCredentials builds in as the vector says: BuildCredentials for a
+// config, or BuildCredentials and Impersonate for an impersonation.
+func buildVectorCredentials(ctx context.Context, t *testing.T, in goldenvectors.Input, keyPEM string, client *http.Client) *auth.Credentials {
+	t.Helper()
+	switch {
 	case in.Config != nil && in.Impersonation == nil:
-		var err error
-		if creds, err = BuildCredentials(ctx, vectorConfig(t, *in.Config, keyPEM, client)); err != nil {
+		creds, err := BuildCredentials(ctx, vectorConfig(t, *in.Config, keyPEM, client))
+		if err != nil {
 			t.Fatalf("BuildCredentials() error = %v", err)
 		}
+		return creds
 	case in.Impersonation != nil && in.Config == nil:
 		imp := in.Impersonation
 		src, err := BuildCredentials(ctx, vectorConfig(t, imp.Source, keyPEM, client))
 		if err != nil {
 			t.Fatalf("BuildCredentials(source) error = %v", err)
 		}
-		creds, err = Impersonate(ctx, &ImpersonationConfig{
+		creds, err := Impersonate(ctx, &ImpersonationConfig{
 			Source:    src,
 			Target:    imp.Target,
 			Delegates: imp.Delegates,
@@ -80,9 +99,69 @@ func runGoldenVector(t *testing.T, v goldenvectors.Vector, keyPEM string) {
 		if err != nil {
 			t.Fatalf("Impersonate() error = %v", err)
 		}
-	default:
-		t.Fatal("vector input must set exactly one of config and impersonation")
+		return creds
 	}
+	t.Fatal("vector input must set exactly one of config and impersonation")
+	return nil
+}
+
+// isImpersonatedJSONVector reports whether v builds impersonated_service_account
+// JSON with BuildCredentials.
+func isImpersonatedJSONVector(t *testing.T, v goldenvectors.Vector) bool {
+	t.Helper()
+	if v.Input.Config == nil {
+		return false
+	}
+	var ct credentialType
+	if err := json.Unmarshal(v.Input.Config.CredentialsJSON, &ct); err != nil {
+		t.Fatalf("%s: credentials_json: %v", v.Name, err)
+	}
+	return ct.Type == "impersonated_service_account"
+}
+
+// parseAndImpersonate builds impersonated_service_account credentials with
+// ParseImpersonatedServiceAccountJSON, SourceConfig, BuildCredentials and
+// Impersonate, mapping the fields as buildImpersonatedFromJSON does:
+// Config.Scopes win over the JSON's, and Endpoint stays empty, so IAM is
+// called in the source's universe.
+func parseAndImpersonate(ctx context.Context, t *testing.T, c goldenvectors.Config, keyPEM string, client *http.Client) *auth.Credentials {
+	t.Helper()
+	cfg := vectorConfig(t, c, keyPEM, client)
+	a, err := ParseImpersonatedServiceAccountJSON(cfg.JSON)
+	if err != nil {
+		t.Fatalf("ParseImpersonatedServiceAccountJSON() error = %v", err)
+	}
+	src, err := BuildCredentials(ctx, a.SourceConfig(cfg))
+	if err != nil {
+		t.Fatalf("BuildCredentials(SourceConfig()) error = %v", err)
+	}
+	scopes := a.Scopes
+	if len(cfg.Scopes) > 0 {
+		scopes = cfg.Scopes
+	}
+	creds, err := Impersonate(ctx, &ImpersonationConfig{
+		Source:    src,
+		Target:    a.Target,
+		Delegates: a.Delegates,
+		Scopes:    scopes,
+		Client:    client,
+	})
+	if err != nil {
+		t.Fatalf("Impersonate() error = %v", err)
+	}
+	return creds
+}
+
+func runGoldenVector(t *testing.T, v goldenvectors.Vector, build func(context.Context, *http.Client) *auth.Credentials) {
+	rt := &vectorTransport{t: t, exchanges: v.Exchanges}
+	client := &http.Client{Transport: rt}
+	for _, ex := range v.Exchanges {
+		if te := ex.Response.TransportError; te != nil && te.Type == goldenvectors.TransportErrorClientTimeout {
+			client.Timeout = vectorClientTimeout
+		}
+	}
+	ctx := t.Context()
+	creds := build(ctx, client)
 
 	start := time.Now()
 	tok, err := creds.Token(ctx)
@@ -168,8 +247,8 @@ func (rt *vectorTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	checkVectorRequest(rt.t, i, ex.Request, req, body)
 
 	resp := ex.Response
-	if resp.TransportError != "" {
-		return nil, errors.New(resp.TransportError)
+	if te := resp.TransportError; te != nil {
+		return nil, vectorTransportError(req, te)
 	}
 	status := resp.Status
 	if status == 0 {
@@ -196,6 +275,23 @@ func (rt *vectorTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 		ContentLength: int64(len(out)),
 		Request:       req,
 	}, nil
+}
+
+// vectorTransportError returns the error for te, as its type describes.
+func vectorTransportError(req *http.Request, te *goldenvectors.TransportError) error {
+	switch te.Type {
+	case goldenvectors.TransportErrorNetwork:
+		return errors.New(te.Message)
+	case goldenvectors.TransportErrorClientCertRefused:
+		return fmt.Errorf("%s: %w", te.Message, ErrAccessDenied)
+	case goldenvectors.TransportErrorClientTimeout:
+		// Wait for http.Client.Timeout, so net/http builds its own error.
+		<-req.Context().Done()
+		return req.Context().Err()
+	case goldenvectors.TransportErrorServerCertUntrusted:
+		return fmt.Errorf("%s: %w", te.Message, &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}})
+	}
+	return fmt.Errorf("vectorTransport: unknown transport error type %q", te.Type)
 }
 
 func checkVectorRequest(t *testing.T, i int, want goldenvectors.Request, req *http.Request, body []byte) {
@@ -337,6 +433,26 @@ var vectorSentinels = map[string]error{
 	goldenvectors.ErrTransient:      ErrTransient,
 }
 
+// vectorKind returns the goldenvectors id for k. A new ErrorKind must be
+// added here and to goldenvectors.
+func vectorKind(t *testing.T, k ErrorKind) string {
+	t.Helper()
+	switch k {
+	case KindUnknown:
+		return goldenvectors.KindUnknown
+	case KindReauthRequired:
+		return goldenvectors.KindReauthRequired
+	case KindAccessDenied:
+		return goldenvectors.KindAccessDenied
+	case KindInvalidGrant:
+		return goldenvectors.KindInvalidGrant
+	case KindTransient:
+		return goldenvectors.KindTransient
+	}
+	t.Fatalf("ErrorKind %d (%v) has no goldenvectors id", int(k), k)
+	return ""
+}
+
 func checkVectorError(t *testing.T, err error, want *goldenvectors.Error) {
 	t.Helper()
 	var re *RefreshError
@@ -344,7 +460,7 @@ func checkVectorError(t *testing.T, err error, want *goldenvectors.Error) {
 		t.Fatalf("Token() error = %v (%T), want a *RefreshError", err, err)
 	}
 	got := goldenvectors.Error{
-		Kind:        re.Kind.String(),
+		Kind:        vectorKind(t, re.Kind),
 		Code:        re.Code,
 		Subtype:     re.Subtype,
 		Description: re.Description,
@@ -363,6 +479,13 @@ func checkVectorError(t *testing.T, err error, want *goldenvectors.Error) {
 	for name, sentinel := range vectorSentinels {
 		if is, wantIs := errors.Is(err, sentinel), slices.Contains(want.Is, name); is != wantIs {
 			t.Errorf("errors.Is(err, %s) = %v, want %v (err = %v)", name, is, wantIs, err)
+		}
+	}
+	// No vector cancels the caller's ctx, so the error must not look like
+	// it ended (for example after http.Client.Timeout).
+	for _, ctxErr := range []error{context.DeadlineExceeded, context.Canceled} {
+		if errors.Is(err, ctxErr) {
+			t.Errorf("errors.Is(err, %v) = true, want false (err = %v)", ctxErr, err)
 		}
 	}
 }

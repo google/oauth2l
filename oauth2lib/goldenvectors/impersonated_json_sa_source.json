@@ -1,6 +1,6 @@
 {
   "name": "impersonated_json_sa_source",
-  "description": "A service_account source gets the IAM scope, as google-auth gives it.",
+  "description": "A service_account source gets the IAM scope, as google-auth gives it. The file's \"delegates\": [] is sent to IAM as null; Python sends [] (README: Known differences from Python).",
   "python": "google/oauth2/service_account.py Credentials._make_authorization_grant_assertion; google/auth/impersonated_credentials.py _make_iam_token_request",
   "input": {
     "config": {

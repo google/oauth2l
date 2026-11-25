@@ -28,7 +28,9 @@
         }
       },
       "response": {
-        "transport_error": "connection reset by peer"
+        "transport_error": {
+          "message": "connection reset by peer"
+        }
       }
     }
   ],

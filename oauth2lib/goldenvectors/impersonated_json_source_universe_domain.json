@@ -1,0 +1,80 @@
+{
+  "name": "impersonated_json_source_universe_domain",
+  "description": "impersonated_service_account JSON whose source_credentials are in universe example.com: the source keeps its universe and token_uri, the credentials report example.com, and IAM is called at https://iamcredentials.example.com/. The host in service_account_impersonation_url is not used, as in google-auth.",
+  "python": "google/auth/impersonated_credentials.py Credentials.from_impersonated_service_account_info, _make_iam_token_request",
+  "input": {
+    "config": {
+      "credentials_json": {
+        "type": "impersonated_service_account",
+        "service_account_impersonation_url": "https://iamcredentials.example.com/v1/projects/-/serviceAccounts/target@project.iam.gserviceaccount.com:generateAccessToken",
+        "source_credentials": {
+          "type": "authorized_user",
+          "client_id": "client-id.apps.googleusercontent.com",
+          "client_secret": "fake-client-secret",
+          "refresh_token": "fake-refresh-token",
+          "token_uri": "https://oauth2.example.com/token",
+          "universe_domain": "example.com"
+        },
+        "scopes": [
+          "https://www.googleapis.com/auth/cloud-platform"
+        ]
+      }
+    }
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://oauth2.example.com/token",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "form": {
+          "grant_type": "refresh_token",
+          "client_id": "client-id.apps.googleusercontent.com",
+          "client_secret": "fake-client-secret",
+          "refresh_token": "fake-refresh-token"
+        }
+      },
+      "response": {
+        "body": {
+          "access_token": "fake-source-token",
+          "expires_in": 3600,
+          "token_type": "Bearer"
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://iamcredentials.example.com/v1/projects/-/serviceAccounts/target@project.iam.gserviceaccount.com:generateAccessToken",
+        "headers": {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer fake-source-token"
+        },
+        "json": {
+          "delegates": null,
+          "scope": [
+            "https://www.googleapis.com/auth/cloud-platform"
+          ],
+          "lifetime": "3600s"
+        }
+      },
+      "response": {
+        "body": {
+          "accessToken": "fake-impersonated-token",
+          "expireTime": "2030-01-02T03:04:05Z"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "token": {
+      "value": "fake-impersonated-token",
+      "type": "Bearer",
+      "expiry": "2030-01-02T03:04:05Z",
+      "metadata": {}
+    },
+    "universe_domain": "example.com"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "user_server_cert_untrusted",
+  "description": "The client rejects the server's certificate (signed by an unknown authority, for example a TLS-inspecting proxy whose CA is not trusted). Retrying won't help, so it is not transient; it is unknown, with no sentinel.",
+  "python": "googlecloudsdk/core/credentials/google_auth_credentials.py _RefreshGrant; google/oauth2/_client.py refresh_grant",
+  "input": {
+    "config": {
+      "credentials_json": {
+        "type": "authorized_user",
+        "client_id": "client-id.apps.googleusercontent.com",
+        "client_secret": "fake-client-secret",
+        "refresh_token": "fake-refresh-token"
+      }
+    }
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://oauth2.googleapis.com/token",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "form": {
+          "grant_type": "refresh_token",
+          "client_id": "client-id.apps.googleusercontent.com",
+          "client_secret": "fake-client-secret",
+          "refresh_token": "fake-refresh-token"
+        }
+      },
+      "response": {
+        "transport_error": {
+          "message": "proxy certificate is not trusted",
+          "type": "server_cert_untrusted"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "error": {
+      "kind": "unknown"
+    },
+    "universe_domain": "googleapis.com"
+  }
+}
