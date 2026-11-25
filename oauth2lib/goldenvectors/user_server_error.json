@@ -1,0 +1,46 @@
+{
+  "name": "user_server_error",
+  "description": "HTTP 503 with a plain-text body is transient.",
+  "python": "googlecloudsdk/core/credentials/google_auth_credentials.py _RefreshGrant; google/oauth2/_client.py refresh_grant",
+  "input": {
+    "config": {
+      "credentials_json": {
+        "type": "authorized_user",
+        "client_id": "client-id.apps.googleusercontent.com",
+        "client_secret": "fake-client-secret",
+        "refresh_token": "fake-refresh-token"
+      }
+    }
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "POST",
+        "url": "https://oauth2.googleapis.com/token",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "form": {
+          "grant_type": "refresh_token",
+          "client_id": "client-id.apps.googleusercontent.com",
+          "client_secret": "fake-client-secret",
+          "refresh_token": "fake-refresh-token"
+        }
+      },
+      "response": {
+        "status": 503,
+        "body_text": "Service Unavailable"
+      }
+    }
+  ],
+  "expected": {
+    "error": {
+      "kind": "transient",
+      "status_code": 503,
+      "is": [
+        "ErrTransient"
+      ]
+    },
+    "universe_domain": "googleapis.com"
+  }
+}
