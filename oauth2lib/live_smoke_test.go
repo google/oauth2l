@@ -24,9 +24,22 @@
 // have. Only TestSmoke_MTLSAndClientCertRefusal/refusal needs no credentials
 // or network: it runs against a local httptest TLS server.
 //
+// Accounts that require certificate-based access (CBA), such as @google.com
+// accounts on corp machines, are refused on the plain endpoints with
+// access_denied "Account restricted". For them, set OAUTH2LIB_SMOKE_ECP_CONFIG:
+// every test transport then presents the Enterprise Certificate Proxy
+// certificate, user and service account refreshes use
+// https://oauth2.mtls.googleapis.com/token, and impersonation uses
+// https://iamcredentials.mtls.googleapis.com/ unless an endpoint is given, the
+// way Go gcloud picks the mTLS hosts.
+//
 // Environment variables (paths point to credential JSON files; keep them
 // outside the repository and delete them after the run):
 //
+//	OAUTH2LIB_SMOKE_ECP_CONFIG                certificate_config.json for CBA (gcloud's
+//	                                          context_aware/certificate_config_file_path)
+//	OAUTH2LIB_SMOKE_CAA_USER_JSON             authorized_user JSON of a CBA account, for
+//	                                          TestSmoke_CAADenied (no client certificate)
 //	OAUTH2LIB_SMOKE_USER_JSON                 authorized_user JSON for TestSmoke_AuthorizedUserRefresh
 //	OAUTH2LIB_SMOKE_RAPT                      RAPT sent on every authorized_user refresh, including
 //	                                          impersonation sources and the live mTLS user
@@ -69,6 +82,7 @@ import (
 
 	"cloud.google.com/go/auth"
 	"github.com/google/oauth2l/oauth2lib"
+	ecpclient "github.com/googleapis/enterprise-certificate-proxy/client"
 )
 
 const defaultCloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
@@ -128,11 +142,72 @@ func (t *bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // newSmokeTransport returns a transport owned by t. Its idle keep-alive
 // connections are closed when t finishes; otherwise their read loops outlive
 // the tests and goleak.VerifyTestMain (main_test.go) fails the package.
+//
+// With OAUTH2LIB_SMOKE_ECP_CONFIG set, the transport also presents the
+// Enterprise Certificate Proxy certificate; the signer subprocess is stopped
+// when t finishes.
 func newSmokeTransport(t *testing.T) *http.Transport {
+	t.Helper()
+	tr := newPlainSmokeTransport(t)
+	configPath := strings.TrimSpace(os.Getenv("OAUTH2LIB_SMOKE_ECP_CONFIG"))
+	if configPath == "" {
+		return tr
+	}
+	key, err := ecpclient.Cred(configPath)
+	if err != nil {
+		t.Fatalf("loading the ECP certificate from OAUTH2LIB_SMOKE_ECP_CONFIG (%q): %v", configPath, err)
+	}
+	t.Cleanup(func() { _ = key.Close() })
+	cert := &tls.Certificate{Certificate: key.CertificateChain(), PrivateKey: key}
+	tr.TLSClientConfig = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			return cert, nil
+		},
+	}
+	return tr
+}
+
+// newPlainSmokeTransport is newSmokeTransport without a client certificate.
+func newPlainSmokeTransport(t *testing.T) *http.Transport {
 	t.Helper()
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	t.Cleanup(tr.CloseIdleConnections)
 	return tr
+}
+
+const (
+	mtlsTokenURL    = "https://oauth2.mtls.googleapis.com/token"
+	mtlsIAMEndpoint = "https://iamcredentials.mtls.googleapis.com/"
+)
+
+// smokeCBA reports whether the run uses certificate-based access.
+func smokeCBA() bool {
+	return strings.TrimSpace(os.Getenv("OAUTH2LIB_SMOKE_ECP_CONFIG")) != ""
+}
+
+// withSmokeTokenURL points authorized_user and service_account refreshes at
+// the mTLS token endpoint when the run uses CBA, as Go gcloud does.
+func withSmokeTokenURL(cfg *oauth2lib.Config) *oauth2lib.Config {
+	switch credentialType(cfg.JSON) {
+	case "authorized_user", "service_account":
+		if smokeCBA() && cfg.TokenURL == "" {
+			cfg.TokenURL = mtlsTokenURL
+		}
+	}
+	return cfg
+}
+
+// smokeIAMEndpoint returns endpoint if set, else the mTLS IAM host under CBA,
+// else "" (oauth2lib's default host). This is simpler than Python, where
+// google-auth picks the mTLS IAM host from GOOGLE_API_USE_CLIENT_CERTIFICATE,
+// CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE or a workload certificate; set
+// OAUTH2LIB_SMOKE_IMPERSONATE_ENDPOINT to use another host.
+func smokeIAMEndpoint(endpoint string) string {
+	if endpoint == "" && smokeCBA() {
+		return mtlsIAMEndpoint
+	}
+	return endpoint
 }
 
 func newSmokeHTTPClient(t *testing.T) *http.Client {
@@ -226,14 +301,14 @@ func TestSmoke_AuthorizedUserRefresh(t *testing.T) {
 	scopes := splitCSVEnv("OAUTH2LIB_SMOKE_SCOPES")
 
 	ctx := t.Context()
-	creds, err := oauth2lib.BuildCredentials(ctx, &oauth2lib.Config{
+	creds, err := oauth2lib.BuildCredentials(ctx, withSmokeTokenURL(&oauth2lib.Config{
 		JSON:   rawJSON,
 		Scopes: scopes,
 		Client: newSmokeHTTPClient(t),
 		RAPT: func(context.Context) (string, error) {
 			return rapt, nil
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("BuildCredentials(authorized_user) failed: %v", err)
 	}
@@ -277,13 +352,13 @@ func TestSmoke_AuthorizedUserRefresh(t *testing.T) {
 func checkReauthRequired(t *testing.T, rawJSON []byte, rapt, wantSubtype string) {
 	t.Helper()
 	ctx := t.Context()
-	creds, err := oauth2lib.BuildCredentials(ctx, &oauth2lib.Config{
+	creds, err := oauth2lib.BuildCredentials(ctx, withSmokeTokenURL(&oauth2lib.Config{
 		JSON:   rawJSON,
 		Client: newSmokeHTTPClient(t),
 		RAPT: func(context.Context) (string, error) {
 			return rapt, nil
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("BuildCredentials(reauth user) failed: %v", err)
 	}
@@ -330,10 +405,10 @@ func TestSmoke_RevokedRefreshToken(t *testing.T) {
 	rawJSON := readEnvFileOrSkip(t, "OAUTH2LIB_SMOKE_REVOKED_USER_JSON")
 
 	ctx := t.Context()
-	creds, err := oauth2lib.BuildCredentials(ctx, &oauth2lib.Config{
+	creds, err := oauth2lib.BuildCredentials(ctx, withSmokeTokenURL(&oauth2lib.Config{
 		JSON:   rawJSON,
 		Client: newSmokeHTTPClient(t),
-	})
+	}))
 	if err != nil {
 		t.Fatalf("BuildCredentials(revoked user) failed: %v", err)
 	}
@@ -344,6 +419,41 @@ func TestSmoke_RevokedRefreshToken(t *testing.T) {
 	}
 	if errors.Is(err, oauth2lib.ErrReauthRequired) {
 		t.Errorf("Token() revoked grant unexpectedly matched ErrReauthRequired: %v", err)
+	}
+}
+
+// TestSmoke_CAADenied refreshes a CBA account on the plain token endpoint
+// without a client certificate. Google refuses it with access_denied
+// "Account restricted", which must match ErrCAADenied (and ErrAccessDenied).
+func TestSmoke_CAADenied(t *testing.T) {
+	rawJSON := readEnvFileOrSkip(t, "OAUTH2LIB_SMOKE_CAA_USER_JSON")
+	rapt := strings.TrimSpace(os.Getenv("OAUTH2LIB_SMOKE_RAPT"))
+
+	ctx := t.Context()
+	creds, err := oauth2lib.BuildCredentials(ctx, &oauth2lib.Config{
+		JSON:   rawJSON,
+		Client: &http.Client{Timeout: 30 * time.Second, Transport: newPlainSmokeTransport(t)},
+		RAPT: func(context.Context) (string, error) {
+			return rapt, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("BuildCredentials(CBA user) failed: %v", err)
+	}
+
+	_, err = creds.Token(ctx)
+	if !errors.Is(err, oauth2lib.ErrCAADenied) {
+		t.Fatalf("Token() err = %v, want errors.Is(ErrCAADenied)", err)
+	}
+	if !errors.Is(err, oauth2lib.ErrAccessDenied) {
+		t.Errorf("Token() CAA error doesn't match ErrAccessDenied: %v", err)
+	}
+	if errors.Is(err, oauth2lib.ErrReauthRequired) || errors.Is(err, oauth2lib.ErrTransient) {
+		t.Errorf("Token() CAA error unexpectedly matched ErrReauthRequired or ErrTransient: %v", err)
+	}
+	var re *oauth2lib.RefreshError
+	if !errors.As(err, &re) || re.Kind != oauth2lib.KindAccessDenied {
+		t.Errorf("Token() err = %v, want *oauth2lib.RefreshError with KindAccessDenied", err)
 	}
 }
 
@@ -361,12 +471,12 @@ func TestSmoke_ServiceAccount(t *testing.T) {
 		}
 		t.Run(mode, func(t *testing.T) {
 			ctx := t.Context()
-			creds, err := oauth2lib.BuildCredentials(ctx, &oauth2lib.Config{
+			creds, err := oauth2lib.BuildCredentials(ctx, withSmokeTokenURL(&oauth2lib.Config{
 				JSON:             rawJSON,
 				Scopes:           scopes,
 				UseSelfSignedJWT: selfSigned,
 				Client:           newSmokeHTTPClient(t),
-			})
+			}))
 			if err != nil {
 				t.Fatalf("BuildCredentials(service_account, %s) failed: %v", mode, err)
 			}
@@ -391,6 +501,7 @@ func TestSmoke_ServiceAccount(t *testing.T) {
 // that the impersonated credentials mint a token.
 func runDirectImpersonation(t *testing.T, delegates []string, endpoint string) {
 	t.Helper()
+	endpoint = smokeIAMEndpoint(endpoint)
 	srcJSON := readEnvFileOrSkip(t, "OAUTH2LIB_SMOKE_IMPERSONATE_SOURCE_JSON")
 	target := strings.TrimSpace(os.Getenv("OAUTH2LIB_SMOKE_IMPERSONATE_TARGET"))
 	if target == "" {
@@ -413,11 +524,11 @@ func runDirectImpersonation(t *testing.T, delegates []string, endpoint string) {
 
 	ctx := t.Context()
 	hc := newSmokeHTTPClient(t)
-	srcCreds, err := oauth2lib.BuildCredentials(ctx, withSmokeRAPT(&oauth2lib.Config{
+	srcCreds, err := oauth2lib.BuildCredentials(ctx, withSmokeRAPT(withSmokeTokenURL(&oauth2lib.Config{
 		JSON:   srcJSON,
 		Scopes: srcScopes,
 		Client: hc,
-	}))
+	})))
 	if err != nil {
 		t.Fatalf("BuildCredentials(source) failed: %v", err)
 	}
@@ -440,8 +551,8 @@ func runDirectImpersonation(t *testing.T, delegates []string, endpoint string) {
 	if tok == nil || tok.Value == "" || tok.Expiry.IsZero() {
 		t.Fatalf("Impersonate().Token() returned incomplete token")
 	}
-	t.Logf("impersonate succeeded (delegates=%d, custom_endpoint=%v, expires_in=%s)",
-		len(delegates), endpoint != "", time.Until(tok.Expiry).Round(time.Second))
+	t.Logf("impersonate succeeded (delegates=%d, endpoint=%q, expires_in=%s)",
+		len(delegates), endpoint, time.Until(tok.Expiry).Round(time.Second))
 	verifyOptionalLiveGET(t, ctx, impCreds, nil)
 }
 
@@ -492,6 +603,9 @@ func TestSmoke_Impersonate(t *testing.T) {
 			if errors.Is(err, oauth2lib.ErrReauthRequired) {
 				t.Skipf("source needs a RAPT, which impersonated_service_account JSON can't carry; Go gcloud uses the parse_then_impersonate path: %v", err)
 			}
+			if smokeCBA() && errors.Is(err, oauth2lib.ErrCAADenied) {
+				t.Skipf("impersonated_service_account JSON uses its source's token_uri and its own IAM host, not the mTLS hosts, so a CBA account is refused; Go gcloud uses the parse_then_impersonate path: %v", err)
+			}
 			if err != nil {
 				t.Fatalf("BuildCredentials(impersonated_service_account).Token() failed: %v", err)
 			}
@@ -510,7 +624,7 @@ func TestSmoke_Impersonate(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ParseImpersonatedServiceAccountJSON() failed: %v", err)
 			}
-			srcCreds, err := oauth2lib.BuildCredentials(ctx, withSmokeRAPT(parsed.SourceConfig(&oauth2lib.Config{Client: hc})))
+			srcCreds, err := oauth2lib.BuildCredentials(ctx, withSmokeRAPT(withSmokeTokenURL(parsed.SourceConfig(&oauth2lib.Config{Client: hc}))))
 			if err != nil {
 				t.Fatalf("BuildCredentials(SourceConfig) failed: %v", err)
 			}
@@ -525,6 +639,7 @@ func TestSmoke_Impersonate(t *testing.T) {
 				Target:    parsed.Target,
 				Delegates: parsed.Delegates,
 				Scopes:    scopes,
+				Endpoint:  smokeIAMEndpoint(""),
 				Client:    hc,
 			})
 			if err != nil {
